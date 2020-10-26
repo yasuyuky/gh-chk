@@ -51,22 +51,7 @@ async fn query<T: DeserializeOwned>(q: &str) -> surf::Result<T> {
 }
 
 fn build_q(user: &str) -> String {
-    let query = "query ($login: String!) {
-        user(login: $login) {
-          repositories(first: 100, affiliations: OWNER) {
-            nodes {
-              name
-              pullRequests(first: 100, states: OPEN) {
-                nodes {
-                  number
-                  title
-                  url
-                }
-              }
-            }
-          }
-        }
-      }";
+    let query = include_str!("query.graphql");
     json!({
         "query": query,
         "variables": {"login": user}

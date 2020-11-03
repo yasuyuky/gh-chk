@@ -64,14 +64,17 @@ async fn main() -> surf::Result<()> {
     let opt = Opt::from_args();
     let q = build_q(&opt.user);
     let res = query::<Res>(&q).await?;
+    let mut count = 0usize;
     for repo in res.data.user.repositories.nodes {
         if repo.pullRequests.nodes.is_empty() {
             continue;
         }
         println!("{}", repo.name);
         for pr in repo.pullRequests.nodes {
+            count += 1;
             println!("  #{} {} {} ", pr.number, pr.url, pr.title)
         }
     }
+    println!("Count of PRs: {}", count);
     Ok(())
 }

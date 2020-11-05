@@ -55,7 +55,7 @@ fn build_q(qstr: &str, v: &serde_json::Value) -> String {
 }
 
 async fn check_prs(user: &str) -> surf::Result<()> {
-    let v = json!({"variables": {"login": user}});
+    let v = json!({"login": user});
     let q = build_q(include_str!("query.user.repo.pr.graphql"), &v);
     let res = query::<Res>(&q).await?;
     let mut count = 0usize;

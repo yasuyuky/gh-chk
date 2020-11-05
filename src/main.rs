@@ -50,17 +50,16 @@ async fn query<T: DeserializeOwned>(q: &str) -> surf::Result<T> {
     Ok(res.body_json::<T>().await?)
 }
 
-fn build_q(user: &str) -> String {
-    let query = include_str!("query.user.repo.pr.graphql");
+fn build_q(qstr: &str, user: &str) -> String {
     json!({
-        "query": query,
+        "query": qstr,
         "variables": {"login": user}
     })
     .to_string()
 }
 
 async fn check_prs(user: &str) -> surf::Result<()> {
-    let q = build_q(user);
+    let q = build_q(include_str!("query.user.repo.pr.graphql"), user);
     let res = query::<Res>(&q).await?;
     let mut count = 0usize;
     for repo in res.data.user.repositories.nodes {
@@ -76,7 +75,6 @@ async fn check_prs(user: &str) -> surf::Result<()> {
     println!("Count of PRs: {}", count);
     Ok(())
 }
-
 
 #[async_std::main]
 async fn main() -> surf::Result<()> {

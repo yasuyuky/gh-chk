@@ -59,10 +59,8 @@ fn build_q(user: &str) -> String {
     .to_string()
 }
 
-#[async_std::main]
-async fn main() -> surf::Result<()> {
-    let opt = Opt::from_args();
-    let q = build_q(&opt.user);
+async fn check_prs(user: &str) -> surf::Result<()> {
+    let q = build_q(user);
     let res = query::<Res>(&q).await?;
     let mut count = 0usize;
     for repo in res.data.user.repositories.nodes {
@@ -76,5 +74,13 @@ async fn main() -> surf::Result<()> {
         }
     }
     println!("Count of PRs: {}", count);
+    Ok(())
+}
+
+
+#[async_std::main]
+async fn main() -> surf::Result<()> {
+    let opt = Opt::from_args();
+    check_prs(&opt.user).await?;
     Ok(())
 }

@@ -50,13 +50,9 @@ async fn query<T: DeserializeOwned>(q: &serde_json::Value) -> surf::Result<T> {
     Ok(res.body_json::<T>().await?)
 }
 
-fn build_q(qstr: &str, v: &serde_json::Value) -> serde_json::Value {
-    json!({"query": qstr, "variables": v})
-}
-
 async fn check_prs(user: &str) -> surf::Result<()> {
-    let v = json!({"login": user});
-    let q = build_q(include_str!("query.user.repo.pr.graphql"), &v);
+    let v = json!({ "login": user });
+    let q = json!({ "query": include_str!("query.user.repo.pr.graphql"), "variables": v });
     let res = query::<Res>(&q).await?;
     let mut count = 0usize;
     for repo in res.data.user.repositories.nodes {

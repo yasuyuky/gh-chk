@@ -40,18 +40,18 @@ struct PullRequest {
     url: String,
 }
 
-async fn query<T: DeserializeOwned>(q: &str) -> surf::Result<T> {
+async fn query<T: DeserializeOwned>(q: &serde_json::Value) -> surf::Result<T> {
     let uri = "https://api.github.com/graphql";
     let token = std::env::var("GITHUB_TOKEN")?;
     let mut res = surf::post(&uri)
         .header("Authorization", format!("bearer {}", token))
-        .body(q)
+        .body(q.to_string())
         .await?;
     Ok(res.body_json::<T>().await?)
 }
 
-fn build_q(qstr: &str, v: &serde_json::Value) -> String {
-    json!({"query": qstr, "variables": v}).to_string()
+fn build_q(qstr: &str, v: &serde_json::Value) -> serde_json::Value {
+    json!({"query": qstr, "variables": v})
 }
 
 async fn check_prs(user: &str) -> surf::Result<()> {

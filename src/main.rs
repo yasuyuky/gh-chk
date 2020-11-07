@@ -40,29 +40,19 @@ struct PullRequest {
     url: String,
 }
 
-async fn query<T: DeserializeOwned>(q: &str) -> surf::Result<T> {
+async fn query<T: DeserializeOwned>(q: &serde_json::Value) -> surf::Result<T> {
     let uri = "https://api.github.com/graphql";
     let token = std::env::var("GITHUB_TOKEN")?;
     let mut res = surf::post(&uri)
         .header("Authorization", format!("bearer {}", token))
-        .body(q)
+        .body(q.to_string())
         .await?;
     Ok(res.body_json::<T>().await?)
 }
 
-fn build_q(user: &str) -> String {
-    let query = include_str!("query.user.repo.pr.graphql");
-    json!({
-        "query": query,
-        "variables": {"login": user}
-    })
-    .to_string()
-}
-
-#[async_std::main]
-async fn main() -> surf::Result<()> {
-    let opt = Opt::from_args();
-    let q = build_q(&opt.user);
+async fn check_prs(user: &str) -> surf::Result<()> {
+    let v = json!({ "login": user });
+    let q = json!({ "query": include_str!("query.user.repo.pr.graphql"), "variables": v });
     let res = query::<Res>(&q).await?;
     let mut count = 0usize;
     for repo in res.data.user.repositories.nodes {
@@ -76,5 +66,12 @@ async fn main() -> surf::Result<()> {
         }
     }
     println!("Count of PRs: {}", count);
+    Ok(())
+}
+
+#[async_std::main]
+async fn main() -> surf::Result<()> {
+    let opt = Opt::from_args();
+    check_prs(&opt.user).await?;
     Ok(())
 }

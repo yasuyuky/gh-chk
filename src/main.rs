@@ -29,7 +29,7 @@ async fn query<T: DeserializeOwned>(q: &serde_json::Value) -> surf::Result<T> {
 async fn main() -> surf::Result<()> {
     let opt = Opt::from_args();
     match opt.command {
-        Command::Prs {user} => prs::check_prs(&user).await?
+        Command::Prs {user} => prs::check(&user).await?
     };
     Ok(())
 }

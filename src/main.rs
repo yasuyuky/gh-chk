@@ -5,7 +5,14 @@ mod prs;
 
 #[derive(StructOpt)]
 struct Opt {
-    user: String,
+    #[structopt(subcommand)]
+    command: Command,
+}
+#[derive(Debug, StructOpt)]
+#[structopt(rename_all = "kebab-case")]
+enum Command {
+    /// PRs
+    Prs { user: String },
 }
 
 async fn query<T: DeserializeOwned>(q: &serde_json::Value) -> surf::Result<T> {
@@ -21,6 +28,8 @@ async fn query<T: DeserializeOwned>(q: &serde_json::Value) -> surf::Result<T> {
 #[async_std::main]
 async fn main() -> surf::Result<()> {
     let opt = Opt::from_args();
-    prs::check_prs(&opt.user).await?;
+    match opt.command {
+        Command::Prs {user} => prs::check_prs(&user).await?
+    };
     Ok(())
 }

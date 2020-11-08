@@ -5,7 +5,14 @@ use structopt::StructOpt;
 
 #[derive(StructOpt)]
 struct Opt {
-    user: String,
+    #[structopt(subcommand)]
+    command: Command,
+}
+#[derive(Debug, StructOpt)]
+#[structopt(rename_all = "kebab-case")]
+enum Command {
+    /// PRs
+    Prs { user: String },
 }
 #[derive(Deserialize)]
 struct Res {
@@ -72,6 +79,8 @@ async fn check_prs(user: &str) -> surf::Result<()> {
 #[async_std::main]
 async fn main() -> surf::Result<()> {
     let opt = Opt::from_args();
-    check_prs(&opt.user).await?;
+    match opt.command {
+        Command::Prs {user} => check_prs(&user).await?
+    };
     Ok(())
 }

@@ -42,13 +42,8 @@ pub async fn check(user: &str) -> surf::Result<()> {
     let v = json!({ "login": user });
     let q = json!({ "query": include_str!("query.contributions.graphql"), "variables": v });
     let res = crate::query::<Res>(&q).await?;
-    for week in res
-        .data
-        .user
-        .contributionsCollection
-        .contributionCalendar
-        .weeks
-    {
+    let calendar = res.data.user.contributionsCollection.contributionCalendar;
+    for week in calendar.weeks {
         print!("{}: ", week.firstDay);
         for d in week.contributionDays {
             print!("{:2} ", d.contributionCount)

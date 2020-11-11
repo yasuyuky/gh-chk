@@ -1,0 +1,17 @@
+query ($login: String!, $from: DateTime)  {
+  user(login: $login) {
+    contributionsCollection(from: $from) {
+      contributionCalendar {
+        totalContributions
+        colors
+        weeks {
+          firstDay
+          contributionDays {
+            color
+            contributionCount
+          }
+        }
+      }
+    }
+  }
+}

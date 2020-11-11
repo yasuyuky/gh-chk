@@ -23,7 +23,6 @@ struct ContributionCollection {
 }
 #[derive(Deserialize)]
 struct ContributionCalendar {
-    colors: Vec<String>,
     weeks: Vec<Week>,
 }
 #[allow(non_snake_case)]

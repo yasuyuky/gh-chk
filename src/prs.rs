@@ -1,7 +1,6 @@
 use serde::Deserialize;
 use serde_json::json;
 
-
 #[derive(Deserialize)]
 struct Res {
     data: Data,

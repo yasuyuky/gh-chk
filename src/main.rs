@@ -1,6 +1,7 @@
 use serde::de::DeserializeOwned;
 use structopt::StructOpt;
 
+mod contributions;
 mod prs;
 
 #[derive(StructOpt)]
@@ -13,6 +14,8 @@ struct Opt {
 enum Command {
     /// PRs
     Prs { user: String },
+    /// Contriburions
+    Contributions { user: String },
 }
 
 async fn query<T: DeserializeOwned>(q: &serde_json::Value) -> surf::Result<T> {
@@ -29,7 +32,8 @@ async fn query<T: DeserializeOwned>(q: &serde_json::Value) -> surf::Result<T> {
 async fn main() -> surf::Result<()> {
     let opt = Opt::from_args();
     match opt.command {
-        Command::Prs {user} => prs::check(&user).await?
+        Command::Prs { user } => prs::check(&user).await?,
+        Command::Contributions { user } => contributions::check(&user).await?,
     };
     Ok(())
 }

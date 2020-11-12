@@ -21,8 +21,10 @@ struct User {
 struct ContributionCollection {
     contributionCalendar: ContributionCalendar,
 }
+#[allow(non_snake_case)]
 #[derive(Deserialize)]
 struct ContributionCalendar {
+    totalContributions: usize,
     weeks: Vec<Week>,
 }
 #[allow(non_snake_case)]
@@ -31,7 +33,6 @@ struct Week {
     firstDay: String,
     contributionDays: Vec<ContributionDay>,
 }
-
 #[allow(non_snake_case)]
 #[derive(Deserialize)]
 struct ContributionDay {
@@ -65,5 +66,6 @@ pub async fn check(user: &str) -> surf::Result<()> {
         }
         println!("");
     }
+    println!("total contributions: {}", calendar.totalContributions);
     Ok(())
 }

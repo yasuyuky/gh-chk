@@ -1,3 +1,4 @@
+use colored::Colorize;
 use serde::Deserialize;
 use serde_json::json;
 
@@ -43,7 +44,7 @@ pub async fn check(user: &str) -> surf::Result<()> {
         if repo.pullRequests.nodes.is_empty() {
             continue;
         }
-        println!("{}", repo.name);
+        println!("{}", repo.name.cyan());
         for pr in repo.pullRequests.nodes {
             count += 1;
             println!("  #{} {} {} ", pr.number, pr.url, pr.title)

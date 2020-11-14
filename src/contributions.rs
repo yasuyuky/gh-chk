@@ -11,40 +11,40 @@ struct Res {
 struct Data {
     user: User,
 }
-#[allow(non_snake_case)]
+#[serde(rename_all = "camelCase")]
 #[derive(Deserialize)]
 struct User {
-    contributionsCollection: ContributionCollection,
+    contributions_collection: ContributionCollection,
 }
-#[allow(non_snake_case)]
+#[serde(rename_all = "camelCase")]
 #[derive(Deserialize)]
 struct ContributionCollection {
-    contributionCalendar: ContributionCalendar,
+    contribution_calendar: ContributionCalendar,
 }
-#[allow(non_snake_case)]
+#[serde(rename_all = "camelCase")]
 #[derive(Deserialize)]
 struct ContributionCalendar {
-    totalContributions: usize,
+    total_contributions: usize,
     weeks: Vec<Week>,
 }
-#[allow(non_snake_case)]
+#[serde(rename_all = "camelCase")]
 #[derive(Deserialize)]
 struct Week {
-    firstDay: String,
-    contributionDays: Vec<ContributionDay>,
+    first_day: String,
+    contribution_days: Vec<ContributionDay>,
 }
-#[allow(non_snake_case)]
+#[serde(rename_all = "camelCase")]
 #[derive(Deserialize)]
 struct ContributionDay {
     color: String,
-    contributionCount: usize,
+    contribution_count: usize,
 }
 
 pub async fn check(user: &str) -> surf::Result<()> {
     let v = json!({ "login": user });
     let q = json!({ "query": include_str!("query.contributions.graphql"), "variables": v });
     let res = crate::query::<Res>(&q).await?;
-    let calendar = res.data.user.contributionsCollection.contributionCalendar;
+    let calendar = res.data.user.contributions_collection.contribution_calendar;
 
     let colormap: HashMap<&str, (&str, u8, u8, u8)> = [
         ("L1", ("black", 0x8C, 0xE7, 0x98)),
@@ -57,15 +57,15 @@ pub async fn check(user: &str) -> surf::Result<()> {
     .collect();
 
     for week in calendar.weeks {
-        print!("{}: ", week.firstDay);
-        for d in week.contributionDays {
+        print!("{}: ", week.first_day);
+        for d in week.contribution_days {
             let ck = d.color.get(31..33).unwrap_or_default();
             let c = colormap.get(ck).unwrap_or(&("black", 0xE6, 0xE8, 0xED));
-            let s = format!("{:3}", d.contributionCount);
+            let s = format!("{:3}", d.contribution_count);
             print!("{} ", s.as_str().color(c.0).on_truecolor(c.1, c.2, c.3))
         }
         println!("");
     }
-    println!("total contributions: {}", calendar.totalContributions);
+    println!("total contributions: {}", calendar.total_contributions);
     Ok(())
 }

@@ -2,7 +2,9 @@ use structopt::StructOpt;
 
 mod contributions;
 mod graphql;
+mod notifications;
 mod prs;
+mod rest;
 
 #[derive(StructOpt)]
 struct Opt {
@@ -16,6 +18,8 @@ enum Command {
     Prs { user: String },
     /// Contriburions
     Contributions { user: String },
+    /// Notifications
+    Notifications,
 }
 
 #[async_std::main]
@@ -24,6 +28,7 @@ async fn main() -> surf::Result<()> {
     match opt.command {
         Command::Prs { user } => prs::check(&user).await?,
         Command::Contributions { user } => contributions::check(&user).await?,
+        Command::Notifications => notifications::check().await?,
     };
     Ok(())
 }

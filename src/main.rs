@@ -3,6 +3,7 @@ use structopt::StructOpt;
 mod contributions;
 mod graphql;
 mod prs;
+mod rest;
 
 #[derive(StructOpt)]
 struct Opt {

@@ -1,3 +1,4 @@
+use colored::Colorize;
 use serde::Deserialize;
 
 #[derive(Deserialize)]
@@ -21,7 +22,9 @@ pub async fn check() -> surf::Result<()> {
     for n in res {
         println!(
             "{} {} {}",
-            n.repository.full_name, n.subject.ntype, n.subject.title
+            n.repository.full_name,
+            n.subject.ntype.cyan(),
+            n.subject.title
         )
     }
 

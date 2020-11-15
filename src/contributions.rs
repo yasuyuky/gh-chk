@@ -43,7 +43,7 @@ struct ContributionDay {
 pub async fn check(user: &str) -> surf::Result<()> {
     let v = json!({ "login": user });
     let q = json!({ "query": include_str!("query.contributions.graphql"), "variables": v });
-    let res = crate::query::<Res>(&q).await?;
+    let res = crate::graphql::query::<Res>(&q).await?;
     let calendar = res.data.user.contributions_collection.contribution_calendar;
 
     let colormap: HashMap<&str, (&str, u8, u8, u8)> = [

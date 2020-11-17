@@ -21,7 +21,7 @@ struct Subject {
 
 pub async fn check() -> surf::Result<()> {
     let res = crate::rest::get::<Notification>("notifications").await?;
-    for n in res {
+    for n in &res {
         println!(
             "{} {} {} {} {}",
             n.id,
@@ -31,6 +31,6 @@ pub async fn check() -> surf::Result<()> {
             n.subject.title
         )
     }
-
+    println!("# total count: {}", res.len());
     Ok(())
 }

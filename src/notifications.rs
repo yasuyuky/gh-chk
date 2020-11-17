@@ -1,9 +1,12 @@
+use colored::Colorize;
 use serde::Deserialize;
 
 #[derive(Deserialize)]
 struct Notification {
+    id: String,
     repository: Repository,
     subject: Subject,
+    reason: String,
 }
 #[derive(Deserialize)]
 struct Repository {
@@ -18,12 +21,16 @@ struct Subject {
 
 pub async fn check() -> surf::Result<()> {
     let res = crate::rest::get::<Notification>("notifications").await?;
-    for n in res {
+    for n in &res {
         println!(
-            "{} {} {}",
-            n.repository.full_name, n.subject.ntype, n.subject.title
+            "{} {} {} {} {}",
+            n.id,
+            n.reason.magenta(),
+            n.repository.full_name,
+            n.subject.ntype.cyan(),
+            n.subject.title
         )
     }
-
+    println!("# total count: {}", res.len());
     Ok(())
 }

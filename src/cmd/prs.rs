@@ -8,7 +8,7 @@ struct Res {
 }
 #[derive(Deserialize)]
 struct Data {
-    user: User,
+    viewer: User,
 }
 #[derive(Deserialize)]
 struct User {
@@ -39,7 +39,7 @@ pub async fn check() -> surf::Result<()> {
     let q = json!({ "query": include_str!("../query/prs.graphql") });
     let res = crate::graphql::query::<Res>(&q).await?;
     let mut count = 0usize;
-    for repo in res.data.user.repositories.nodes {
+    for repo in res.data.viewer.repositories.nodes {
         if repo.pullRequests.nodes.is_empty() {
             continue;
         }

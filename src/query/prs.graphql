@@ -1,5 +1,5 @@
-query {
-  viewer {
+query ($login: String!) {
+  repositoryOwner(login: $login) {
     repositories(first: 100, affiliations: OWNER) {
       nodes {
         name

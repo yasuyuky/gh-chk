@@ -36,7 +36,8 @@ struct PullRequest {
     pub url: String,
 }
 
-pub async fn check(owner: &str) -> surf::Result<()> {
+pub async fn check(owner: Option<String>) -> surf::Result<()> {
+    let owner = owner.unwrap_or(crate::cmd::viewer::get().await?);
     let v = json!({ "login": owner });
     let q = json!({ "query": include_str!("../query/prs.graphql"), "variables": v });
     let res = crate::graphql::query::<Res>(&q).await?;

@@ -6,12 +6,13 @@ use serde_json::json;
 struct Res {
     data: Data,
 }
+#[allow(non_snake_case)]
 #[derive(Deserialize)]
 struct Data {
-    viewer: User,
+    repositoryOwner: RepositoryOwner,
 }
 #[derive(Deserialize)]
-struct User {
+struct RepositoryOwner {
     repositories: RepositoryConnection,
 }
 #[derive(Deserialize)]
@@ -35,11 +36,12 @@ struct PullRequest {
     pub url: String,
 }
 
-pub async fn check() -> surf::Result<()> {
-    let q = json!({ "query": include_str!("../query/prs.graphql") });
+pub async fn check(owner: &str) -> surf::Result<()> {
+    let v = json!({ "login": owner });
+    let q = json!({ "query": include_str!("../query/prs.graphql"), "variables": v });
     let res = crate::graphql::query::<Res>(&q).await?;
     let mut count = 0usize;
-    for repo in res.data.viewer.repositories.nodes {
+    for repo in res.data.repositoryOwner.repositories.nodes {
         if repo.pullRequests.nodes.is_empty() {
             continue;
         }

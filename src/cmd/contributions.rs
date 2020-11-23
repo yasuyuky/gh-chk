@@ -40,7 +40,8 @@ struct ContributionDay {
     contribution_count: usize,
 }
 
-pub async fn check(user: &str) -> surf::Result<()> {
+pub async fn check(user: Option<String>) -> surf::Result<()> {
+    let user = user.unwrap_or(crate::cmd::viewer::get().await?);
     let v = json!({ "login": user });
     let q = json!({ "query": include_str!("../query/contributions.graphql"), "variables": v });
     let res = crate::graphql::query::<Res>(&q).await?;

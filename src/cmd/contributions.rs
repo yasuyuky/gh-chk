@@ -60,10 +60,11 @@ pub async fn check(user: Option<String>) -> surf::Result<()> {
     for week in calendar.weeks {
         print!("{}: ", week.first_day);
         for d in week.contribution_days {
-            let ck = d.color.get(31..33).unwrap_or_default();
-            let c = colormap.get(ck).unwrap_or(&("black", 0xE6, 0xE8, 0xED));
+            let r = u8::from_str_radix(d.color.get(1..3).unwrap_or_default(), 16)?;
+            let g = u8::from_str_radix(d.color.get(3..5).unwrap_or_default(), 16)?;
+            let b = u8::from_str_radix(d.color.get(5..7).unwrap_or_default(), 16)?;
             let s = format!("{:3}", d.contribution_count);
-            print!("{} ", s.as_str().color(c.0).on_truecolor(c.1, c.2, c.3))
+            print!("{} ", s.as_str().color("black").on_truecolor(r, g, b))
         }
         println!("");
     }

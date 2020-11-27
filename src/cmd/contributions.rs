@@ -1,7 +1,6 @@
 use colored::Colorize;
 use serde::Deserialize;
 use serde_json::json;
-use std::collections::HashMap;
 
 #[derive(Deserialize)]
 struct Res {
@@ -46,16 +45,6 @@ pub async fn check(user: Option<String>) -> surf::Result<()> {
     let q = json!({ "query": include_str!("../query/contributions.graphql"), "variables": v });
     let res = crate::graphql::query::<Res>(&q).await?;
     let calendar = res.data.user.contributions_collection.contribution_calendar;
-
-    let colormap: HashMap<&str, (&str, u8, u8, u8)> = [
-        ("L1", ("black", 0x8C, 0xE7, 0x98)),
-        ("L2", ("black", 0x38, 0xBC, 0x51)),
-        ("L3", ("white", 0x29, 0x94, 0x3D)),
-        ("L4", ("white", 0x1B, 0x5D, 0x2B)),
-    ]
-    .iter()
-    .cloned()
-    .collect();
 
     for week in calendar.weeks {
         print!("{}: ", week.first_day);

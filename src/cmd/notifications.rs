@@ -20,7 +20,7 @@ struct Subject {
 }
 
 pub async fn check() -> surf::Result<()> {
-    let res = crate::rest::get::<Notification>("notifications").await?;
+    let res = crate::rest::get::<Notification>("notifications", |i| i < 1).await?;
     for n in &res {
         println!(
             "{} {} {} {} {}",

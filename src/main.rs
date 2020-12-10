@@ -17,7 +17,7 @@ enum Command {
     /// Contriburions
     Contributions { user: Option<String> },
     /// Notifications
-    Notifications,
+    Notifications { page: usize },
 }
 
 #[async_std::main]
@@ -26,7 +26,7 @@ async fn main() -> surf::Result<()> {
     match opt.command {
         Command::Prs { owner } => cmd::prs::check(owner).await?,
         Command::Contributions { user } => cmd::contributions::check(user).await?,
-        Command::Notifications => cmd::notifications::check().await?,
+        Command::Notifications { page } => cmd::notifications::check(page).await?,
     };
     Ok(())
 }

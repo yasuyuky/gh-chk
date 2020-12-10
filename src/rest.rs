@@ -15,10 +15,7 @@ fn parse_next(res: &surf::Response) -> Option<String> {
     return None;
 }
 
-pub async fn get<T: DeserializeOwned>(
-    path: &str,
-    cond: fn(i: usize) -> bool,
-) -> surf::Result<Vec<T>> {
+pub async fn get<T: DeserializeOwned>(path: &str, page: usize) -> surf::Result<Vec<T>> {
     let uri = BASE_URI.to_owned() + path;
     let token = std::env::var("GITHUB_TOKEN")?;
     let mut res = surf::get(&uri)
@@ -26,7 +23,7 @@ pub async fn get<T: DeserializeOwned>(
         .await?;
     let mut result: Vec<T> = Vec::new();
     let mut i = 0usize;
-    if !cond(i) {
+    if i >= page {
         return Ok(result);
     }
     result.append(&mut res.body_json::<Vec<T>>().await?);
@@ -35,7 +32,7 @@ pub async fn get<T: DeserializeOwned>(
             .header("Authorization", format!("token {}", token))
             .await?;
         i += 1;
-        if !cond(i) {
+        if i >= page {
             break;
         };
         result.append(&mut res.body_json::<Vec<T>>().await?);

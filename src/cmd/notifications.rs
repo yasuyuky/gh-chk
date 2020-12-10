@@ -19,8 +19,8 @@ struct Subject {
     title: String,
 }
 
-pub async fn check() -> surf::Result<()> {
-    let res = crate::rest::get::<Notification>("notifications", 1).await?;
+pub async fn check(page: usize) -> surf::Result<()> {
+    let res = crate::rest::get::<Notification>("notifications", page).await?;
     for n in &res {
         println!(
             "{} {} {} {} {}",

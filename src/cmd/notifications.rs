@@ -31,6 +31,6 @@ pub async fn check() -> surf::Result<()> {
             n.subject.title
         )
     }
-    println!("# total count: {}", res.len());
+    println!("# count: {}", res.len());
     Ok(())
 }

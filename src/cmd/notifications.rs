@@ -23,11 +23,11 @@ pub async fn check(page: usize) -> surf::Result<()> {
     let res = crate::rest::get::<Notification>("notifications", page).await?;
     for n in &res {
         println!(
-            "{} {} {} {} {}",
-            n.id,
+            "{:10} {:10} {:11} {} {}",
+            n.id.black(),
             n.reason.magenta(),
-            n.repository.full_name,
-            n.subject.ntype.cyan(),
+            n.subject.ntype.yellow(),
+            n.repository.full_name.cyan(),
             n.subject.title
         )
     }

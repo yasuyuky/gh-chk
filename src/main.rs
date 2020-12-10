@@ -26,7 +26,7 @@ async fn main() -> surf::Result<()> {
     match opt.command {
         Command::Prs { owner } => cmd::prs::check(owner).await?,
         Command::Contributions { user } => cmd::contributions::check(user).await?,
-        Command::Notifications { page } => cmd::notifications::check(page).await?,
+        Command::Notifications { page } => cmd::notifications::list(page).await?,
     };
     Ok(())
 }

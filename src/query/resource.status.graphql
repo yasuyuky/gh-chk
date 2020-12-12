@@ -1,0 +1,10 @@
+query($url: URI!) {
+  resource(url: $url) {
+    ... on Issue {
+      issue_state: state
+    }
+    ... on PullRequest {
+      pr_state: state
+    }
+  }
+}

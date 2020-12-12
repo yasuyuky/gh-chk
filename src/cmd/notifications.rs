@@ -17,6 +17,7 @@ struct Subject {
     #[serde(rename = "type")]
     ntype: String,
     title: String,
+    url: String,
 }
 
 pub async fn list(page: usize) -> surf::Result<()> {

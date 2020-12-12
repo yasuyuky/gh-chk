@@ -30,7 +30,7 @@ pub async fn list(page: usize) -> surf::Result<()> {
             n.subject.ntype.yellow(),
             n.repository.full_name.cyan(),
             n.subject.title,
-            n.subject.url,
+            n.subject.url.green(),
         )
     }
     println!("# count: {}", res.len());

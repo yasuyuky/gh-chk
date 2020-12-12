@@ -36,3 +36,21 @@ pub async fn list(page: usize) -> surf::Result<()> {
     println!("# count: {}", res.len());
     Ok(())
 }
+
+#[derive(Deserialize)]
+struct Res {
+    data: Data,
+}
+
+#[derive(Deserialize)]
+struct Data {
+    resource: Resource,
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum Resource {
+    IssueStatus { issue_state: String },
+    PullRequestStatus { pr_state: String },
+}
+

@@ -24,12 +24,13 @@ pub async fn list(page: usize) -> surf::Result<()> {
     let res = crate::rest::get::<Notification>("notifications", page).await?;
     for n in &res {
         println!(
-            "{:10} {:10} {:11} {} {}",
+            "{:10} {:10} {:11} {} {} {}",
             n.id.black(),
             n.reason.magenta(),
             n.subject.ntype.yellow(),
             n.repository.full_name.cyan(),
-            n.subject.title
+            n.subject.title,
+            n.subject.url,
         )
     }
     println!("# count: {}", res.len());

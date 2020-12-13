@@ -1,7 +1,8 @@
-use serde::de::DeserializeOwned;
+use serde::{de::DeserializeOwned, Serialize};
 
 const BASE_URI: &str = "https://api.github.com/";
 
+#[allow(dead_code)]
 fn parse_next(res: &surf::Response) -> Option<String> {
     let link = match res.header("Link") {
         Some(vs) => vs,
@@ -17,25 +18,24 @@ fn parse_next(res: &surf::Response) -> Option<String> {
 
 pub async fn get<T: DeserializeOwned>(path: &str, page: usize) -> surf::Result<Vec<T>> {
     let uri = BASE_URI.to_owned() + path;
+    let mut res = get_page(&uri, page).await?;
+    Ok(res.body_json().await?)
+}
+
+#[derive(Serialize)]
+struct Query {
+    page: usize,
+    per_page: u8,
+}
+
+pub async fn get_page(url: &str, page: usize) -> surf::Result<surf::Response> {
     let token = std::env::var("GITHUB_TOKEN")?;
-    let mut res = surf::get(&uri)
+    let q = Query {
+        page,
+        per_page: 100,
+    };
+    surf::get(&url)
         .header("Authorization", format!("token {}", token))
-        .await?;
-    let mut result: Vec<T> = Vec::new();
-    let mut i = 0usize;
-    if i >= page {
-        return Ok(result);
-    }
-    result.append(&mut res.body_json::<Vec<T>>().await?);
-    while let Some(link) = parse_next(&res) {
-        res = surf::get(&link)
-            .header("Authorization", format!("token {}", token))
-            .await?;
-        i += 1;
-        if i >= page {
-            break;
-        };
-        result.append(&mut res.body_json::<Vec<T>>().await?);
-    }
-    Ok(result)
+        .query(&q)?
+        .await
 }

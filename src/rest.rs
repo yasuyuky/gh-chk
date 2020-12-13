@@ -1,4 +1,5 @@
-use serde::{de::DeserializeOwned, Serialize};
+use serde::de::DeserializeOwned;
+use surf::http::convert::Serialize;
 
 const BASE_URI: &str = "https://api.github.com/";
 

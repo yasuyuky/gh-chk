@@ -596,7 +596,16 @@ dependencies = [
 ]
 
 [[package]]
-name = "gh-checker"
+name = "ghash"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d6e27f0689a6e15944bdce7e45425efb87eaa8ab0c6e87f11d0987a9133e2531"
+dependencies = [
+ "polyval",
+]
+
+[[package]]
+name = "ghchk"
 version = "0.1.0"
 dependencies = [
  "async-std",
@@ -605,15 +614,6 @@ dependencies = [
  "serde_json",
  "structopt",
  "surf",
-]
-
-[[package]]
-name = "ghash"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d6e27f0689a6e15944bdce7e45425efb87eaa8ab0c6e87f11d0987a9133e2531"
-dependencies = [
- "polyval",
 ]
 
 [[package]]

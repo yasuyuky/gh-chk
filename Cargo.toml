@@ -15,4 +15,4 @@ colored = "2.0.0"
 
 [dependencies.async-std]
 features = ["attributes"]
-version = "1.6.5"
+version = "1.8.0"

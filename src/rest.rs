@@ -1,3 +1,4 @@
+use crate::TOKEN;
 use serde::de::DeserializeOwned;
 use surf::http::convert::Serialize;
 
@@ -30,13 +31,12 @@ struct Query {
 }
 
 pub async fn get_page(url: &str, page: usize) -> surf::Result<surf::Response> {
-    let token = std::env::var("GITHUB_TOKEN")?;
     let q = Query {
         page,
         per_page: 100,
     };
     surf::get(&url)
-        .header("Authorization", format!("token {}", token))
+        .header("Authorization", format!("token {}", TOKEN.to_owned()))
         .query(&q)?
         .await
 }

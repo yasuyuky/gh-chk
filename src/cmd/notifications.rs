@@ -18,13 +18,16 @@ struct Subject {
     #[serde(rename = "type")]
     ntype: String,
     title: String,
-    url: String,
+    url: Option<String>,
 }
 
 pub async fn list(page: usize) -> surf::Result<()> {
     let res = crate::rest::get::<Notification>("notifications", page).await?;
     for n in &res {
-        let status = get_status(&n.subject.url).await.unwrap_or_default();
+        let status = match &n.subject.url {
+            Some(url) => get_status(url).await.unwrap_or_default(),
+            None => String::default(),
+        };
         println!(
             "{:10} {:10} {:11} {:6} {} {} {}",
             n.id.black(),
@@ -33,7 +36,7 @@ pub async fn list(page: usize) -> surf::Result<()> {
             status,
             n.repository.full_name.cyan(),
             n.subject.title,
-            n.subject.url.green(),
+            n.subject.url.clone().unwrap_or_default().green(),
         )
     }
     println!("# count: {}", res.len());

@@ -1,3 +1,4 @@
+use chrono::{DateTime, FixedOffset};
 use colored::Colorize;
 use serde::Deserialize;
 use serde_json::json;
@@ -8,6 +9,7 @@ struct Notification {
     repository: Repository,
     subject: Subject,
     reason: String,
+    updated_at: DateTime<FixedOffset>,
 }
 #[derive(Deserialize)]
 struct Repository {
@@ -29,11 +31,12 @@ pub async fn list(page: usize) -> surf::Result<()> {
             None => String::default(),
         };
         println!(
-            "{:10} {:10} {:11} {:6} {} {} {}",
+            "{:10} {:10} {:11} {:6} {} {} {} {}",
             n.id.black(),
             n.reason.magenta(),
             n.subject.ntype.yellow(),
             status,
+            n.updated_at.naive_local().date(),
             n.repository.full_name.cyan(),
             n.subject.title,
             n.subject.url.clone().unwrap_or_default().green(),

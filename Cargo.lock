@@ -638,6 +638,7 @@ dependencies = [
  "chrono",
  "colored",
  "once_cell",
+ "read_input",
  "serde",
  "serde_json",
  "structopt",
@@ -1167,6 +1168,12 @@ checksum = "ca3129af7b92a17112d59ad498c6f81eaf463253766b90396d39ea7a39d6613c"
 dependencies = [
  "rand_core",
 ]
+
+[[package]]
+name = "read_input"
+version = "0.8.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b57518cc6538a2eb7dce826e24fa51d0b7cf8e744ee10c7f56259cdec40050e5"
 
 [[package]]
 name = "redox_syscall"

@@ -1,5 +1,6 @@
 use once_cell::sync::Lazy;
-use serde::Deserialize;
+use read_input::prelude::*;
+use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -23,9 +24,11 @@ enum Command {
     Contributions { user: Option<String> },
     /// Notifications
     Notifications { page: usize },
+    /// Login
+    Login,
 }
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Config {
     token: Option<String>,
 }
@@ -61,6 +64,20 @@ pub static TOKEN: Lazy<String> = Lazy::new(|| match std::env::var("GITHUB_TOKEN"
     Err(_) => CONFIG.token.clone().unwrap_or_default(),
 });
 
+fn login() -> Result<(), std::io::Error> {
+    let token: String = input()
+        .msg("Input your GitHub Personal Access Token: ")
+        .get();
+    let conf = Config { token: Some(token) };
+    let s = toml::to_string(&conf).unwrap();
+    let path = CONFIG_PATH.clone();
+    let dir = path.parent().unwrap();
+    if !dir.exists() {
+        std::fs::create_dir_all(dir)?;
+    }
+    std::fs::write(&path, s)
+}
+
 #[async_std::main]
 async fn main() -> surf::Result<()> {
     let opt = Opt::from_args();
@@ -68,6 +85,7 @@ async fn main() -> surf::Result<()> {
         Command::Prs { owner } => cmd::prs::check(owner).await?,
         Command::Contributions { user } => cmd::contributions::check(user).await?,
         Command::Notifications { page } => cmd::notifications::list(page).await?,
+        Command::Login => login()?,
     };
     Ok(())
 }

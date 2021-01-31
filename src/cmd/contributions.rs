@@ -55,7 +55,7 @@ pub async fn check(user: Option<String>) -> surf::Result<()> {
             let s = format!("{:3}", d.contribution_count);
             print!("{} ", s.as_str().color("black").on_truecolor(r, g, b))
         }
-        println!("");
+        println!();
     }
     println!("total contributions: {}", calendar.total_contributions);
     Ok(())

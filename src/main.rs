@@ -5,7 +5,6 @@ mod cmd;
 mod config;
 mod graphql;
 mod rest;
-// use config::{Config, CONFIG_PATH};
 
 #[derive(StructOpt)]
 struct Opt {

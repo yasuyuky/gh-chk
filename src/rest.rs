@@ -1,4 +1,4 @@
-use crate::TOKEN;
+use crate::config::TOKEN;
 use serde::de::DeserializeOwned;
 use surf::http::convert::Serialize;
 

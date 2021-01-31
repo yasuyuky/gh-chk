@@ -10,12 +10,12 @@ fn parse_next(res: &surf::Response) -> Option<String> {
         Some(vs) => vs,
         None => return None,
     };
-    for l in link.as_str().split(",") {
+    for l in link.as_str().split(',') {
         if l.contains("next") {
             return Some(l[(l.find('<').unwrap() + 1)..l.find('>').unwrap()].to_owned());
         }
     }
-    return None;
+    None
 }
 
 pub async fn get<T: DeserializeOwned>(path: &str, page: usize) -> surf::Result<Vec<T>> {

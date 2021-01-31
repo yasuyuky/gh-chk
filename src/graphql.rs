@@ -1,4 +1,4 @@
-use crate::TOKEN;
+use crate::config::TOKEN;
 use serde::de::DeserializeOwned;
 
 const URI: &str = "https://api.github.com/graphql";

@@ -64,10 +64,6 @@ pub async fn check(slug: Option<String>) -> surf::Result<()> {
 async fn check_owner(owner: &str) -> surf::Result<()> {
     let v = json!({ "login": owner });
     let q = json!({ "query": include_str!("../query/prs.graphql"), "variables": v });
-    query_prs(&q).await
-}
-
-async fn query_prs(q: &serde_json::Value) -> surf::Result<()> {
     let res = crate::graphql::query::<Res>(&q).await?;
     let mut count = 0usize;
     for repo in res.data.repositoryOwner.repositories.nodes {

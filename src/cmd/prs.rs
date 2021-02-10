@@ -9,16 +9,31 @@ struct Res {
 #[allow(non_snake_case)]
 #[derive(Deserialize)]
 struct Data {
-    repositoryOwner: RepositoryOwner,
+    repositoryOwner: RepositoriesOwner,
 }
 #[derive(Deserialize)]
-struct RepositoryOwner {
+struct RepositoriesOwner {
     repositories: RepositoryConnection,
 }
 #[derive(Deserialize)]
 struct RepositoryConnection {
     nodes: Vec<Repository>,
 }
+
+#[derive(Deserialize)]
+struct SingleRepoRes {
+    data: SingleRepoData,
+}
+#[allow(non_snake_case)]
+#[derive(Deserialize)]
+struct SingleRepoData {
+    repositoryOwner: RepositoryOwner,
+}
+#[derive(Deserialize)]
+struct RepositoryOwner {
+    repository: Repository,
+}
+
 #[allow(non_snake_case)]
 #[derive(Deserialize)]
 struct Repository {
@@ -41,6 +56,7 @@ pub async fn check(slug: Option<String>) -> surf::Result<()> {
     let vs: Vec<String> = slug.split('/').map(String::from).collect();
     match vs.len() {
         1 => check_owner(&vs[0]).await,
+        2 => check_repo(&vs[0], &vs[1]).await,
         _ => panic!("unknown slug format"),
     }
 }
@@ -63,6 +79,19 @@ async fn query_prs(q: &serde_json::Value) -> surf::Result<()> {
             count += 1;
             println!("  #{} {} {} ", pr.number, pr.url, pr.title)
         }
+    }
+    println!("Count of PRs: {}", count);
+    Ok(())
+}
+
+async fn check_repo(owner: &str, name: &str) -> surf::Result<()> {
+    let v = json!({ "login": owner, "name": name });
+    let q = json!({ "query": include_str!("../query/prs.repo.graphql"), "variables": v });
+    let res = crate::graphql::query::<SingleRepoRes>(&q).await?;
+    let mut count = 0usize;
+    for pr in res.data.repositoryOwner.repository.pullRequests.nodes {
+        count += 1;
+        println!("  #{} {} {} ", pr.number, pr.url, pr.title)
     }
     println!("Count of PRs: {}", count);
     Ok(())

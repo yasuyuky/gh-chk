@@ -36,10 +36,22 @@ struct PullRequest {
     pub url: String,
 }
 
-pub async fn check(owner: Option<String>) -> surf::Result<()> {
-    let owner = owner.unwrap_or(crate::cmd::viewer::get().await?);
+pub async fn check(slug: Option<String>) -> surf::Result<()> {
+    let slug = slug.unwrap_or(crate::cmd::viewer::get().await?);
+    let vs: Vec<String> = slug.split('/').map(String::from).collect();
+    match vs.len() {
+        1 => check_owner(&vs[0]).await,
+        _ => panic!("unknown slug format"),
+    }
+}
+
+async fn check_owner(owner: &str) -> surf::Result<()> {
     let v = json!({ "login": owner });
     let q = json!({ "query": include_str!("../query/prs.graphql"), "variables": v });
+    query_prs(&q).await
+}
+
+async fn query_prs(q: &serde_json::Value) -> surf::Result<()> {
     let res = crate::graphql::query::<Res>(&q).await?;
     let mut count = 0usize;
     for repo in res.data.repositoryOwner.repositories.nodes {

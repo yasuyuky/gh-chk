@@ -16,6 +16,8 @@ struct Opt {
 enum Command {
     /// PRs
     Prs { slug: Option<String> },
+    /// Issues
+    Issues { slug: Option<String> },
     /// Contriburions
     Contributions { user: Option<String> },
     /// Notifications
@@ -43,6 +45,7 @@ async fn main() -> surf::Result<()> {
     let opt = Opt::from_args();
     match opt.command {
         Command::Prs { slug } => cmd::prs::check(slug).await?,
+        Command::Issues { slug } => cmd::issues::check(slug).await?,
         Command::Contributions { user } => cmd::contributions::check(user).await?,
         Command::Notifications { page } => cmd::notifications::list(page).await?,
         Command::Login => login()?,

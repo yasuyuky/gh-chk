@@ -1,0 +1,16 @@
+query($login: String!) {
+  repositoryOwner(login: $login) {
+    repositories(first: 100, affiliations: OWNER) {
+      nodes {
+        name
+        issues(first: 100, states: OPEN) {
+          nodes {
+            number
+            title
+            url
+          }
+        }
+      }
+    }
+  }
+}

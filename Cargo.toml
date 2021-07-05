@@ -9,7 +9,7 @@ version = "0.1.0"
 [dependencies]
 serde = "1.0.126"
 serde_json = "1.0.64"
-structopt = "0.3.21"
+structopt = "0.3.22"
 surf = "2.2.0"
 colored = "2.0.0"
 toml = "0.5.8"

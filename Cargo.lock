@@ -1194,9 +1194,9 @@ dependencies = [
 
 [[package]]
 name = "read_input"
-version = "0.8.4"
+version = "0.8.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b57518cc6538a2eb7dce826e24fa51d0b7cf8e744ee10c7f56259cdec40050e5"
+checksum = "2f178674da3d005db760b30d6735a989d692da37b86337daec6f2e311223d608"
 
 [[package]]
 name = "redox_syscall"

@@ -15,7 +15,7 @@ colored = "2.0.0"
 toml = "0.5.8"
 once_cell = "1.8.0"
 chrono = {version="0.4.19", features=["serde"]}
-read_input = "0.8.4"
+read_input = "0.8.6"
 
 [dependencies.async-std]
 features = ["attributes"]

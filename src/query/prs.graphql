@@ -8,6 +8,7 @@ query ($login: String!) {
             number
             title
             url
+            mergeStateStatus
           }
         }
       }

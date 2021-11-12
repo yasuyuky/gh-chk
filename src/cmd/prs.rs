@@ -45,10 +45,12 @@ struct PullRequestsConnection {
     nodes: Vec<PullRequest>,
 }
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct PullRequest {
     pub number: usize,
     pub title: String,
     pub url: String,
+    pub merge_state_status: MergeStateStatus,
 }
 
 #[derive(Deserialize, Debug)]

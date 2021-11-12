@@ -66,6 +66,22 @@ enum MergeStateStatus {
     Unstable,
 }
 
+impl MergeStateStatus {
+    fn to_emoji(&self) -> String {
+        match self {
+            MergeStateStatus::Behind => "⏩",
+            MergeStateStatus::Blocked => "🚫",
+            MergeStateStatus::Clean => "✅",
+            MergeStateStatus::Dirty => "⚠️ ",
+            MergeStateStatus::Draft => "✏️ ",
+            MergeStateStatus::HasHooks => "🪝",
+            MergeStateStatus::Unknown => "❓",
+            MergeStateStatus::Unstable => "❌",
+        }
+        .to_owned()
+    }
+}
+
 pub async fn check(slug: Option<String>) -> surf::Result<()> {
     let slug = slug.unwrap_or(crate::cmd::viewer::get().await?);
     let vs: Vec<String> = slug.split('/').map(String::from).collect();
@@ -88,7 +104,10 @@ async fn check_owner(owner: &str) -> surf::Result<()> {
         println!("{}", repo.name.cyan());
         for pr in repo.pullRequests.nodes {
             count += 1;
-            println!("  #{} {} {} ", pr.number, pr.url, pr.title)
+            println!(
+                "  #{} {:?} {} {}",
+                pr.number, pr.merge_state_status, pr.url, pr.title
+            )
         }
     }
     println!("Count of PRs: {}", count);

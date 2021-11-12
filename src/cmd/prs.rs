@@ -51,6 +51,19 @@ struct PullRequest {
     pub url: String,
 }
 
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+enum MergeStateStatus {
+    Behind,
+    Blocked,
+    Clean,
+    Dirty,
+    Draft,
+    HasHooks,
+    Unknown,
+    Unstable,
+}
+
 pub async fn check(slug: Option<String>) -> surf::Result<()> {
     let slug = slug.unwrap_or(crate::cmd::viewer::get().await?);
     let vs: Vec<String> = slug.split('/').map(String::from).collect();

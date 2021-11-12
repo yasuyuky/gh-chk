@@ -105,8 +105,11 @@ async fn check_owner(owner: &str) -> surf::Result<()> {
         for pr in repo.pullRequests.nodes {
             count += 1;
             println!(
-                "  #{} {:?} {} {}",
-                pr.number, pr.merge_state_status, pr.url, pr.title
+                "  {:2} #{} {} {}",
+                pr.merge_state_status.to_emoji(),
+                pr.number,
+                pr.url,
+                pr.title
             )
         }
     }
@@ -121,7 +124,13 @@ async fn check_repo(owner: &str, name: &str) -> surf::Result<()> {
     let mut count = 0usize;
     for pr in res.data.repositoryOwner.repository.pullRequests.nodes {
         count += 1;
-        println!("  #{} {} {} ", pr.number, pr.url, pr.title)
+        println!(
+            "  {:2} #{} {} {}",
+            pr.merge_state_status.to_emoji(),
+            pr.number,
+            pr.url,
+            pr.title
+        )
     }
     println!("Count of PRs: {}", count);
     Ok(())

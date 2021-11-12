@@ -45,10 +45,41 @@ struct PullRequestsConnection {
     nodes: Vec<PullRequest>,
 }
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct PullRequest {
     pub number: usize,
     pub title: String,
     pub url: String,
+    pub merge_state_status: MergeStateStatus,
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+enum MergeStateStatus {
+    Behind,
+    Blocked,
+    Clean,
+    Dirty,
+    Draft,
+    HasHooks,
+    Unknown,
+    Unstable,
+}
+
+impl MergeStateStatus {
+    fn to_emoji(&self) -> String {
+        match self {
+            MergeStateStatus::Behind => "⏩",
+            MergeStateStatus::Blocked => "🚫",
+            MergeStateStatus::Clean => "✅",
+            MergeStateStatus::Dirty => "⚠️ ",
+            MergeStateStatus::Draft => "✏️ ",
+            MergeStateStatus::HasHooks => "🪝",
+            MergeStateStatus::Unknown => "❓",
+            MergeStateStatus::Unstable => "❌",
+        }
+        .to_owned()
+    }
 }
 
 pub async fn check(slug: Option<String>) -> surf::Result<()> {
@@ -73,7 +104,13 @@ async fn check_owner(owner: &str) -> surf::Result<()> {
         println!("{}", repo.name.cyan());
         for pr in repo.pullRequests.nodes {
             count += 1;
-            println!("  #{} {} {} ", pr.number, pr.url, pr.title)
+            println!(
+                "  {:2} #{} {} {}",
+                pr.merge_state_status.to_emoji(),
+                pr.number,
+                pr.url,
+                pr.title
+            )
         }
     }
     println!("Count of PRs: {}", count);
@@ -87,7 +124,13 @@ async fn check_repo(owner: &str, name: &str) -> surf::Result<()> {
     let mut count = 0usize;
     for pr in res.data.repositoryOwner.repository.pullRequests.nodes {
         count += 1;
-        println!("  #{} {} {} ", pr.number, pr.url, pr.title)
+        println!(
+            "  {:2} #{} {} {}",
+            pr.merge_state_status.to_emoji(),
+            pr.number,
+            pr.url,
+            pr.title
+        )
     }
     println!("Count of PRs: {}", count);
     Ok(())

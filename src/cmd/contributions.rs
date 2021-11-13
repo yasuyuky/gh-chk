@@ -10,30 +10,30 @@ struct Res {
 struct Data {
     user: User,
 }
-#[serde(rename_all = "camelCase")]
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct User {
     contributions_collection: ContributionCollection,
 }
-#[serde(rename_all = "camelCase")]
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct ContributionCollection {
     contribution_calendar: ContributionCalendar,
 }
-#[serde(rename_all = "camelCase")]
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct ContributionCalendar {
     total_contributions: usize,
     weeks: Vec<Week>,
 }
-#[serde(rename_all = "camelCase")]
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct Week {
     first_day: String,
     contribution_days: Vec<ContributionDay>,
 }
-#[serde(rename_all = "camelCase")]
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct ContributionDay {
     color: String,
     contribution_count: usize,

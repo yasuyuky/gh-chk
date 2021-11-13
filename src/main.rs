@@ -24,6 +24,8 @@ enum Command {
     Notifications { page: usize },
     /// Login
     Login,
+    /// Logout
+    Logout,
 }
 
 fn login() -> Result<(), std::io::Error> {

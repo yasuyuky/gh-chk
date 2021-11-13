@@ -24,6 +24,8 @@ enum Command {
     Notifications { page: usize },
     /// Login
     Login,
+    /// Logout
+    Logout,
 }
 
 fn login() -> Result<(), std::io::Error> {
@@ -40,6 +42,15 @@ fn login() -> Result<(), std::io::Error> {
     std::fs::write(&path, s)
 }
 
+fn logout() -> Result<(), std::io::Error> {
+    let path = config::CONFIG_PATH.clone();
+    if path.exists() {
+        std::fs::remove_file(&path)
+    } else {
+        Ok(())
+    }
+}
+
 #[async_std::main]
 async fn main() -> surf::Result<()> {
     let opt = Opt::from_args();
@@ -49,6 +60,7 @@ async fn main() -> surf::Result<()> {
         Command::Contributions { user } => cmd::contributions::check(user).await?,
         Command::Notifications { page } => cmd::notifications::list(page).await?,
         Command::Login => login()?,
+        Command::Logout => logout()?,
     };
     Ok(())
 }

@@ -44,7 +44,11 @@ fn login() -> Result<(), std::io::Error> {
 
 fn logout() -> Result<(), std::io::Error> {
     let path = config::CONFIG_PATH.clone();
-    std::fs::remove_file(&path)
+    if path.exists() {
+        std::fs::remove_file(&path)
+    } else {
+        Ok(())
+    }
 }
 
 #[async_std::main]

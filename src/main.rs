@@ -40,6 +40,11 @@ fn login() -> Result<(), std::io::Error> {
     std::fs::write(&path, s)
 }
 
+fn logout() -> Result<(), std::io::Error> {
+    let path = config::CONFIG_PATH.clone();
+    std::fs::remove_file(&path)
+}
+
 #[async_std::main]
 async fn main() -> surf::Result<()> {
     let opt = Opt::from_args();

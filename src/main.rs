@@ -56,6 +56,7 @@ async fn main() -> surf::Result<()> {
         Command::Contributions { user } => cmd::contributions::check(user).await?,
         Command::Notifications { page } => cmd::notifications::list(page).await?,
         Command::Login => login()?,
+        Command::Logout => logout()?,
     };
     Ok(())
 }

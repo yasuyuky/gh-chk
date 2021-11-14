@@ -1,6 +1,7 @@
 use colored::Colorize;
 use serde::Deserialize;
 use serde_json::json;
+use std::fmt::Display;
 
 #[derive(Deserialize)]
 struct Res {

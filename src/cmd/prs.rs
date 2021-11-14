@@ -56,14 +56,14 @@ struct PullRequest {
 
 impl Display for PullRequest {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{} {} {} {}",
+        let s = format!(
+            "{:>6} {} {} {}",
+            format!("#{}", self.number).bold(),
             self.merge_state_status.to_emoji(),
-            self.number,
             self.url,
-            self.title
-        )
+            self.title.bold()
+        );
+        write!(f, "{}", self.merge_state_status.colorize(&s))
     }
 }
 

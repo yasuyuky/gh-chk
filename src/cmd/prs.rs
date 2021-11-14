@@ -53,6 +53,19 @@ struct PullRequest {
     pub merge_state_status: MergeStateStatus,
 }
 
+impl Display for PullRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{} {} {} {}",
+            self.merge_state_status.to_emoji(),
+            self.number,
+            self.url,
+            self.title
+        )
+    }
+}
+
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 enum MergeStateStatus {

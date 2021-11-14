@@ -1,6 +1,7 @@
 use colored::Colorize;
 use serde::Deserialize;
 use serde_json::json;
+use std::fmt::Display;
 
 #[derive(Deserialize)]
 struct Res {
@@ -53,6 +54,19 @@ struct PullRequest {
     pub merge_state_status: MergeStateStatus,
 }
 
+impl Display for PullRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = format!(
+            "{:>6} {} {} {}",
+            format!("#{}", self.number).bold(),
+            self.merge_state_status.to_emoji(),
+            self.url,
+            self.title.bold()
+        );
+        write!(f, "{}", self.merge_state_status.colorize(&s))
+    }
+}
+
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 enum MergeStateStatus {
@@ -80,6 +94,20 @@ impl MergeStateStatus {
         }
         .to_owned()
     }
+
+    fn colorize(&self, s: &str) -> String {
+        match self {
+            MergeStateStatus::Behind => s.yellow(),
+            MergeStateStatus::Blocked => s.red(),
+            MergeStateStatus::Clean => s.green(),
+            MergeStateStatus::Dirty => s.yellow(),
+            MergeStateStatus::Draft => s.white(),
+            MergeStateStatus::HasHooks => s.yellow(),
+            MergeStateStatus::Unknown => s.magenta(),
+            MergeStateStatus::Unstable => s.yellow(),
+        }
+        .to_string()
+    }
 }
 
 pub async fn check(slug: Option<String>) -> surf::Result<()> {
@@ -104,13 +132,7 @@ async fn check_owner(owner: &str) -> surf::Result<()> {
         println!("{}", repo.name.cyan());
         for pr in repo.pullRequests.nodes {
             count += 1;
-            println!(
-                "  {:2} #{} {} {}",
-                pr.merge_state_status.to_emoji(),
-                pr.number,
-                pr.url,
-                pr.title
-            )
+            println!("{}", pr);
         }
     }
     println!("Count of PRs: {}", count);
@@ -124,13 +146,7 @@ async fn check_repo(owner: &str, name: &str) -> surf::Result<()> {
     let mut count = 0usize;
     for pr in res.data.repositoryOwner.repository.pullRequests.nodes {
         count += 1;
-        println!(
-            "  {:2} #{} {} {}",
-            pr.merge_state_status.to_emoji(),
-            pr.number,
-            pr.url,
-            pr.title
-        )
+        println!("{}", pr);
     }
     println!("Count of PRs: {}", count);
     Ok(())

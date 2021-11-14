@@ -94,6 +94,20 @@ impl MergeStateStatus {
         }
         .to_owned()
     }
+
+    fn colorize(&self, s: &str) -> String {
+        match self {
+            MergeStateStatus::Behind => s.yellow(),
+            MergeStateStatus::Blocked => s.red(),
+            MergeStateStatus::Clean => s.green(),
+            MergeStateStatus::Dirty => s.yellow(),
+            MergeStateStatus::Draft => s.white(),
+            MergeStateStatus::HasHooks => s.yellow(),
+            MergeStateStatus::Unknown => s.magenta(),
+            MergeStateStatus::Unstable => s.yellow(),
+        }
+        .to_string()
+    }
 }
 
 pub async fn check(slug: Option<String>) -> surf::Result<()> {

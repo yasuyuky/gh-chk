@@ -61,7 +61,7 @@ enum Assignee {
 impl std::fmt::Display for Assignee {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Assignee::User { login, name } => write!(f, "{} ({})", name, login),
+            Assignee::User { login, name } => write!(f, "{} ({})", name.cyan(), login),
             Assignee::Unknown => write!(f, "unknown"),
         }
     }
@@ -84,7 +84,7 @@ async fn track_issue(owner: &str, name: &str, num: usize) -> surf::Result<()> {
         "{}/{}#{} {}",
         owner.cyan(),
         name.cyan(),
-        num,
+        res.data.repository.issue.number,
         res.data.repository.issue.title.yellow()
     );
     for item in res.data.repository.issue.timelineItems.nodes {

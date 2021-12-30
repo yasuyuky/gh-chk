@@ -50,6 +50,15 @@ enum Assignee {
     Unknown,
 }
 
+impl std::fmt::Display for Assignee {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Assignee::User { login, name } => write!(f, "{} ({})", name, login),
+            Assignee::Unknown => write!(f, "unknown"),
+        }
+    }
+}
+
 pub async fn track(slug: &str, num: usize) -> surf::Result<()> {
     let vs: Vec<String> = slug.split('/').map(String::from).collect();
     match vs.len() {

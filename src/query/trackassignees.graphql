@@ -1,0 +1,31 @@
+query ($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    issue(number: $number) {
+      number
+      title
+      timelineItems(first: 100, itemTypes: [ASSIGNED_EVENT, UNASSIGNED_EVENT]) {
+        nodes {
+          __typename
+          ... on AssignedEvent {
+            createdAt
+            assignee {
+              ... on User {
+                name
+                login
+              }
+            }
+          }
+          ... on UnassignedEvent {
+            createdAt
+            assignee {
+              ... on User {
+                name
+                login
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -43,6 +43,15 @@ enum TimelineItemType {
     UnassignedEvent,
 }
 
+impl std::fmt::Display for TimelineItemType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TimelineItemType::AssignedEvent => write!(f, "{}", "assigned".green()),
+            TimelineItemType::UnassignedEvent => write!(f, "{}", "unassigned".red()),
+        }
+    }
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
 enum Assignee {
@@ -87,8 +96,10 @@ async fn track_issue(owner: &str, name: &str, num: usize) -> surf::Result<()> {
         };
         maxcount = maxcount.max(count);
         println!(
-            "  {:?} {} {:?}",
-            item.__typename, item.createdAt, item.assignee
+            "  {} \t{}\t{}",
+            item.__typename,
+            item.createdAt.bright_black(),
+            item.assignee
         );
     }
     println!("Count of Max assignees: {}", maxcount);

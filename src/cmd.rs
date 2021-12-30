@@ -3,3 +3,4 @@ pub mod notifications;
 pub mod prs;
 pub mod viewer;
 pub mod issues;
+pub mod trackassignees;

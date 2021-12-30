@@ -22,6 +22,8 @@ enum Command {
     Contributions { user: Option<String> },
     /// Notifications
     Notifications { page: usize },
+    /// TrackAssignees
+    TrackAssignees { slug: String, num: usize },
     /// Login
     Login,
     /// Logout
@@ -59,6 +61,7 @@ async fn main() -> surf::Result<()> {
         Command::Issues { slug } => cmd::issues::check(slug).await?,
         Command::Contributions { user } => cmd::contributions::check(user).await?,
         Command::Notifications { page } => cmd::notifications::list(page).await?,
+        Command::TrackAssignees { slug, num } => cmd::trackassignees::track(&slug, num).await?,
         Command::Login => login()?,
         Command::Logout => logout()?,
     };

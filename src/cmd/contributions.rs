@@ -1,38 +1,38 @@
 use colored::Colorize;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 struct Res {
     data: Data,
 }
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 struct Data {
     user: User,
 }
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct User {
     contributions_collection: ContributionCollection,
 }
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ContributionCollection {
     contribution_calendar: ContributionCalendar,
 }
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ContributionCalendar {
     total_contributions: usize,
     weeks: Vec<Week>,
 }
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Week {
     first_day: String,
     contribution_days: Vec<ContributionDay>,
 }
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ContributionDay {
     color: String,

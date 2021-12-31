@@ -1,42 +1,42 @@
 use colored::Colorize;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 struct Res {
     data: Data,
 }
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 struct Data {
     repository: Repository,
 }
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 struct Repository {
     issue: Issue,
 }
 
 #[allow(non_snake_case)]
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 struct Issue {
     number: usize,
     title: String,
     timelineItems: TimelineItemsConnection,
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 struct TimelineItemsConnection {
     nodes: Vec<TimelineItem>,
 }
 
 #[allow(non_snake_case)]
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 struct TimelineItem {
     __typename: TimelineItemType,
     createdAt: String,
     assignee: Assignee,
 }
 
-#[derive(Deserialize, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, PartialEq, Eq)]
 enum TimelineItemType {
     AssignedEvent,
     UnassignedEvent,
@@ -51,7 +51,7 @@ impl std::fmt::Display for TimelineItemType {
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 #[serde(untagged)]
 enum Assignee {
     User { login: String, name: String },

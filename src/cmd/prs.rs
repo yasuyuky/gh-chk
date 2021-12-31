@@ -1,51 +1,51 @@
 use colored::Colorize;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::fmt::Display;
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 struct Res {
     data: Data,
 }
 #[allow(non_snake_case)]
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 struct Data {
     repositoryOwner: RepositoriesOwner,
 }
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 struct RepositoriesOwner {
     repositories: RepositoryConnection,
 }
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 struct RepositoryConnection {
     nodes: Vec<Repository>,
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 struct SingleRepoRes {
     data: SingleRepoData,
 }
 #[allow(non_snake_case)]
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 struct SingleRepoData {
     repositoryOwner: RepositoryOwner,
 }
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 struct RepositoryOwner {
     repository: Repository,
 }
 
 #[allow(non_snake_case)]
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 struct Repository {
     name: String,
     pullRequests: PullRequestsConnection,
 }
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 struct PullRequestsConnection {
     nodes: Vec<PullRequest>,
 }
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct PullRequest {
     pub number: usize,
@@ -67,7 +67,7 @@ impl Display for PullRequest {
     }
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 enum MergeStateStatus {
     Behind,

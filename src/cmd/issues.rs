@@ -1,36 +1,36 @@
 use colored::Colorize;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 struct Res {
     data: Data,
 }
 #[allow(non_snake_case)]
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 struct Data {
     repositoryOwner: RepositoriesOwner,
 }
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 struct RepositoriesOwner {
     repositories: RepositoryConnection,
 }
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 struct RepositoryConnection {
     nodes: Vec<Repository>,
 }
 
 #[allow(non_snake_case)]
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 struct Repository {
     name: String,
     issues: IssuesConnection,
 }
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 struct IssuesConnection {
     nodes: Vec<PullRequest>,
 }
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 struct PullRequest {
     pub number: usize,
     pub title: String,

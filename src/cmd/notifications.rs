@@ -1,9 +1,9 @@
 use chrono::{DateTime, FixedOffset};
 use colored::Colorize;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 struct Notification {
     id: String,
     repository: Repository,
@@ -11,11 +11,11 @@ struct Notification {
     reason: String,
     updated_at: DateTime<FixedOffset>,
 }
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 struct Repository {
     full_name: String,
 }
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 struct Subject {
     #[serde(rename = "type")]
     ntype: String,
@@ -46,17 +46,17 @@ pub async fn list(page: usize) -> surf::Result<()> {
     Ok(())
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 struct Res {
     data: Data,
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 struct Data {
     resource: Resource,
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 #[serde(untagged)]
 enum Resource {
     IssueStatus { issue_state: String },

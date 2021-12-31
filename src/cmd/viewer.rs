@@ -1,15 +1,15 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 struct Res {
     data: Data,
 }
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 struct Data {
     viewer: Viewer,
 }
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 struct Viewer {
     login: String,
 }

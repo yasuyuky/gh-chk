@@ -29,14 +29,14 @@ struct TimelineItemsConnection {
 }
 
 #[allow(non_snake_case)]
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 struct TimelineItem {
     __typename: TimelineItemType,
     createdAt: String,
     assignee: Assignee,
 }
 
-#[derive(Debug, Deserialize, PartialEq, Eq)]
+#[derive(Deserialize, PartialEq, Eq)]
 enum TimelineItemType {
     AssignedEvent,
     UnassignedEvent,
@@ -51,7 +51,7 @@ impl std::fmt::Display for TimelineItemType {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 #[serde(untagged)]
 enum Assignee {
     User { login: String, name: String },

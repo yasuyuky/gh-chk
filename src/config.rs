@@ -9,6 +9,11 @@ pub struct Config {
     pub token: Option<String>,
 }
 
+#[derive(Debug)]
+pub enum Format {
+    Text,
+    Json,
+}
 impl Config {
     pub fn new() -> Self {
         Self { token: None }

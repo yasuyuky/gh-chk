@@ -25,7 +25,15 @@ struct Subject {
 
 pub async fn list(page: usize) -> surf::Result<()> {
     let res = crate::rest::get::<Notification>("notifications", page).await?;
-    for n in &res {
+    match crate::config::FORMAT.get() {
+        Some(&crate::config::Format::Json) => println!("{}", serde_json::to_string_pretty(&res)?),
+        _ => print_text(&res).await,
+    }
+    Ok(())
+}
+
+async fn print_text(res: &[Notification]) {
+    for n in res {
         let status = match &n.subject.url {
             Some(url) => get_status(url).await.unwrap_or_default(),
             None => String::default(),
@@ -43,7 +51,6 @@ pub async fn list(page: usize) -> surf::Result<()> {
         )
     }
     println!("# count: {}", res.len());
-    Ok(())
 }
 
 #[derive(Serialize, Deserialize)]

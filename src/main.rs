@@ -11,7 +11,7 @@ mod rest;
 struct Opt {
     #[structopt(subcommand)]
     command: Command,
-    #[structopt(short = "f")]
+    #[structopt(short = "f", default_value = "text")]
     format: Format,
 }
 #[derive(Debug, StructOpt)]

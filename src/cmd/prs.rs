@@ -124,30 +124,44 @@ async fn check_owner(owner: &str) -> surf::Result<()> {
     let v = json!({ "login": owner });
     let q = json!({ "query": include_str!("../query/prs.graphql"), "variables": v });
     let res = crate::graphql::query::<Res>(&q).await?;
+    match crate::config::FORMAT.get() {
+        Some(&crate::config::Format::Json) => println!("{}", serde_json::to_string_pretty(&res)?),
+        _ => print_owner_text(&res),
+    }
+    Ok(())
+}
+
+fn print_owner_text(res: &Res) {
     let mut count = 0usize;
-    for repo in res.data.repositoryOwner.repositories.nodes {
+    for repo in &res.data.repositoryOwner.repositories.nodes {
         if repo.pullRequests.nodes.is_empty() {
             continue;
         }
         println!("{}", repo.name.cyan());
-        for pr in repo.pullRequests.nodes {
+        for pr in &repo.pullRequests.nodes {
             count += 1;
             println!("{}", pr);
         }
     }
     println!("Count of PRs: {}", count);
-    Ok(())
 }
 
 async fn check_repo(owner: &str, name: &str) -> surf::Result<()> {
     let v = json!({ "login": owner, "name": name });
     let q = json!({ "query": include_str!("../query/prs.repo.graphql"), "variables": v });
     let res = crate::graphql::query::<SingleRepoRes>(&q).await?;
+    match crate::config::FORMAT.get() {
+        Some(&crate::config::Format::Json) => println!("{}", serde_json::to_string_pretty(&res)?),
+        _ => print_repo_text(&res),
+    }
+    Ok(())
+}
+
+fn print_repo_text(res: &SingleRepoRes) {
     let mut count = 0usize;
-    for pr in res.data.repositoryOwner.repository.pullRequests.nodes {
+    for pr in &res.data.repositoryOwner.repository.pullRequests.nodes {
         count += 1;
         println!("{}", pr);
     }
     println!("Count of PRs: {}", count);
-    Ok(())
 }

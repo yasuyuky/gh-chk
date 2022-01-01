@@ -1,12 +1,21 @@
-use once_cell::sync::Lazy;
+use once_cell::sync::{Lazy, OnceCell};
 use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
+use structopt::clap::arg_enum;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Config {
     pub token: Option<String>,
+}
+
+arg_enum! {
+#[derive(Debug)]
+pub enum Format {
+    Text,
+    Json,
+}
 }
 
 impl Config {
@@ -45,3 +54,5 @@ pub static TOKEN: Lazy<String> = Lazy::new(|| match std::env::var("GITHUB_TOKEN"
     Ok(tok) => tok,
     Err(_) => CONFIG.token.clone().unwrap_or_default(),
 });
+
+pub static FORMAT: OnceCell<Format> = OnceCell::new();

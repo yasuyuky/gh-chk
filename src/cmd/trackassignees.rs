@@ -79,6 +79,14 @@ async fn track_issue(owner: &str, name: &str, num: usize) -> surf::Result<()> {
     let v = json!({ "owner": owner, "name": name, "number": num });
     let q = json!({ "query": include_str!("../query/trackassignees.graphql"), "variables": v });
     let res: Res = crate::graphql::query::<Res>(&q).await?;
+    match crate::config::FORMAT.get() {
+        Some(&crate::config::Format::Json) => println!("{}", serde_json::to_string_pretty(&res)?),
+        _ => print_text(&res, owner, name),
+    }
+    Ok(())
+}
+
+fn print_text(res: &Res, owner: &str, name: &str) {
     let (mut maxcount, mut count) = (0isize, 0isize);
     println!(
         "{}/{}#{} {}",
@@ -87,7 +95,7 @@ async fn track_issue(owner: &str, name: &str, num: usize) -> surf::Result<()> {
         res.data.repository.issue.number,
         res.data.repository.issue.title.yellow()
     );
-    for item in res.data.repository.issue.timelineItems.nodes {
+    for item in &res.data.repository.issue.timelineItems.nodes {
         count += if item.__typename == TimelineItemType::AssignedEvent {
             1
         } else {
@@ -102,5 +110,4 @@ async fn track_issue(owner: &str, name: &str, num: usize) -> surf::Result<()> {
         );
     }
     println!("Count of Max assignees: {}", maxcount);
-    Ok(())
 }

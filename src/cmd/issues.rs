@@ -50,17 +50,24 @@ async fn check_owner(owner: &str) -> surf::Result<()> {
     let v = json!({ "login": owner });
     let q = json!({ "query": include_str!("../query/issues.graphql"), "variables": v });
     let res = crate::graphql::query::<Res>(&q).await?;
+    match crate::config::FORMAT.get() {
+        Some(&crate::config::Format::Json) => println!("{}", serde_json::to_string_pretty(&res)?),
+        _ => print_text(&res),
+    }
+    Ok(())
+}
+
+fn print_text(res: &Res) {
     let mut count = 0usize;
-    for repo in res.data.repositoryOwner.repositories.nodes {
+    for repo in &res.data.repositoryOwner.repositories.nodes {
         if repo.issues.nodes.is_empty() {
             continue;
         }
         println!("{}", repo.name.cyan());
-        for issue in repo.issues.nodes {
+        for issue in &repo.issues.nodes {
             count += 1;
             println!("  #{} {} {} ", issue.number, issue.url, issue.title)
         }
     }
     println!("Count of Issues: {}", count);
-    Ok(())
 }

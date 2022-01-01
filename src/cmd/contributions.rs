@@ -44,11 +44,18 @@ pub async fn check(user: Option<String>) -> surf::Result<()> {
     let var = json!({ "login": user });
     let q = json!({ "query": include_str!("../query/contributions.graphql"), "variables": var });
     let res = crate::graphql::query::<Res>(&q).await?;
-    let calendar = res.data.user.contributions_collection.contribution_calendar;
+    match crate::config::FORMAT.get() {
+        Some(&crate::config::Format::Json) => println!("{}", serde_json::to_string_pretty(&res)?),
+        _ => print_text(&res)?,
+    }
+    Ok(())
+}
 
-    for week in calendar.weeks {
+fn print_text(res: &Res) -> surf::Result<()> {
+    let calendar = &res.data.user.contributions_collection.contribution_calendar;
+    for week in &calendar.weeks {
         print!("{}: ", week.first_day);
-        for day in week.contribution_days {
+        for day in &week.contribution_days {
             let r = u8::from_str_radix(day.color.get(1..3).unwrap_or_default(), 16)?;
             let g = u8::from_str_radix(day.color.get(3..5).unwrap_or_default(), 16)?;
             let b = u8::from_str_radix(day.color.get(5..7).unwrap_or_default(), 16)?;

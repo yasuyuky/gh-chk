@@ -1,4 +1,4 @@
-use once_cell::sync::Lazy;
+use once_cell::sync::{Lazy, OnceCell};
 use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::Read;
@@ -54,3 +54,5 @@ pub static TOKEN: Lazy<String> = Lazy::new(|| match std::env::var("GITHUB_TOKEN"
     Ok(tok) => tok,
     Err(_) => CONFIG.token.clone().unwrap_or_default(),
 });
+
+pub static FORMAT: OnceCell<Format> = OnceCell::new();

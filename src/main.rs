@@ -1,3 +1,4 @@
+use config::Format;
 use read_input::prelude::*;
 use structopt::StructOpt;
 
@@ -10,6 +11,8 @@ mod rest;
 struct Opt {
     #[structopt(subcommand)]
     command: Command,
+    #[structopt(short = "f")]
+    format: Format,
 }
 #[derive(Debug, StructOpt)]
 #[structopt(rename_all = "kebab-case")]
@@ -56,6 +59,7 @@ fn logout() -> Result<(), std::io::Error> {
 #[async_std::main]
 async fn main() -> surf::Result<()> {
     let opt = Opt::from_args();
+    config::FORMAT.set(opt.format).expect("set format");
     match opt.command {
         Command::Prs { slug } => cmd::prs::check(slug).await?,
         Command::Issues { slug } => cmd::issues::check(slug).await?,

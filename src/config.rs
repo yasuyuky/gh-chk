@@ -3,17 +3,21 @@ use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
+use structopt::clap::arg_enum;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Config {
     pub token: Option<String>,
 }
 
+arg_enum! {
 #[derive(Debug)]
 pub enum Format {
     Text,
     Json,
 }
+}
+
 impl Config {
     pub fn new() -> Self {
         Self { token: None }

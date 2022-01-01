@@ -1,4 +1,3 @@
-use crate::config::*;
 use colored::Colorize;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -80,8 +79,8 @@ async fn track_issue(owner: &str, name: &str, num: usize) -> surf::Result<()> {
     let v = json!({ "owner": owner, "name": name, "number": num });
     let q = json!({ "query": include_str!("../query/trackassignees.graphql"), "variables": v });
     let res: Res = crate::graphql::query::<Res>(&q).await?;
-    match FORMAT.get() {
-        Some(&Format::Json) => println!("{}", serde_json::to_string_pretty(&res)?),
+    match crate::config::FORMAT.get() {
+        Some(&crate::config::Format::Json) => println!("{}", serde_json::to_string_pretty(&res)?),
         _ => print_text(&res, owner, name),
     }
     Ok(())

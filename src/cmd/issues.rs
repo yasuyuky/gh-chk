@@ -76,5 +76,5 @@ fn print_text(res: &Res) {
             println!("  #{} {} {} ", issue.number, issue.url, issue.title)
         }
     }
-    println!("Count of Issues: {}", count);
+    println!("Count of Issues: {count}");
 }

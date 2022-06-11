@@ -20,7 +20,7 @@ enum Command {
     /// PRs
     Prs { slug: Vec<String> },
     /// Issues
-    Issues { slug: Option<String> },
+    Issues { slug: Vec<String> },
     /// Contriburions
     Contributions { user: Option<String> },
     /// Notifications

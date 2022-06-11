@@ -110,14 +110,21 @@ impl MergeStateStatus {
     }
 }
 
-pub async fn check(slug: Option<String>) -> surf::Result<()> {
-    let slug = slug.unwrap_or(crate::cmd::viewer::get().await?);
-    let vs: Vec<String> = slug.split('/').map(String::from).collect();
-    match vs.len() {
-        1 => check_owner(&vs[0]).await,
-        2 => check_repo(&vs[0], &vs[1]).await,
-        _ => panic!("unknown slug format"),
+pub async fn check(slugs: Vec<String>) -> surf::Result<()> {
+    let slugs = if slugs.is_empty() {
+        vec![crate::cmd::viewer::get().await?]
+    } else {
+        slugs
+    };
+    for slug in slugs {
+        let vs: Vec<String> = slug.split('/').map(String::from).collect();
+        match vs.len() {
+            1 => check_owner(&vs[0]).await?,
+            2 => check_repo(&vs[0], &vs[1]).await?,
+            _ => panic!("unknown slug format"),
+        }
     }
+    Ok(())
 }
 
 async fn check_owner(owner: &str) -> surf::Result<()> {

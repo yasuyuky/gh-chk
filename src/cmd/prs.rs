@@ -117,6 +117,7 @@ pub async fn check(slugs: Vec<String>) -> surf::Result<()> {
         slugs
     };
     for slug in slugs {
+        println!("{}", slug.bright_blue());
         let vs: Vec<String> = slug.split('/').map(String::from).collect();
         match vs.len() {
             1 => check_owner(&vs[0]).await?,

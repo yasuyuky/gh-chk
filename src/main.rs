@@ -18,7 +18,7 @@ struct Opt {
 #[structopt(rename_all = "kebab-case")]
 enum Command {
     /// PRs
-    Prs { slug: Option<String> },
+    Prs { slug: Vec<String> },
     /// Issues
     Issues { slug: Option<String> },
     /// Contriburions

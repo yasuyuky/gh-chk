@@ -1,40 +1,27 @@
 use colored::Colorize;
-use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-#[derive(Serialize, Deserialize)]
-struct Res {
-    data: Data,
-}
-#[allow(non_snake_case)]
-#[derive(Serialize, Deserialize)]
-struct Data {
-    repositoryOwner: RepositoriesOwner,
-}
-#[derive(Serialize, Deserialize)]
-struct RepositoriesOwner {
-    repositories: RepositoryConnection,
-}
-#[derive(Serialize, Deserialize)]
-struct RepositoryConnection {
-    nodes: Vec<Repository>,
-}
-
-#[allow(non_snake_case)]
-#[derive(Serialize, Deserialize)]
-struct Repository {
-    name: String,
-    issues: IssuesConnection,
-}
-#[derive(Serialize, Deserialize)]
-struct IssuesConnection {
-    nodes: Vec<PullRequest>,
-}
-#[derive(Serialize, Deserialize)]
-struct PullRequest {
-    pub number: usize,
-    pub title: String,
-    pub url: String,
+nestruct::nest! {
+    #[derive(serde::Serialize, serde::Deserialize)]
+    #[serde(rename_all="camelCase")]
+    Res {
+        data: {
+            repository_owner: {
+                repositories: {
+                    nodes: [{
+                        name: String,
+                        issues: {
+                            nodes: [{
+                                number: usize,
+                                title: String,
+                                url: String
+                            }]
+                        }
+                    }]
+                }
+            }
+        }
+    }
 }
 
 pub async fn check(slugs: Vec<String>) -> surf::Result<()> {
@@ -56,7 +43,7 @@ pub async fn check(slugs: Vec<String>) -> surf::Result<()> {
 async fn check_owner(owner: &str) -> surf::Result<()> {
     let v = json!({ "login": owner });
     let q = json!({ "query": include_str!("../query/issues.graphql"), "variables": v });
-    let res = crate::graphql::query::<Res>(&q).await?;
+    let res = crate::graphql::query::<res::Res>(&q).await?;
     match crate::config::FORMAT.get() {
         Some(&crate::config::Format::Json) => println!("{}", serde_json::to_string_pretty(&res)?),
         _ => print_text(&res),
@@ -64,9 +51,9 @@ async fn check_owner(owner: &str) -> surf::Result<()> {
     Ok(())
 }
 
-fn print_text(res: &Res) {
+fn print_text(res: &res::Res) {
     let mut count = 0usize;
-    for repo in &res.data.repositoryOwner.repositories.nodes {
+    for repo in &res.data.repository_owner.repositories.nodes {
         if repo.issues.nodes.is_empty() {
             continue;
         }

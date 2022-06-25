@@ -83,28 +83,28 @@ enum MergeStateStatus {
 impl MergeStateStatus {
     fn to_emoji(&self) -> String {
         match self {
-            MergeStateStatus::Behind => "⏩",
-            MergeStateStatus::Blocked => "🚫",
-            MergeStateStatus::Clean => "✅",
-            MergeStateStatus::Dirty => "⚠️ ",
-            MergeStateStatus::Draft => "✏️ ",
-            MergeStateStatus::HasHooks => "🪝",
-            MergeStateStatus::Unknown => "❓",
-            MergeStateStatus::Unstable => "❌",
+            Self::Behind => "⏩",
+            Self::Blocked => "🚫",
+            Self::Clean => "✅",
+            Self::Dirty => "⚠️ ",
+            Self::Draft => "✏️ ",
+            Self::HasHooks => "🪝",
+            Self::Unknown => "❓",
+            Self::Unstable => "❌",
         }
         .to_owned()
     }
 
     fn colorize(&self, s: &str) -> String {
         match self {
-            MergeStateStatus::Behind => s.yellow(),
-            MergeStateStatus::Blocked => s.red(),
-            MergeStateStatus::Clean => s.green(),
-            MergeStateStatus::Dirty => s.yellow(),
-            MergeStateStatus::Draft => s.white(),
-            MergeStateStatus::HasHooks => s.yellow(),
-            MergeStateStatus::Unknown => s.magenta(),
-            MergeStateStatus::Unstable => s.yellow(),
+            Self::Behind => s.yellow(),
+            Self::Blocked => s.red(),
+            Self::Clean => s.green(),
+            Self::Dirty => s.yellow(),
+            Self::Draft => s.white(),
+            Self::HasHooks => s.yellow(),
+            Self::Unknown => s.magenta(),
+            Self::Unstable => s.yellow(),
         }
         .to_string()
     }

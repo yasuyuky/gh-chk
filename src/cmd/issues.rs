@@ -28,10 +28,10 @@ struct Repository {
 }
 #[derive(Serialize, Deserialize)]
 struct IssuesConnection {
-    nodes: Vec<PullRequest>,
+    nodes: Vec<Issue>,
 }
 #[derive(Serialize, Deserialize)]
-struct PullRequest {
+struct Issue {
     pub number: usize,
     pub title: String,
     pub url: String,

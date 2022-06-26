@@ -5,16 +5,18 @@ use std::fmt::Display;
 
 nestruct::nest! {
     #[derive(serde::Serialize, serde::Deserialize, Debug)]
+    #[serde(rename_all = "camelCase")]
     Repository {
         name: String,
-        #[serde(rename="pullRequests")]
         pull_requests: {
             nodes: [{
                 number: usize,
                 title: String,
                 url: String,
-                #[serde(rename="mergeStateStatus")]
-                merge_state_status: #[serde(rename_all = "SCREAMING_SNAKE_CASE")] {
+                merge_state_status:
+                    #[nestruct(reset)]
+                    #[derive(serde::Serialize, serde::Deserialize, Debug)]
+                    #[serde(rename_all = "SCREAMING_SNAKE_CASE")] {
                     Behind,
                     Blocked,
                     Clean,

@@ -3,28 +3,26 @@ use colored::Colorize;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-#[derive(Serialize, Deserialize)]
-struct Notification {
-    id: String,
-    repository: Repository,
-    subject: Subject,
-    reason: String,
-    updated_at: DateTime<FixedOffset>,
-}
-#[derive(Serialize, Deserialize)]
-struct Repository {
-    full_name: String,
-}
-#[derive(Serialize, Deserialize)]
-struct Subject {
-    #[serde(rename = "type")]
-    ntype: String,
-    title: String,
-    url: Option<String>,
+nestruct::nest! {
+    #[derive(serde::Serialize, serde::Deserialize)]
+    Notification {
+        id: String,
+        repository: {
+            full_name: String
+        },
+        subject: {
+            #[serde(rename = "type")]
+            ntype: String,
+            title: String,
+            url: Option<String>,
+        },
+        reason: String,
+        updated_at: chrono::DateTime<chrono::FixedOffset>,
+    }
 }
 
 pub async fn list(page: usize) -> surf::Result<()> {
-    let res = crate::rest::get::<Notification>("notifications", page).await?;
+    let res = crate::rest::get::<notification::Notification>("notifications", page).await?;
     match crate::config::FORMAT.get() {
         Some(&crate::config::Format::Json) => println!("{}", serde_json::to_string_pretty(&res)?),
         _ => print_text(&res).await,
@@ -32,7 +30,7 @@ pub async fn list(page: usize) -> surf::Result<()> {
     Ok(())
 }
 
-async fn print_text(res: &[Notification]) {
+async fn print_text(res: &[notification::Notification]) {
     for n in res {
         let status = match &n.subject.url {
             Some(url) => get_status(url).await.unwrap_or_default(),

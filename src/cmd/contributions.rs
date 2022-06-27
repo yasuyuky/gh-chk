@@ -1,49 +1,34 @@
 use colored::Colorize;
-use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-#[derive(Serialize, Deserialize)]
-struct Res {
-    data: Data,
-}
-#[derive(Serialize, Deserialize)]
-struct Data {
-    user: User,
-}
-#[derive(Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct User {
-    contributions_collection: ContributionCollection,
-}
-#[derive(Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ContributionCollection {
-    contribution_calendar: ContributionCalendar,
-}
-#[derive(Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ContributionCalendar {
-    total_contributions: usize,
-    weeks: Vec<Week>,
-}
-#[derive(Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct Week {
-    first_day: String,
-    contribution_days: Vec<ContributionDay>,
-}
-#[derive(Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ContributionDay {
-    color: String,
-    contribution_count: usize,
+nestruct::nest! {
+    #[derive(serde::Deserialize, serde::Serialize)]
+    #[serde(rename_all = "camelCase")]
+    Res {
+        data: {
+            user: {
+                contributions_collection: {
+                    contribution_calendar: {
+                        total_contributions: usize,
+                        weeks: [{
+                            first_day: String,
+                            contribution_days: [{
+                                color: String,
+                                contribution_count: usize,
+                            }]
+                        }]
+                    }
+                }
+            }
+        }
+    }
 }
 
 pub async fn check(user: Option<String>) -> surf::Result<()> {
     let user = user.unwrap_or(crate::cmd::viewer::get().await?);
     let var = json!({ "login": user });
     let q = json!({ "query": include_str!("../query/contributions.graphql"), "variables": var });
-    let res = crate::graphql::query::<Res>(&q).await?;
+    let res = crate::graphql::query::<res::Res>(&q).await?;
     match crate::config::FORMAT.get() {
         Some(&crate::config::Format::Json) => println!("{}", serde_json::to_string_pretty(&res)?),
         _ => print_text(&res)?,
@@ -51,7 +36,7 @@ pub async fn check(user: Option<String>) -> surf::Result<()> {
     Ok(())
 }
 
-fn print_text(res: &Res) -> surf::Result<()> {
+fn print_text(res: &res::Res) -> surf::Result<()> {
     let calendar = &res.data.user.contributions_collection.contribution_calendar;
     for week in &calendar.weeks {
         print!("{}: ", week.first_day);

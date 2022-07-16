@@ -16,7 +16,8 @@ nestruct::nest! {
             url: Option<String>,
         },
         reason: String,
-        updated_at: chrono::DateTime<chrono::FixedOffset>,
+        #[serde(deserialize_with = "time::serde::iso8601::deserialize")]
+        updated_at: time::OffsetDateTime,
     }
 }
 
@@ -41,7 +42,7 @@ async fn print_text(res: &[notification::Notification]) {
             n.reason.magenta(),
             n.subject.ntype.yellow(),
             status,
-            n.updated_at.naive_local().date(),
+            n.updated_at.date(),
             n.repository.full_name.cyan(),
             n.subject.title,
             n.subject.url.clone().unwrap_or_default().green(),

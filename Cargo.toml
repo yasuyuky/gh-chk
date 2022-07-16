@@ -17,6 +17,7 @@ once_cell = "1.13.0"
 chrono = {version="0.4.19", features=["serde"]}
 read_input = "0.8.6"
 nestruct = { git = "https://github.com/yasuyuky/nestruct" }
+time = { version = "0.3.11", features = ["serde", "serde-well-known"] }
 
 [dependencies.async-std]
 features = ["attributes"]

@@ -17,3 +17,6 @@
 - name: security
   description: In case of vulnerabilities.
   color: "0052cc"
+- name: dependencies
+  description: Update dependencies.
+  color: "0366d6"

@@ -20,3 +20,6 @@
 - name: dependencies
   description: Update dependencies.
   color: "0366d6"
+- name: refactor
+  description: Refactor the source code.
+  color: "0366d6"

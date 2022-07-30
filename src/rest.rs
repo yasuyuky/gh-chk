@@ -21,7 +21,7 @@ fn parse_next(res: &surf::Response) -> Option<String> {
 pub async fn get<T: DeserializeOwned>(path: &str, page: usize) -> surf::Result<Vec<T>> {
     let uri = BASE_URI.to_owned() + path;
     let mut res = get_page(&uri, page).await?;
-    Ok(res.body_json().await?)
+    res.body_json().await
 }
 
 #[derive(Serialize)]

@@ -346,9 +346,12 @@ checksum = "fbdcdcb6d86f71c5e97409ad45898af11cbc995b4ee8112d59095a28d376c935"
 
 [[package]]
 name = "convert_case"
-version = "0.5.0"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fb4a24b1aaf0fd0ce8b45161144d6f42cd91677fd5940fd431183eb023b3a2b8"
+checksum = "ec182b0ca2f35d8fc196cf3404988fd8b8c739a4d270ff118a398feb0cbec1ca"
+dependencies = [
+ "unicode-segmentation",
+]
 
 [[package]]
 name = "cookie"
@@ -907,7 +910,7 @@ dependencies = [
 [[package]]
 name = "nestruct"
 version = "0.1.0"
-source = "git+https://github.com/yasuyuky/nestruct#de9ed81537ebf4a76a3d488f220e447800c46116"
+source = "git+https://github.com/yasuyuky/nestruct#dad8022267a73bee1590aa7ea89fbb99ddb8f723"
 dependencies = [
  "convert_case",
  "proc-macro2",

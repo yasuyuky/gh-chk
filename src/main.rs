@@ -1,3 +1,4 @@
+use clap::Parser;
 use config::Format;
 use read_input::prelude::*;
 use structopt::StructOpt;
@@ -7,14 +8,15 @@ mod config;
 mod graphql;
 mod rest;
 
-#[derive(StructOpt)]
+#[derive(Parser)]
 struct Opt {
     #[structopt(subcommand)]
     command: Command,
-    #[structopt(short = "f", default_value = "text")]
+    #[structopt(short = 'f', default_value = "text")]
     format: Format,
 }
-#[derive(Debug, StructOpt)]
+
+#[derive(Debug, Parser)]
 #[structopt(rename_all = "kebab-case")]
 enum Command {
     /// PRs

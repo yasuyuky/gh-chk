@@ -1,7 +1,6 @@
 use clap::Parser;
 use config::Format;
 use read_input::prelude::*;
-use structopt::StructOpt;
 
 mod cmd;
 mod config;

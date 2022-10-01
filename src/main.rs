@@ -9,14 +9,14 @@ mod rest;
 
 #[derive(Parser)]
 struct Opt {
-    #[structopt(subcommand)]
+    #[clap(subcommand)]
     command: Command,
-    #[structopt(short = 'f', default_value = "text")]
+    #[clap(short = 'f', default_value = "text")]
     format: Format,
 }
 
 #[derive(Debug, Parser)]
-#[structopt(rename_all = "kebab-case")]
+#[clap(rename_all = "kebab-case")]
 enum Command {
     /// PRs
     Prs { slug: Vec<String> },

@@ -1,9 +1,9 @@
+use clap::arg_enum;
 use once_cell::sync::{Lazy, OnceCell};
 use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use structopt::clap::arg_enum;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Config {

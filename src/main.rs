@@ -1,21 +1,22 @@
+use clap::Parser;
 use config::Format;
 use read_input::prelude::*;
-use structopt::StructOpt;
 
 mod cmd;
 mod config;
 mod graphql;
 mod rest;
 
-#[derive(StructOpt)]
+#[derive(Parser)]
 struct Opt {
-    #[structopt(subcommand)]
+    #[clap(subcommand)]
     command: Command,
-    #[structopt(short = "f", default_value = "text")]
+    #[clap(short = 'f', default_value = "text")]
     format: Format,
 }
-#[derive(Debug, StructOpt)]
-#[structopt(rename_all = "kebab-case")]
+
+#[derive(Debug, Parser)]
+#[clap(rename_all = "kebab-case")]
 enum Command {
     /// PRs
     Prs { slug: Vec<String> },

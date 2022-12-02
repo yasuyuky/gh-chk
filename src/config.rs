@@ -1,4 +1,3 @@
-use clap::arg_enum;
 use once_cell::sync::{Lazy, OnceCell};
 use serde::{Deserialize, Serialize};
 use std::fs::File;
@@ -10,12 +9,10 @@ pub struct Config {
     pub token: Option<String>,
 }
 
-arg_enum! {
-#[derive(Debug)]
+#[derive(Debug, Clone, clap::ValueEnum)]
 pub enum Format {
     Text,
     Json,
-}
 }
 
 impl Config {

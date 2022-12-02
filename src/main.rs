@@ -59,7 +59,7 @@ fn logout() -> Result<(), std::io::Error> {
 
 #[async_std::main]
 async fn main() -> surf::Result<()> {
-    let opt = Opt::from_args();
+    let opt = Opt::parse();
     config::FORMAT.set(opt.format).expect("set format");
     match opt.command {
         Command::Prs { slug } => cmd::prs::check(slug).await?,

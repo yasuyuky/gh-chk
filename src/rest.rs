@@ -35,7 +35,7 @@ pub async fn get_page(url: &str, page: usize) -> surf::Result<surf::Response> {
         page,
         per_page: 100,
     };
-    surf::get(&url)
+    surf::get(url)
         .header("Authorization", format!("token {}", *TOKEN))
         .query(&q)?
         .await

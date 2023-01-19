@@ -978,7 +978,7 @@ dependencies = [
 [[package]]
 name = "nestruct"
 version = "0.1.0"
-source = "git+https://github.com/yasuyuky/nestruct#dad8022267a73bee1590aa7ea89fbb99ddb8f723"
+source = "git+https://github.com/yasuyuky/nestruct#8a2dcbe8a5017573ed97b9db8e80fcb8470d5d0a"
 dependencies = [
  "convert_case",
  "proc-macro2",

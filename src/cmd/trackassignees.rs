@@ -109,5 +109,5 @@ fn print_text(res: &Res, owner: &str, name: &str) {
             item.assignee
         );
     }
-    println!("Count of Max assignees: {}", maxcount);
+    println!("Count of Max assignees: {maxcount}");
 }

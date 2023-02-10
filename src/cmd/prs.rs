@@ -151,10 +151,10 @@ fn print_owner_text(res: &res::Res) {
         println!("{}", repo.name.cyan());
         for pr in &repo.pull_requests.nodes {
             count += 1;
-            println!("{}", pr);
+            println!("{pr}");
         }
     }
-    println!("Count of PRs: {}", count);
+    println!("Count of PRs: {count}");
 }
 
 async fn check_repo(owner: &str, name: &str) -> surf::Result<()> {
@@ -172,7 +172,7 @@ fn print_repo_text(res: &repo_res::RepoRes) {
     let mut count = 0usize;
     for pr in &res.data.repository_owner.repository.pull_requests.nodes {
         count += 1;
-        println!("{}", pr);
+        println!("{pr}");
     }
-    println!("Count of PRs: {}", count);
+    println!("Count of PRs: {count}");
 }

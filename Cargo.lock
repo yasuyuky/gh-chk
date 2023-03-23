@@ -1000,12 +1000,12 @@ dependencies = [
 [[package]]
 name = "nestruct"
 version = "0.1.0"
-source = "git+https://github.com/yasuyuky/nestruct#cd0d0faac48dc88d9ae26665ab2f4dd58ef91b4c"
+source = "git+https://github.com/yasuyuky/nestruct#aaab4e4289a155bfc3b6ed399573d8f8b5b1cc51"
 dependencies = [
  "convert_case",
  "proc-macro2",
  "quote",
- "syn 1.0.104",
+ "syn 2.0.4",
 ]
 
 [[package]]

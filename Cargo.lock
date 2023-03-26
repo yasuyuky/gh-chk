@@ -1000,12 +1000,13 @@ dependencies = [
 [[package]]
 name = "nestruct"
 version = "0.1.0"
-source = "git+https://github.com/yasuyuky/nestruct#aaab4e4289a155bfc3b6ed399573d8f8b5b1cc51"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3f6e220253b26fa1cf2f1b38b4fdfdb80ca387a4aaa31c86ac8bf712dd5a81ed"
 dependencies = [
  "convert_case",
  "proc-macro2",
  "quote",
- "syn 2.0.4",
+ "syn 1.0.104",
 ]
 
 [[package]]
@@ -1786,9 +1787,9 @@ dependencies = [
 
 [[package]]
 name = "unicode-segmentation"
-version = "1.9.0"
+version = "1.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7e8820f5d777f6224dc4be3632222971ac30164d4a258d595640799554ebfd99"
+checksum = "1dd624098567895118886609431a7c3b8f516e41d30e0643f03d94592a147e36"
 
 [[package]]
 name = "universal-hash"

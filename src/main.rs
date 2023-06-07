@@ -23,6 +23,7 @@ enum Command {
     /// Issues
     Issues { slug: Vec<String> },
     /// Contriburions
+    #[clap(alias = "grass")]
     Contributions { user: Option<String> },
     /// Notifications
     Notifications { page: usize },

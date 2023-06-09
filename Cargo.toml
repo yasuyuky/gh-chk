@@ -3,9 +3,9 @@ authors = ["yasuyuky <yasuyuki.ymd@gmail.com>"]
 edition = "2018"
 name = "ghchk"
 version = "0.1.0"
+rust-version = "1.70.0"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
 serde = "1.0.163"
 serde_json = "1.0.96"

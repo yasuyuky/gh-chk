@@ -41,7 +41,7 @@ pub static CONFIG_PATH: Lazy<PathBuf> = Lazy::new(|| {
         Ok(p) => PathBuf::from(p),
         Err(_) => PathBuf::from(std::env::var("HOME").unwrap() + "/.config"),
     };
-    path.push("ghchk");
+    path.push("gh-chk");
     path.push("config.toml");
     path
 });

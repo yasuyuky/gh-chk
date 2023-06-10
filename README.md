@@ -1,15 +1,15 @@
-# ghchk
+# gh-chk
 
 A utility to check GitHub for my daily routine
 
-## `ghchk prs`
+## `gh-chk prs`
 
 Show all PRs on your organization
 
-## `ghchk contributions`
+## `gh-chk contributions`
 
 Show your contributions
 
-## `ghchk notifications`
+## `gh-chk notifications`
 
 Show your notifications

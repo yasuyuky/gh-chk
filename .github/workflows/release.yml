@@ -1,0 +1,65 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  check-version:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get the version in cargo
+        id: cargo_ver
+        run: |
+          VERSION=$(grep '^version' Cargo.toml | cut -d '"' -f 2)
+          echo ${VERSION}
+          echo v=v${VERSION} >>$GITHUB_OUTPUT
+          test ${GITHUB_REF/refs\/tags\//} = v${VERSION}
+  release-linux:
+    needs: check-version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: cli/gh-extension-precompile@v1
+        with:
+          build_script_override: "./script/build.sh"
+  release-macos:
+    needs: release-linux
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Build for Intel macOS
+        run: bash ./script/build.sh
+        env:
+          TARGET_TRIPLE: x86_64-apple-darwin
+          OS_ARCH: darwin-amd64
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+      - name: Build for Apple Silicon macOS
+        run: bash ./script/build.sh
+        env:
+          TARGET_TRIPLE: aarch64-apple-darwin
+          OS_ARCH: darwin-arm64
+      - name: Upload release artifact
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            dist/darwin-amd64
+            dist/darwin-arm64
+  release-windows:
+    needs: release-linux
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Build for x86_64 Windows
+        run: bash ./script/build.sh
+        env:
+          TARGET_TRIPLE: x86_64-pc-windows-msvc
+          OS_ARCH: windows-amd64.exe
+      - name: Upload release artifact
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            dist/windows-amd64.exe

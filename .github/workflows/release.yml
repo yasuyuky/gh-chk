@@ -13,7 +13,7 @@ jobs:
       - name: Get the version in cargo
         id: cargo_ver
         run: |
-          VERSION=$(grep '^version' Cargo.toml | cut -d '"' -f 2)
+          VERSION=$(grep -m 1 '^version' Cargo.toml | cut -d '"' -f 2)
           echo ${VERSION}
           echo v=v${VERSION} >>$GITHUB_OUTPUT
           test ${GITHUB_REF/refs\/tags\//} = v${VERSION}

@@ -18,20 +18,20 @@ struct Opt {
 #[derive(Debug, Parser)]
 #[clap(rename_all = "kebab-case")]
 enum Command {
-    /// PRs
+    /// Show pullrequests of the repository or user
     Prs { slug: Vec<String> },
-    /// Issues
+    /// Show issues of the repository or user
     Issues { slug: Vec<String> },
-    /// Contriburions
+    /// Show contriburions of the user
     #[clap(alias = "grass")]
     Contributions { user: Option<String> },
-    /// Notifications
+    /// Show notifications of the user
     Notifications { page: usize },
-    /// TrackAssignees
+    /// Track assignees of the issues or pullrequests
     TrackAssignees { slug: String, num: usize },
-    /// Login
+    /// Login to GitHub
     Login,
-    /// Logout
+    /// Logout to GitHub
     Logout,
 }
 

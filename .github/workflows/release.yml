@@ -9,6 +9,7 @@ jobs:
   check-version:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v3
       - name: Get the version in cargo
         id: cargo_ver
         run: |

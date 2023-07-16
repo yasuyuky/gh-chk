@@ -36,6 +36,14 @@ impl Default for Config {
     }
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct TokenEntry {
+    user: String,
+    oauth_token: String,
+    git_protocol: String,
+}
+
+
 pub static CONFIG_PATH: Lazy<PathBuf> = Lazy::new(|| {
     let mut path = match std::env::var("XDG_CONFIG_HOME") {
         Ok(p) => PathBuf::from(p),

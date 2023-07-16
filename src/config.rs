@@ -78,9 +78,21 @@ pub static CONFIG_PATH: Lazy<PathBuf> = Lazy::new(|| {
 
 pub static CONFIG: Lazy<Config> = Lazy::new(|| Config::from_path(&CONFIG_PATH));
 
-pub static TOKEN: Lazy<String> = Lazy::new(|| match std::env::var("GITHUB_TOKEN") {
-    Ok(tok) => tok,
-    Err(_) => CONFIG.token.clone().unwrap_or_default(),
+pub static GH_CONFIG_PATH: Lazy<PathBuf> = Lazy::new(|| {
+    let mut path = match std::env::var("XDG_CONFIG_HOME") {
+        Ok(p) => PathBuf::from(p),
+        Err(_) => PathBuf::from(std::env::var("HOME").unwrap() + "/.config"),
+    };
+    path.push("gh");
+    path.push("hosts.yml");
+    path
+});
+
+pub static GH_CONFIG: Lazy<GHConfig> = Lazy::new(|| GHConfig::from_path(&GH_CONFIG_PATH));
+
+pub static TOKEN: Lazy<String> = Lazy::new(|| match GH_CONFIG.entries.get("github.com") {
+    Some(tok_conf) => tok_conf.oauth_token.clone(),
+    None => std::env::var("GITHUB_TOKEN").unwrap_or_default(),
 });
 
 pub static FORMAT: OnceLock<Format> = OnceLock::new();

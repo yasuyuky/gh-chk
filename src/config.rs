@@ -92,7 +92,10 @@ pub static GH_CONFIG: Lazy<GHConfig> = Lazy::new(|| GHConfig::from_path(&GH_CONF
 
 pub static TOKEN: Lazy<String> = Lazy::new(|| match GH_CONFIG.entries.get("github.com") {
     Some(tok_conf) => tok_conf.oauth_token.clone(),
-    None => std::env::var("GITHUB_TOKEN").unwrap_or_default(),
+    None => match CONFIG.token.clone() {
+        Some(tok) => tok,
+        None => std::env::var("GITHUB_TOKEN").unwrap_or_default(),
+    },
 });
 
 pub static FORMAT: OnceLock<Format> = OnceLock::new();

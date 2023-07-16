@@ -1,5 +1,6 @@
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -43,6 +44,27 @@ pub struct TokenEntry {
     git_protocol: String,
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+pub struct GHConfig {
+    #[serde(flatten)]
+    entries: HashMap<String, TokenEntry>,
+}
+
+impl GHConfig {
+    pub fn new() -> Self {
+        Self {
+            entries: HashMap::new(),
+        }
+    }
+
+    pub fn from_path(p: &Path) -> Self {
+        let mut s = String::new();
+        match File::open(p).and_then(|mut f| f.read_to_string(&mut s)) {
+            Ok(_) => serde_yaml::from_str(&s).unwrap_or_default(),
+            Err(_) => Self::new(),
+        }
+    }
+}
 
 pub static CONFIG_PATH: Lazy<PathBuf> = Lazy::new(|| {
     let mut path = match std::env::var("XDG_CONFIG_HOME") {

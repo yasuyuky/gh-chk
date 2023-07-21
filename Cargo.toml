@@ -17,7 +17,7 @@ read_input = "0.8.6"
 nestruct = "0.1.0"
 time = { version = "0.3.23", features = ["serde", "serde-well-known"] }
 clap = { version = "4.3.17", features = ["derive"] }
-serde_yaml = "0.9.24"
+serde_yaml = "0.9.25"
 
 [dependencies.async-std]
 features = ["attributes"]

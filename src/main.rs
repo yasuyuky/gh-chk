@@ -29,6 +29,8 @@ enum Command {
     Notifications { page: usize },
     /// Track assignees of the issues or pullrequests
     TrackAssignees { slug: String, num: usize },
+    /// Search repositories
+    Search { query: String },
     /// Login to GitHub
     Login,
     /// Logout to GitHub
@@ -68,6 +70,7 @@ async fn main() -> surf::Result<()> {
         Command::Contributions { user } => cmd::contributions::check(user).await?,
         Command::Notifications { page } => cmd::notifications::list(page).await?,
         Command::TrackAssignees { slug, num } => cmd::trackassignees::track(&slug, num).await?,
+        Command::Search { query } => cmd::search::search(&query).await?,
         Command::Login => login()?,
         Command::Logout => logout()?,
     };

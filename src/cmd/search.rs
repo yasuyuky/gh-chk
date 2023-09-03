@@ -20,22 +20,33 @@ nestruct::nest! {
 
 }
 
-#[derive(serde::Serialize)]
-struct Query {
+#[derive(Debug, clap::Parser, serde::Serialize)]
+pub struct Query {
+    q: String,
+    user: Option<String>,
+}
+
+impl Query {
+    fn to_api(&self) -> ApiQuery {
+        ApiQuery {
+            q: self.q.to_owned(),
+            page: 0,
+            per_page: 100,
+        }
+    }
+}
+
+#[derive(Debug, clap::Parser, serde::Serialize)]
+struct ApiQuery {
     q: String,
     page: usize,
     per_page: u8,
 }
 
-pub async fn search(query: &str) -> surf::Result<()> {
-    let q = Query {
-        q: query.to_owned(),
-        page: 1,
-        per_page: 100,
-    };
+pub async fn search(q: &Query) -> surf::Result<()> {
     let mut res = surf::get("https://api.github.com/search/code")
         .header("Authorization", format!("token {}", *TOKEN))
-        .query(&q)?
+        .query(&q.to_api())?
         .await?;
     let search_result = res.body_json::<search::Search>().await?;
     match crate::config::FORMAT.get() {

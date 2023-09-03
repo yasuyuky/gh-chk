@@ -30,7 +30,7 @@ enum Command {
     /// Track assignees of the issues or pullrequests
     TrackAssignees { slug: String, num: usize },
     /// Search repositories
-    Search { query: String },
+    Search(cmd::search::Query),
     /// Login to GitHub
     Login,
     /// Logout to GitHub

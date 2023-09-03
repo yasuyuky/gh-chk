@@ -70,7 +70,7 @@ async fn main() -> surf::Result<()> {
         Command::Contributions { user } => cmd::contributions::check(user).await?,
         Command::Notifications { page } => cmd::notifications::list(page).await?,
         Command::TrackAssignees { slug, num } => cmd::trackassignees::track(&slug, num).await?,
-        Command::Search { query } => cmd::search::search(&query).await?,
+        Command::Search(q) => cmd::search::search(&q).await?,
         Command::Login => login()?,
         Command::Logout => logout()?,
     };

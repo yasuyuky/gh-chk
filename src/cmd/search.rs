@@ -49,12 +49,7 @@ pub async fn search(query: &str) -> surf::Result<()> {
 
 fn print_text(res: &search::Search) {
     for n in &res.items {
-        println!(
-            "{} {} {}",
-            n.repository.full_name.cyan(),
-            n.path.yellow(),
-            n.url.green(),
-        )
+        println!("{} {}", n.repository.full_name.cyan(), n.path.yellow(),)
     }
     println!("# count: {}", res.items.len());
 }

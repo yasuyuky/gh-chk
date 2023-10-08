@@ -21,16 +21,16 @@ nestruct::nest! {
     }
 }
 
-pub async fn list(page: usize) -> surf::Result<()> {
+pub async fn list(page: usize, read: bool) -> surf::Result<()> {
     let res = crate::rest::get::<notification::Notification>("notifications", page).await?;
     match crate::config::FORMAT.get() {
         Some(&crate::config::Format::Json) => println!("{}", serde_json::to_string_pretty(&res)?),
-        _ => print_text(&res).await,
+        _ => print_text(&res, read).await,
     }
     Ok(())
 }
 
-async fn print_text(res: &[notification::Notification]) {
+async fn print_text(res: &[notification::Notification], read: bool) {
     for n in res {
         let status = match &n.subject.url {
             Some(url) => get_status(url).await.unwrap_or_default(),
@@ -46,7 +46,16 @@ async fn print_text(res: &[notification::Notification]) {
             n.repository.full_name.cyan(),
             n.subject.title,
             n.subject.url.clone().unwrap_or_default().green(),
-        )
+        );
+        if read {
+            match status.as_str() {
+                "MERGED" | "CLOSED" => {
+                    let path = "notifications/threads/".to_owned() + &n.id;
+                    let _ = crate::rest::patch(&path).await;
+                }
+                _ => {}
+            }
+        }
     }
     println!("# count: {}", res.len());
 }

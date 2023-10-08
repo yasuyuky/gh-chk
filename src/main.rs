@@ -26,7 +26,11 @@ enum Command {
     #[clap(alias = "grass")]
     Contributions { user: Option<String> },
     /// Show notifications of the user
-    Notifications { page: usize },
+    Notifications {
+        page: usize,
+        #[clap(long = "read")]
+        read: bool,
+    },
     /// Track assignees of the issues or pullrequests
     TrackAssignees { slug: String, num: usize },
     /// Search repositories
@@ -68,7 +72,7 @@ async fn main() -> surf::Result<()> {
         Command::Prs { slug } => cmd::prs::check(slug).await?,
         Command::Issues { slug } => cmd::issues::check(slug).await?,
         Command::Contributions { user } => cmd::contributions::check(user).await?,
-        Command::Notifications { page } => cmd::notifications::list(page).await?,
+        Command::Notifications { page, read } => cmd::notifications::list(page, read).await?,
         Command::TrackAssignees { slug, num } => cmd::trackassignees::track(&slug, num).await?,
         Command::Search(q) => cmd::search::search(&q).await?,
         Command::Login => login()?,

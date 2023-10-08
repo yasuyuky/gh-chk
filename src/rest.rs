@@ -40,3 +40,10 @@ pub async fn get_page(url: &str, page: usize) -> surf::Result<surf::Response> {
         .query(&q)?
         .await
 }
+
+pub async fn patch(path: &str) -> surf::Result<surf::Response> {
+    let uri = BASE_URI.to_owned() + path;
+    surf::patch(uri)
+        .header("Authorization", format!("token {}", *TOKEN))
+        .await
+}

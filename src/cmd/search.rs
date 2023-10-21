@@ -11,6 +11,7 @@ nestruct::nest! {
             path: String,
             sha: String,
             url: String,
+            score: f64,
             repository: {
                 full_name: String,
                 html_url: String,

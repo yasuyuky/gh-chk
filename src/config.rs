@@ -23,7 +23,7 @@ impl Config {
     }
 
     pub fn from_path(p: &Path) -> Self {
-        let mut s = String::new();
+        let mut s = String::default();
         match File::open(p).and_then(|mut f| f.read_to_string(&mut s)) {
             Ok(_) => toml::from_str(&s).unwrap_or_default(),
             Err(_) => Self::new(),
@@ -58,7 +58,7 @@ impl GHConfig {
     }
 
     pub fn from_path(p: &Path) -> Self {
-        let mut s = String::new();
+        let mut s = String::default();
         match File::open(p).and_then(|mut f| f.read_to_string(&mut s)) {
             Ok(_) => serde_yaml::from_str(&s).unwrap_or_default(),
             Err(_) => Self::new(),

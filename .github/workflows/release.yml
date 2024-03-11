@@ -48,7 +48,7 @@ jobs:
           TARGET_TRIPLE: aarch64-apple-darwin
           OS_ARCH: darwin-arm64
       - name: Upload release artifact
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           files: |
             dist/darwin-amd64
@@ -65,7 +65,7 @@ jobs:
           TARGET_TRIPLE: x86_64-pc-windows-msvc
           OS_ARCH: windows-amd64.exe
       - name: Upload release artifact
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           files: |
             dist/windows-amd64.exe

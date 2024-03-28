@@ -6,7 +6,7 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct Config {
     pub token: Option<String>,
 }
@@ -28,12 +28,6 @@ impl Config {
             Ok(_) => toml::from_str(&s).unwrap_or_default(),
             Err(_) => Self::new(),
         }
-    }
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Self { token: None }
     }
 }
 

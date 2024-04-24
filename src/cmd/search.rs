@@ -25,13 +25,21 @@ nestruct::nest! {
 #[derive(Debug, clap::Parser, serde::Serialize)]
 pub struct Query {
     q: String,
+    /// Search by user
+    #[clap(long)]
     user: Option<String>,
 }
 
 impl Query {
     fn to_api(&self) -> ApiQuery {
+        let q = self.q.to_owned()
+            + match &self.user {
+                Some(user) => format!(" user:{}", user),
+                None => "".to_owned(),
+            }
+            .as_str();
         ApiQuery {
-            q: self.q.to_owned(),
+            q,
             page: 0,
             per_page: 100,
         }

@@ -30,8 +30,14 @@ pub struct Query {
 
 impl Query {
     fn to_api(&self) -> ApiQuery {
+        let q = self.q.to_owned()
+            + match &self.user {
+                Some(user) => format!(" user:{}", user),
+                None => "".to_owned(),
+            }
+            .as_str();
         ApiQuery {
-            q: self.q.to_owned(),
+            q,
             page: 0,
             per_page: 100,
         }

@@ -25,6 +25,7 @@ nestruct::nest! {
 #[derive(Debug, clap::Parser, serde::Serialize)]
 pub struct Query {
     q: String,
+    #[clap(long)]
     user: Option<String>,
 }
 

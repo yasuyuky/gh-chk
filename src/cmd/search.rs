@@ -26,7 +26,7 @@ nestruct::nest! {
 pub struct Query {
     q: String,
     /// Search by user
-    #[clap(long)]
+    #[clap(long, short)]
     user: Option<String>,
 }
 

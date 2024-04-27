@@ -28,6 +28,9 @@ pub struct Query {
     /// Search by user
     #[clap(long, short, alias = "owner", short_alias = 'o')]
     user: Option<String>,
+    /// Search by language
+    #[clap(long, short)]
+    language: Option<String>,
 }
 
 impl Query {

@@ -28,6 +28,9 @@ pub struct Query {
     /// Search by user
     #[clap(long, short, alias = "owner", short_alias = 'o')]
     user: Option<String>,
+    /// Search by language
+    #[clap(long, short)]
+    language: Option<String>,
 }
 
 impl Query {
@@ -35,6 +38,11 @@ impl Query {
         let q = self.q.to_owned()
             + match &self.user {
                 Some(user) => format!(" user:{}", user),
+                None => "".to_owned(),
+            }
+            .as_str()
+            + match &self.language {
+                Some(lang) => format!(" language:{}", lang),
                 None => "".to_owned(),
             }
             .as_str();

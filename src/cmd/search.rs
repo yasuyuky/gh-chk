@@ -40,6 +40,11 @@ impl Query {
                 Some(user) => format!(" user:{}", user),
                 None => "".to_owned(),
             }
+            .as_str()
+            + match &self.language {
+                Some(lang) => format!(" language:{}", lang),
+                None => "".to_owned(),
+            }
             .as_str();
         ApiQuery {
             q,

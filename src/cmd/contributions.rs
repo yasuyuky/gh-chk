@@ -40,13 +40,16 @@ fn print_text(res: &res::Res) -> surf::Result<()> {
     let calendar = &res.data.user.contributions_collection.contribution_calendar;
     for week in &calendar.weeks {
         print!("{}: ", week.first_day);
+        let mut week_count = 0;
         for day in &week.contribution_days {
+            week_count += day.contribution_count;
             let r = u8::from_str_radix(day.color.get(1..3).unwrap_or_default(), 16)?;
             let g = u8::from_str_radix(day.color.get(3..5).unwrap_or_default(), 16)?;
             let b = u8::from_str_radix(day.color.get(5..7).unwrap_or_default(), 16)?;
             let cnt = format!("{:3}", day.contribution_count);
             print!("{} ", cnt.as_str().color("black").on_truecolor(r, g, b))
         }
+        print!("{}", week_count);
         println!();
     }
     println!("total contributions: {}", calendar.total_contributions);

@@ -3,13 +3,29 @@ updates:
   - package-ecosystem: cargo
     directory: "/"
     schedule:
-      interval: daily
+      interval: weekly
       time: "09:00"
       timezone: Asia/Tokyo
+      day:
+        - monday
+        - tuesday
+        - wednesday
+        - thursday
+        - friday
+        - saturday
+        - sunday
     open-pull-requests-limit: 10
   - package-ecosystem: github-actions
     directory: "/"
     schedule:
-      interval: daily
+      interval: weekly
       time: "09:00"
       timezone: Asia/Tokyo
+      day:
+        - monday
+        - tuesday
+        - wednesday
+        - thursday
+        - friday
+        - saturday
+        - sunday

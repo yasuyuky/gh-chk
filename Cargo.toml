@@ -7,7 +7,7 @@ rust-version = "1.81.0"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [dependencies]
-serde = "1.0.210"
+serde = "1.0.213"
 serde_json = "1.0.132"
 surf = "2.3.2"
 colored = "2.1.0"

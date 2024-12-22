@@ -22,7 +22,15 @@ nestruct::nest! {
 }
 
 pub async fn list(page: usize, read: bool) -> surf::Result<()> {
-    let res = crate::rest::get::<notification::Notification>("notifications", page).await?;
+    let mut res = Vec::new();
+    let mut page = 1;
+    while let Ok(mut page_res) = list_page(page).await {
+        if page_res.is_empty() {
+            break;
+        }
+        res.append(&mut page_res);
+        page += 1;
+    }
     match crate::config::FORMAT.get() {
         Some(&crate::config::Format::Json) => println!("{}", serde_json::to_string_pretty(&res)?),
         _ => print_text(&res, read).await,

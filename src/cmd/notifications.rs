@@ -30,6 +30,11 @@ pub async fn list(page: usize, read: bool) -> surf::Result<()> {
     Ok(())
 }
 
+pub async fn list_page(page: usize) -> surf::Result<Vec<notification::Notification>> {
+    let res = crate::rest::get::<notification::Notification>("notifications", page).await?;
+    Ok(res)
+}
+
 async fn print_text(res: &[notification::Notification], read: bool) {
     for n in res {
         let status = match &n.subject.url {

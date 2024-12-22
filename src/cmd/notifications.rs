@@ -21,7 +21,7 @@ nestruct::nest! {
     }
 }
 
-pub async fn list(page: usize, read: bool) -> surf::Result<()> {
+pub async fn list(read: bool) -> surf::Result<()> {
     let mut res = Vec::new();
     let mut page = 1;
     while let Ok(mut page_res) = list_page(page).await {

@@ -27,7 +27,6 @@ enum Command {
     Contributions { user: Option<String> },
     /// Show notifications of the user
     Notifications {
-        page: usize,
         #[clap(long = "read")]
         read: bool,
     },
@@ -72,7 +71,7 @@ async fn main() -> surf::Result<()> {
         Command::Prs { slug } => cmd::prs::check(slug).await?,
         Command::Issues { slug } => cmd::issues::check(slug).await?,
         Command::Contributions { user } => cmd::contributions::check(user).await?,
-        Command::Notifications { page, read } => cmd::notifications::list(page, read).await?,
+        Command::Notifications { read } => cmd::notifications::list(read).await?,
         Command::TrackAssignees { slug, num } => cmd::trackassignees::track(&slug, num).await?,
         Command::Search(q) => cmd::search::search(&q).await?,
         Command::Login => login()?,

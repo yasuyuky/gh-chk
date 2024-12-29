@@ -1,5 +1,6 @@
 use crate::config::TOKEN;
 use serde::de::DeserializeOwned;
+use std::collections::HashMap;
 use surf::http::convert::Serialize;
 
 const BASE_URI: &str = "https://api.github.com/";

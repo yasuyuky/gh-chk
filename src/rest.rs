@@ -31,13 +31,12 @@ struct Query {
 }
 
 pub async fn get_page(url: &str, page: usize) -> surf::Result<surf::Response> {
-    let q = Query {
-        page,
-        per_page: 100,
-    };
+    let mut query = HashMap::new();
+    query.insert("page", page.to_string());
+    query.insert("per_page", 100.to_string());
     surf::get(url)
         .header("Authorization", format!("token {}", *TOKEN))
-        .query(&q)?
+        .query(&query)?
         .await
 }
 

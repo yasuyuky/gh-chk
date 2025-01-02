@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use surf::http::convert::Serialize;
 
 const BASE_URI: &str = "https://api.github.com/";
+pub type QueryMap = HashMap<String, String>;
 
 #[allow(dead_code)]
 fn parse_next(res: &surf::Response) -> Option<String> {
@@ -19,9 +20,13 @@ fn parse_next(res: &surf::Response) -> Option<String> {
     None
 }
 
-pub async fn get<T: DeserializeOwned>(path: &str, page: usize) -> surf::Result<Vec<T>> {
+pub async fn get<T: DeserializeOwned>(
+    path: &str,
+    page: usize,
+    q: &QueryMap,
+) -> surf::Result<Vec<T>> {
     let uri = BASE_URI.to_owned() + path;
-    let mut res = get_page(&uri, page).await?;
+    let mut res = get_page(&uri, page, q).await?;
     res.body_json().await
 }
 
@@ -31,7 +36,7 @@ struct Query {
     per_page: u8,
 }
 
-pub async fn get_page(url: &str, page: usize) -> surf::Result<surf::Response> {
+pub async fn get_page(url: &str, page: usize, q: &QueryMap) -> surf::Result<surf::Response> {
     let mut query = HashMap::new();
     query.insert("page", page.to_string());
     query.insert("per_page", 100.to_string());

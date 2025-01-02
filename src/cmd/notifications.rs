@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use colored::Colorize;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -39,7 +41,8 @@ pub async fn list(read: bool) -> surf::Result<()> {
 }
 
 pub async fn list_page(page: usize) -> surf::Result<Vec<notification::Notification>> {
-    let res = crate::rest::get::<notification::Notification>("notifications", page).await?;
+    let q = HashMap::new();
+    let res = crate::rest::get::<notification::Notification>("notifications", page, &q).await?;
     Ok(res)
 }
 

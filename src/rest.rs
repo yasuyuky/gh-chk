@@ -33,7 +33,7 @@ pub async fn get_page(url: &str, page: usize, q: &QueryMap) -> surf::Result<surf
     let mut query = HashMap::new();
     query.insert("page", page.to_string());
     query.insert("per_page", 100.to_string());
-    query.extend(q.iter().map(|(k, v)| (k.as_str(), v.clone())));
+    query.extend(q.iter().map(|(k, v)| (k.as_str(), v.clone()))); // skipcq: RS-A1009
     surf::get(url)
         .header("Authorization", format!("token {}", *TOKEN))
         .query(&query)?

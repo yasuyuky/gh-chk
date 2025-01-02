@@ -30,12 +30,6 @@ pub async fn get<T: DeserializeOwned>(
     res.body_json().await
 }
 
-#[derive(Serialize)]
-struct Query {
-    page: usize,
-    per_page: u8,
-}
-
 pub async fn get_page(url: &str, page: usize, q: &QueryMap) -> surf::Result<surf::Response> {
     let mut query = HashMap::new();
     query.insert("page", page.to_string());

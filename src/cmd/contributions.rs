@@ -67,8 +67,8 @@ fn print_text(res: &res::Res) -> surf::Result<()> {
         print!(" {:3} {:>5.2}", week_count, week_count / l);
         println!();
     }
-    println!("total contributions: {}", calendar.total_contributions);
-    println!("year to date: {}", year_to_date);
-    println!("month to date: {}", month_to_date);
+    println!("# total contributions: {}", calendar.total_contributions);
+    println!("# year to date: {}", year_to_date);
+    println!("# month to date: {}", month_to_date);
     Ok(())
 }

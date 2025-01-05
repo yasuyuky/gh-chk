@@ -1,4 +1,4 @@
-query ($login: String!, $from: DateTime)  {
+query ($login: String!, $from: DateTime) {
   user(login: $login) {
     contributionsCollection(from: $from) {
       contributionCalendar {
@@ -9,6 +9,7 @@ query ($login: String!, $from: DateTime)  {
           contributionDays {
             color
             contributionCount
+            date
           }
         }
       }

@@ -50,7 +50,7 @@ fn print_text(res: &res::Res) -> surf::Result<()> {
             print!("{} ", cnt.as_str().color("black").on_truecolor(r, g, b))
         }
         let l = week.contribution_days.len() as f64;
-        print!("{} {:>5.2}", week_count, week_count / l);
+        print!(" {:3} {:>5.2}", week_count, week_count / l);
         println!();
     }
     println!("total contributions: {}", calendar.total_contributions);

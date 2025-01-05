@@ -15,6 +15,7 @@ nestruct::nest! {
                             contribution_days: [{
                                 color: String,
                                 contribution_count: usize,
+                                date: String
                             }]
                         }]
                     }

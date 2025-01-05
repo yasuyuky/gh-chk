@@ -39,8 +39,7 @@ pub async fn check(user: Option<String>) -> surf::Result<()> {
 
 fn print_text(res: &res::Res) -> surf::Result<()> {
     let calendar = &res.data.user.contributions_collection.contribution_calendar;
-    let mut year_to_date = 0;
-    let mut month_to_date = 0;
+    let (mut year_to_date, mut month_to_date) = (0, 0);
     let this_week = calendar.weeks.last().unwrap();
     let today = this_week.contribution_days.last().unwrap().date.clone();
     let today_year = today.chars().take(4).collect::<String>();

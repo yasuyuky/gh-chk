@@ -12,7 +12,7 @@ serde_json = "1.0.140"
 surf = "2.3.2"
 colored = "3.0.0"
 toml = "0.8.20"
-once_cell = "1.21.0"
+once_cell = "1.21.1"
 read_input = "0.8.6"
 nestruct = "0.1.0"
 time = { version = "0.3.39", features = ["serde", "serde-well-known"] }

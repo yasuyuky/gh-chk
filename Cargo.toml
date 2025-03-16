@@ -1,6 +1,6 @@
 [package]
 authors = ["yasuyuky <yasuyuki.ymd@gmail.com>"]
-edition = "2018"
+edition = "2021"
 name = "gh-chk"
 version = "0.3.0"
 rust-version = "1.85.0"

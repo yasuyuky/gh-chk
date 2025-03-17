@@ -21,4 +21,4 @@ serde_yaml = "0.9.34"
 
 [dependencies.async-std]
 features = ["attributes"]
-version = "1.13.0"
+version = "1.13.1"

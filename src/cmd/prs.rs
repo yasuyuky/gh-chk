@@ -13,19 +13,7 @@ nestruct::nest! {
                 number: usize,
                 title: String,
                 url: String,
-                merge_state_status:
-                    #[nestruct(reset)]
-                    #[derive(serde::Serialize, serde::Deserialize, Debug)]
-                    #[serde(rename_all = "SCREAMING_SNAKE_CASE")] {
-                    Behind,
-                    Blocked,
-                    Clean,
-                    Dirty,
-                    Draft,
-                    HasHooks,
-                    Unknown,
-                    Unstable,
-                },
+                merge_state_status: crate::cmd::prs::MergeStateStatus,
             }]
         }
     }

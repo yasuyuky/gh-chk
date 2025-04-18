@@ -13,19 +13,7 @@ nestruct::nest! {
                 number: usize,
                 title: String,
                 url: String,
-                merge_state_status:
-                    #[nestruct(reset)]
-                    #[derive(serde::Serialize, serde::Deserialize, Debug)]
-                    #[serde(rename_all = "SCREAMING_SNAKE_CASE")] {
-                    Behind,
-                    Blocked,
-                    Clean,
-                    Dirty,
-                    Draft,
-                    HasHooks,
-                    Unknown,
-                    Unstable,
-                },
+                merge_state_status: crate::cmd::prs::MergeStateStatus,
             }]
         }
     }
@@ -70,7 +58,7 @@ impl Display for repository::pull_requests::nodes::Nodes {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 enum MergeStateStatus {
     Behind,
@@ -83,7 +71,7 @@ enum MergeStateStatus {
     Unstable,
 }
 
-impl repository::pull_requests::nodes::merge_state_status::MergeStateStatus {
+impl MergeStateStatus {
     fn to_emoji(&self) -> String {
         match self {
             Self::Behind => "⏩",

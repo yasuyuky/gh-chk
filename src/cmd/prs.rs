@@ -58,7 +58,7 @@ impl Display for repository::pull_requests::nodes::Nodes {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 enum MergeStateStatus {
     Behind,

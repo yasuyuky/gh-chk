@@ -71,7 +71,7 @@ enum MergeStateStatus {
     Unstable,
 }
 
-impl repository::pull_requests::nodes::merge_state_status::MergeStateStatus {
+impl MergeStateStatus {
     fn to_emoji(&self) -> String {
         match self {
             Self::Behind => "⏩",

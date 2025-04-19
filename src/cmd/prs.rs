@@ -10,6 +10,7 @@ nestruct::nest! {
         name: String,
         pull_requests: {
             nodes: [{
+                id: String,
                 number: usize,
                 title: String,
                 url: String,
@@ -101,7 +102,14 @@ impl MergeStateStatus {
     }
 }
 
-pub async fn check(slugs: Vec<String>) -> surf::Result<()> {
+async fn merge_pr(pr_id: &str) -> surf::Result<()> {
+    let v = json!({ "pullRequestId": pr_id });
+    let q = json!({ "query": include_str!("../query/merge.pr.graphql"), "variables": v });
+    crate::graphql::query::<serde_json::Value>(&q).await?;
+    Ok(())
+}
+
+pub async fn check(slugs: Vec<String>, merge: bool) -> surf::Result<()> {
     let slugs = if slugs.is_empty() {
         vec![crate::cmd::viewer::get().await?]
     } else {
@@ -111,26 +119,26 @@ pub async fn check(slugs: Vec<String>) -> surf::Result<()> {
         println!("{}", slug.bright_blue());
         let vs: Vec<String> = slug.split('/').map(String::from).collect();
         match vs.len() {
-            1 => check_owner(&vs[0]).await?,
-            2 => check_repo(&vs[0], &vs[1]).await?,
+            1 => check_owner(&vs[0], merge).await?,
+            2 => check_repo(&vs[0], &vs[1], merge).await?,
             _ => panic!("unknown slug format"),
         }
     }
     Ok(())
 }
 
-async fn check_owner(owner: &str) -> surf::Result<()> {
+async fn check_owner(owner: &str, merge: bool) -> surf::Result<()> {
     let v = json!({ "login": owner });
     let q = json!({ "query": include_str!("../query/prs.graphql"), "variables": v });
     let res = crate::graphql::query::<res::Res>(&q).await?;
     match crate::config::FORMAT.get() {
         Some(&crate::config::Format::Json) => println!("{}", serde_json::to_string_pretty(&res)?),
-        _ => print_owner_text(&res),
+        _ => print_owner_text(&res, merge).await?,
     }
     Ok(())
 }
 
-fn print_owner_text(res: &res::Res) {
+async fn print_owner_text(res: &res::Res, merge: bool) -> surf::Result<()> {
     let mut count = 0usize;
     for repo in &res.data.repository_owner.repositories.nodes {
         if repo.pull_requests.nodes.is_empty() {
@@ -140,27 +148,39 @@ fn print_owner_text(res: &res::Res) {
         for pr in &repo.pull_requests.nodes {
             count += 1;
             println!("{pr}");
+            if merge && pr.merge_state_status == MergeStateStatus::Clean {
+                println!("🔄 Merging PR #{}", pr.number);
+                merge_pr(&pr.id).await?;
+                println!("✅ Merged PR #{}", pr.number);
+            }
         }
     }
     println!("Count of PRs: {count}");
+    Ok(())
 }
 
-async fn check_repo(owner: &str, name: &str) -> surf::Result<()> {
+async fn check_repo(owner: &str, name: &str, merge: bool) -> surf::Result<()> {
     let v = json!({ "login": owner, "name": name });
     let q = json!({ "query": include_str!("../query/prs.repo.graphql"), "variables": v });
     let res = crate::graphql::query::<repo_res::RepoRes>(&q).await?;
     match crate::config::FORMAT.get() {
         Some(&crate::config::Format::Json) => println!("{}", serde_json::to_string_pretty(&res)?),
-        _ => print_repo_text(&res),
+        _ => print_repo_text(&res, merge).await?,
     }
     Ok(())
 }
 
-fn print_repo_text(res: &repo_res::RepoRes) {
+async fn print_repo_text(res: &repo_res::RepoRes, merge: bool) -> surf::Result<()> {
     let mut count = 0usize;
     for pr in &res.data.repository_owner.repository.pull_requests.nodes {
         count += 1;
         println!("{pr}");
+        if merge && pr.merge_state_status == MergeStateStatus::Clean {
+            println!("🔄 Merging PR #{}", pr.number);
+            merge_pr(&pr.id).await?;
+            println!("✅ Merged PR #{}", pr.number);
+        }
     }
     println!("Count of PRs: {count}");
+    Ok(())
 }

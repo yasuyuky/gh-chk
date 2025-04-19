@@ -5,6 +5,7 @@ query ($login: String!) {
         name
         pullRequests(first: 100, states: OPEN) {
           nodes {
+            id
             number
             title
             url

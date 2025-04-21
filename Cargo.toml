@@ -16,7 +16,7 @@ once_cell = "1.21.3"
 read_input = "0.8.6"
 nestruct = "0.1.0"
 time = { version = "0.3.41", features = ["serde", "serde-well-known"] }
-clap = { version = "4.5.36", features = ["derive"] }
+clap = { version = "4.5.37", features = ["derive"] }
 serde_yaml = "0.9.34"
 
 [dependencies.async-std]

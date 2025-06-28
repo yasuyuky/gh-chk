@@ -1,0 +1,24 @@
+{
+  "data": {
+    "repositoryOwner": {
+      "repositories": {
+        "nodes": [
+          {
+            "name": "repo1",
+            "pullRequests": {
+              "nodes": [
+                {
+                  "id": "PRID1",
+                  "number": 1,
+                  "title": "Test PR",
+                  "url": "http://example.com/pr1",
+                  "mergeStateStatus": "CLEAN"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  }
+}

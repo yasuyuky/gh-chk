@@ -1,0 +1,22 @@
+{
+  "data": {
+    "repositoryOwner": {
+      "repositories": {
+        "nodes": [
+          {
+            "name": "repo1",
+            "issues": {
+              "nodes": [
+                {
+                  "number": 1,
+                  "title": "Test Issue",
+                  "url": "http://example.com/issue1"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  }
+}

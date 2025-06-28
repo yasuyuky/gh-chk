@@ -1,0 +1,25 @@
+use std::process::Command;
+
+fn run_cmd(args: &[&str], data: &str) -> String {
+    let output = Command::new("cargo")
+        .args(["run", "--quiet", "--"])
+        .args(args)
+        .env("NO_COLOR", "1")
+        .env("GH_CHK_MOCK_FILE", format!("tests/data/{data}"))
+        .output()
+        .expect("run command");
+    assert!(output.status.success(), "command failed: {:?}", output);
+    String::from_utf8_lossy(&output.stdout).to_string()
+}
+
+#[test]
+fn prs_output() {
+    let out = run_cmd(&["-f", "json", "prs", "foo"], "prs.json");
+    assert!(out.contains("\"mergeStateStatus\": \"CLEAN\""));
+}
+
+#[test]
+fn issues_output() {
+    let out = run_cmd(&["-f", "json", "issues", "foo"], "issues.json");
+    assert!(out.contains("Test Issue"));
+}

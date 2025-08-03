@@ -23,6 +23,8 @@ enum Command {
         slug: Vec<String>,
         #[clap(long)]
         merge: bool,
+        #[clap(long)]
+        tui: bool,
     },
     /// Show issues of the repository or user
     Issues { slug: Vec<String> },
@@ -72,7 +74,7 @@ async fn main() -> surf::Result<()> {
     let opt = Opt::parse();
     config::FORMAT.set(opt.format).expect("set format");
     match opt.command {
-        Command::Prs { slug, merge } => cmd::prs::check(slug, merge).await?,
+        Command::Prs { slug, merge, tui } => cmd::prs::check(slug, merge, tui).await?,
         Command::Issues { slug } => cmd::issues::check(slug).await?,
         Command::Contributions { user } => cmd::contributions::check(user).await?,
         Command::Notifications { read } => cmd::notifications::list(read).await?,

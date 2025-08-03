@@ -1,7 +1,21 @@
 use colored::Colorize;
+use crossterm::{
+    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
+    execute,
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
+};
+use ratatui::{
+    Frame, Terminal,
+    backend::CrosstermBackend,
+    layout::{Constraint, Direction, Layout},
+    style::{Color, Modifier, Style},
+    text::{Line, Span},
+    widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap},
+};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::fmt::Display;
+use std::io;
 
 nestruct::nest! {
     #[derive(serde::Serialize, serde::Deserialize, Debug)]
@@ -59,7 +73,7 @@ impl Display for repository::pull_requests::nodes::Nodes {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 enum MergeStateStatus {
     Behind,
@@ -183,4 +197,277 @@ async fn print_repo_text(res: &repo_res::RepoRes, merge: bool) -> surf::Result<(
     }
     println!("Count of PRs: {count}");
     Ok(())
+}
+
+#[derive(Debug, Clone)]
+struct PrData {
+    pub id: String,
+    pub number: usize,
+    pub title: String,
+    pub url: String,
+    pub repo_name: String,
+    pub merge_state_status: MergeStateStatus,
+}
+
+impl PrData {
+    pub fn display_line(&self) -> String {
+        format!(
+            "{} {} {} {}",
+            format!("#{}", self.number),
+            self.merge_state_status.to_emoji(),
+            self.repo_name,
+            self.title
+        )
+    }
+
+    pub fn get_color(&self) -> Color {
+        match self.merge_state_status {
+            MergeStateStatus::Behind => Color::Yellow,
+            MergeStateStatus::Blocked => Color::Red,
+            MergeStateStatus::Clean => Color::Green,
+            MergeStateStatus::Dirty => Color::Yellow,
+            MergeStateStatus::Draft => Color::White,
+            MergeStateStatus::HasHooks => Color::Yellow,
+            MergeStateStatus::Unknown => Color::Magenta,
+            MergeStateStatus::Unstable => Color::Yellow,
+        }
+    }
+}
+
+async fn fetch_owner_prs(owner: &str) -> surf::Result<Vec<PrData>> {
+    let v = json!({ "login": owner });
+    let q = json!({ "query": include_str!("../query/prs.graphql"), "variables": v });
+    let res = crate::graphql::query::<res::Res>(&q).await?;
+
+    let mut prs = Vec::new();
+    for repo in &res.data.repository_owner.repositories.nodes {
+        for pr in &repo.pull_requests.nodes {
+            prs.push(PrData {
+                id: pr.id.clone(),
+                number: pr.number,
+                title: pr.title.clone(),
+                url: pr.url.clone(),
+                repo_name: repo.name.clone(),
+                merge_state_status: pr.merge_state_status.clone(),
+            });
+        }
+    }
+    Ok(prs)
+}
+
+async fn fetch_repo_prs(owner: &str, name: &str) -> surf::Result<Vec<PrData>> {
+    let v = json!({ "login": owner, "name": name });
+    let q = json!({ "query": include_str!("../query/prs.repo.graphql"), "variables": v });
+    let res = crate::graphql::query::<repo_res::RepoRes>(&q).await?;
+
+    let mut prs = Vec::new();
+    for pr in &res.data.repository_owner.repository.pull_requests.nodes {
+        prs.push(PrData {
+            id: pr.id.clone(),
+            number: pr.number,
+            title: pr.title.clone(),
+            url: pr.url.clone(),
+            repo_name: name.to_string(),
+            merge_state_status: pr.merge_state_status.clone(),
+        });
+    }
+    Ok(prs)
+}
+
+struct App {
+    prs: Vec<PrData>,
+    list_state: ListState,
+    should_quit: bool,
+    status_message: Option<String>,
+}
+
+impl App {
+    fn new(prs: Vec<PrData>) -> App {
+        let mut list_state = ListState::default();
+        if !prs.is_empty() {
+            list_state.select(Some(0));
+        }
+        App {
+            prs,
+            list_state,
+            should_quit: false,
+            status_message: None,
+        }
+    }
+
+    fn next(&mut self) {
+        if self.prs.is_empty() {
+            return;
+        }
+        let i = match self.list_state.selected() {
+            Some(i) => {
+                if i >= self.prs.len() - 1 {
+                    0
+                } else {
+                    i + 1
+                }
+            }
+            None => 0,
+        };
+        self.list_state.select(Some(i));
+    }
+
+    fn previous(&mut self) {
+        if self.prs.is_empty() {
+            return;
+        }
+        let i = match self.list_state.selected() {
+            Some(i) => {
+                if i == 0 {
+                    self.prs.len() - 1
+                } else {
+                    i - 1
+                }
+            }
+            None => 0,
+        };
+        self.list_state.select(Some(i));
+    }
+
+    fn get_selected_pr(&self) -> Option<&PrData> {
+        if let Some(i) = self.list_state.selected() {
+            self.prs.get(i)
+        } else {
+            None
+        }
+    }
+
+    async fn merge_selected(&mut self) {
+        if let Some(pr) = self.get_selected_pr().cloned() {
+            if pr.merge_state_status == MergeStateStatus::Clean {
+                self.status_message = Some(format!("Merging PR #{}...", pr.number));
+                match merge_pr(&pr.id).await {
+                    Ok(_) => {
+                        self.status_message = Some(format!("✅ Merged PR #{}", pr.number));
+                    }
+                    Err(e) => {
+                        self.status_message =
+                            Some(format!("❌ Failed to merge PR #{}: {}", pr.number, e));
+                    }
+                }
+            } else {
+                self.status_message = Some(format!(
+                    "Cannot merge PR #{}: not in clean state",
+                    pr.number
+                ));
+            }
+        }
+    }
+
+    fn open_url(&self) {
+        if let Some(pr) = self.get_selected_pr() {
+            if let Err(e) = open::that(&pr.url) {
+                eprintln!("Failed to open URL: {}", e);
+            }
+        }
+    }
+}
+
+fn run_tui(prs: Vec<PrData>) -> Result<(), Box<dyn std::error::Error>> {
+    enable_raw_mode()?;
+    let mut stdout = io::stdout();
+    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+    let backend = CrosstermBackend::new(stdout);
+    let mut terminal = Terminal::new(backend)?;
+
+    let mut app = App::new(prs);
+    let res = async_std::task::block_on(run_app(&mut terminal, &mut app));
+
+    disable_raw_mode()?;
+    execute!(
+        terminal.backend_mut(),
+        LeaveAlternateScreen,
+        DisableMouseCapture
+    )?;
+    terminal.show_cursor()?;
+
+    if let Err(err) = res {
+        println!("{:?}", err)
+    }
+
+    Ok(())
+}
+
+async fn run_app(
+    terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
+    app: &mut App,
+) -> io::Result<()> {
+    loop {
+        terminal.draw(|f| ui(f, app))?;
+
+        if event::poll(std::time::Duration::from_millis(100))? {
+            if let Event::Key(key) = event::read()? {
+                match key.code {
+                    KeyCode::Char('q') => {
+                        app.should_quit = true;
+                    }
+                    KeyCode::Down | KeyCode::Char('j') => {
+                        app.next();
+                    }
+                    KeyCode::Up | KeyCode::Char('k') => {
+                        app.previous();
+                    }
+                    KeyCode::Enter | KeyCode::Char('o') => {
+                        app.open_url();
+                    }
+                    KeyCode::Char('m') => {
+                        app.merge_selected().await;
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        if app.should_quit {
+            break;
+        }
+    }
+    Ok(())
+}
+
+fn ui(f: &mut Frame, app: &mut App) {
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(0), Constraint::Length(3)].as_ref())
+        .split(f.area());
+
+    let items: Vec<ListItem> = app
+        .prs
+        .iter()
+        .map(|pr| {
+            let line = pr.display_line();
+            ListItem::new(Line::from(Span::styled(
+                line,
+                Style::default().fg(pr.get_color()),
+            )))
+        })
+        .collect();
+
+    let items = List::new(items)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Pull Requests"),
+        )
+        .highlight_style(Style::default().add_modifier(Modifier::BOLD))
+        .highlight_symbol(">> ");
+
+    f.render_stateful_widget(items, chunks[0], &mut app.list_state);
+
+    let help_text = if let Some(ref msg) = app.status_message {
+        msg.clone()
+    } else {
+        "Press 'q' to quit, 'j/k' or ↑/↓ to navigate, 'Enter' or 'o' to open in browser, 'm' to merge (if clean)".to_string()
+    };
+
+    let help = Paragraph::new(help_text)
+        .block(Block::default().borders(Borders::ALL).title("Help"))
+        .wrap(Wrap { trim: true });
+
+    f.render_widget(help, chunks[1]);
 }

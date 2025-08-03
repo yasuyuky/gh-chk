@@ -123,19 +123,44 @@ async fn merge_pr(pr_id: &str) -> surf::Result<()> {
     Ok(())
 }
 
-pub async fn check(slugs: Vec<String>, merge: bool) -> surf::Result<()> {
+pub async fn check(slugs: Vec<String>, merge: bool, tui: bool) -> surf::Result<()> {
     let slugs = if slugs.is_empty() {
         vec![crate::cmd::viewer::get().await?]
     } else {
         slugs
     };
-    for slug in slugs {
-        println!("{}", slug.bright_blue());
-        let vs: Vec<String> = slug.split('/').map(String::from).collect();
-        match vs.len() {
-            1 => check_owner(&vs[0], merge).await?,
-            2 => check_repo(&vs[0], &vs[1], merge).await?,
-            _ => panic!("unknown slug format"),
+
+    if tui {
+        let mut all_prs = Vec::new();
+        for slug in slugs {
+            let vs: Vec<String> = slug.split('/').map(String::from).collect();
+            match vs.len() {
+                1 => {
+                    let prs = fetch_owner_prs(&vs[0]).await?;
+                    all_prs.extend(prs);
+                }
+                2 => {
+                    let prs = fetch_repo_prs(&vs[0], &vs[1]).await?;
+                    all_prs.extend(prs);
+                }
+                _ => panic!("unknown slug format"),
+            }
+        }
+        run_tui(all_prs).map_err(|e| {
+            surf::Error::from_str(
+                surf::StatusCode::InternalServerError,
+                format!("TUI error: {}", e),
+            )
+        })?;
+    } else {
+        for slug in slugs {
+            println!("{}", slug.bright_blue());
+            let vs: Vec<String> = slug.split('/').map(String::from).collect();
+            match vs.len() {
+                1 => check_owner(&vs[0], merge).await?,
+                2 => check_repo(&vs[0], &vs[1], merge).await?,
+                _ => panic!("unknown slug format"),
+            }
         }
     }
     Ok(())

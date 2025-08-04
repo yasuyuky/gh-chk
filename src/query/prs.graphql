@@ -10,6 +10,18 @@ query ($login: String!) {
             title
             url
             mergeStateStatus
+            reviewRequests(first: 10) {
+              nodes {
+                requestedReviewer {
+                  ... on User {
+                    login
+                  }
+                  ... on Team {
+                    name
+                  }
+                }
+              }
+            }
           }
         }
       }

@@ -17,6 +17,32 @@ use serde_json::json;
 use std::fmt::Display;
 use std::io;
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(untagged)]
+enum RequestedReviewer {
+    User { login: String },
+    Team { name: String },
+}
+
+impl std::fmt::Display for RequestedReviewer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RequestedReviewer::User { login } => write!(f, "{}", login),
+            RequestedReviewer::Team { name } => write!(f, "team:{}", name),
+        }
+    }
+}
+
+fn extract_reviewer_names(
+    review_requests: &repository::pull_requests::nodes::review_requests::ReviewRequests,
+) -> Vec<String> {
+    review_requests
+        .nodes
+        .iter()
+        .filter_map(|node| node.requested_reviewer.as_ref().map(ToString::to_string))
+        .collect()
+}
+
 nestruct::nest! {
     #[derive(serde::Serialize, serde::Deserialize, Debug)]
     #[serde(rename_all = "camelCase")]
@@ -29,6 +55,11 @@ nestruct::nest! {
                 title: String,
                 url: String,
                 merge_state_status: crate::cmd::prs::MergeStateStatus,
+                review_requests: {
+                    nodes: [{
+                        requested_reviewer: Option<crate::cmd::prs::RequestedReviewer>,
+                    }]
+                }
             }]
         }
     }

@@ -263,16 +263,23 @@ struct PrData {
     pub url: String,
     pub slug: String,
     pub merge_state_status: MergeStateStatus,
+    pub reviewers: Vec<String>,
 }
 
 impl PrData {
     pub fn display_line(&self) -> String {
+        let reviewers_str = if self.reviewers.is_empty() {
+            String::new()
+        } else {
+            format!(" 👥 {}", self.reviewers.join(", "))
+        };
         format!(
-            "{} {} {} {}",
+            "{} {} {} {}{}",
             format!("#{}", self.number),
             self.merge_state_status.to_emoji(),
             self.slug,
-            self.title
+            self.title,
+            reviewers_str
         )
     }
 
@@ -305,6 +312,7 @@ async fn fetch_owner_prs(owner: &str) -> surf::Result<Vec<PrData>> {
                 url: pr.url.clone(),
                 slug: format!("{}/{}", owner, repo.name),
                 merge_state_status: pr.merge_state_status.clone(),
+                reviewers: extract_reviewer_names(&pr.review_requests),
             });
         }
     }
@@ -325,6 +333,7 @@ async fn fetch_repo_prs(owner: &str, name: &str) -> surf::Result<Vec<PrData>> {
             url: pr.url.clone(),
             slug: format!("{}/{}", owner, name),
             merge_state_status: pr.merge_state_status.clone(),
+            reviewers: extract_reviewer_names(&pr.review_requests),
         });
     }
     Ok(prs)

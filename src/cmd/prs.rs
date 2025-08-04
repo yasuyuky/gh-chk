@@ -230,7 +230,7 @@ struct PrData {
     pub number: usize,
     pub title: String,
     pub url: String,
-    pub repo_name: String,
+    pub slug: String,
     pub merge_state_status: MergeStateStatus,
 }
 
@@ -240,7 +240,7 @@ impl PrData {
             "{} {} {} {}",
             format!("#{}", self.number),
             self.merge_state_status.to_emoji(),
-            self.repo_name,
+            self.slug,
             self.title
         )
     }
@@ -272,7 +272,7 @@ async fn fetch_owner_prs(owner: &str) -> surf::Result<Vec<PrData>> {
                 number: pr.number,
                 title: pr.title.clone(),
                 url: pr.url.clone(),
-                repo_name: repo.name.clone(),
+                slug: format!("{}/{}", owner, repo.name),
                 merge_state_status: pr.merge_state_status.clone(),
             });
         }
@@ -292,7 +292,7 @@ async fn fetch_repo_prs(owner: &str, name: &str) -> surf::Result<Vec<PrData>> {
             number: pr.number,
             title: pr.title.clone(),
             url: pr.url.clone(),
-            repo_name: name.to_string(),
+            slug: format!("{}/{}", owner, name),
             merge_state_status: pr.merge_state_status.clone(),
         });
     }

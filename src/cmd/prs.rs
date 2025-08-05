@@ -403,23 +403,34 @@ impl App {
     }
 
     async fn merge_selected(&mut self) {
-        if let Some(pr) = self.get_selected_pr().cloned() {
-            if pr.merge_state_status == MergeStateStatus::Clean {
-                self.status_message = Some(format!("Merging PR #{}...", pr.number));
-                match merge_pr(&pr.id).await {
-                    Ok(_) => {
-                        self.status_message = Some(format!("✅ Merged PR #{}", pr.number));
+        if let Some(selected_index) = self.list_state.selected() {
+            if let Some(pr) = self.prs.get(selected_index).cloned() {
+                if pr.merge_state_status == MergeStateStatus::Clean {
+                    self.status_message = Some(format!("Merging PR #{}...", pr.number));
+                    match merge_pr(&pr.id).await {
+                        Ok(_) => {
+                            self.status_message = Some(format!("✅ Merged PR #{}", pr.number));
+                            // Remove the merged PR from the list
+                            self.prs.remove(selected_index);
+                            // Adjust selection after removal
+                            if self.prs.is_empty() {
+                                self.list_state.select(None);
+                            } else if selected_index >= self.prs.len() {
+                                self.list_state.select(Some(self.prs.len() - 1));
+                            }
+                            // Keep the current selection index if it's still valid
+                        }
+                        Err(e) => {
+                            self.status_message =
+                                Some(format!("❌ Failed to merge PR #{}: {}", pr.number, e));
+                        }
                     }
-                    Err(e) => {
-                        self.status_message =
-                            Some(format!("❌ Failed to merge PR #{}: {}", pr.number, e));
-                    }
+                } else {
+                    self.status_message = Some(format!(
+                        "Cannot merge PR #{}: not in clean state",
+                        pr.number
+                    ));
                 }
-            } else {
-                self.status_message = Some(format!(
-                    "Cannot merge PR #{}: not in clean state",
-                    pr.number
-                ));
             }
         }
     }

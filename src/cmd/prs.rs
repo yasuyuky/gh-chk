@@ -17,6 +17,32 @@ use serde_json::json;
 use std::fmt::Display;
 use std::io;
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(untagged)]
+enum RequestedReviewer {
+    User { login: String },
+    Team { name: String },
+}
+
+impl std::fmt::Display for RequestedReviewer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RequestedReviewer::User { login } => write!(f, "{}", login),
+            RequestedReviewer::Team { name } => write!(f, "team:{}", name),
+        }
+    }
+}
+
+fn extract_reviewer_names(
+    review_requests: &repository::pull_requests::nodes::review_requests::ReviewRequests,
+) -> Vec<String> {
+    review_requests
+        .nodes
+        .iter()
+        .filter_map(|node| node.requested_reviewer.as_ref().map(ToString::to_string))
+        .collect()
+}
+
 nestruct::nest! {
     #[derive(serde::Serialize, serde::Deserialize, Debug)]
     #[serde(rename_all = "camelCase")]
@@ -29,6 +55,11 @@ nestruct::nest! {
                 title: String,
                 url: String,
                 merge_state_status: crate::cmd::prs::MergeStateStatus,
+                review_requests: {
+                    nodes: [{
+                        requested_reviewer: Option<crate::cmd::prs::RequestedReviewer>,
+                    }]
+                }
             }]
         }
     }
@@ -116,6 +147,12 @@ impl MergeStateStatus {
     }
 }
 
+#[derive(Debug, Clone)]
+enum SlugSpec {
+    Owner(String),
+    Repo { owner: String, name: String },
+}
+
 async fn merge_pr(pr_id: &str) -> surf::Result<()> {
     let v = json!({ "pullRequestId": pr_id });
     let q = json!({ "query": include_str!("../query/merge.pr.graphql"), "variables": v });
@@ -131,22 +168,29 @@ pub async fn check(slugs: Vec<String>, merge: bool, tui: bool) -> surf::Result<(
     };
 
     if tui {
+        // Build slug specs and initial PR list
+        let mut specs: Vec<SlugSpec> = Vec::new();
         let mut all_prs = Vec::new();
-        for slug in slugs {
+        for slug in slugs.clone() {
             let vs: Vec<String> = slug.split('/').map(String::from).collect();
             match vs.len() {
                 1 => {
+                    specs.push(SlugSpec::Owner(vs[0].clone()));
                     let prs = fetch_owner_prs(&vs[0]).await?;
                     all_prs.extend(prs);
                 }
                 2 => {
+                    specs.push(SlugSpec::Repo {
+                        owner: vs[0].clone(),
+                        name: vs[1].clone(),
+                    });
                     let prs = fetch_repo_prs(&vs[0], &vs[1]).await?;
                     all_prs.extend(prs);
                 }
                 _ => panic!("unknown slug format"),
             }
         }
-        run_tui(all_prs).map_err(|e| {
+        run_tui(all_prs, specs).map_err(|e| {
             surf::Error::from_str(
                 surf::StatusCode::InternalServerError,
                 format!("TUI error: {}", e),
@@ -230,18 +274,25 @@ struct PrData {
     pub number: usize,
     pub title: String,
     pub url: String,
-    pub repo_name: String,
+    pub slug: String,
     pub merge_state_status: MergeStateStatus,
+    pub reviewers: Vec<String>,
 }
 
 impl PrData {
     pub fn display_line(&self) -> String {
+        let reviewers_str = if self.reviewers.is_empty() {
+            String::default()
+        } else {
+            format!(" 👥 {}", self.reviewers.join(", "))
+        };
         format!(
-            "{} {} {} {}",
+            "{} {} {} {}{}",
             format!("#{}", self.number),
             self.merge_state_status.to_emoji(),
-            self.repo_name,
-            self.title
+            self.slug,
+            self.title,
+            reviewers_str
         )
     }
 
@@ -272,8 +323,9 @@ async fn fetch_owner_prs(owner: &str) -> surf::Result<Vec<PrData>> {
                 number: pr.number,
                 title: pr.title.clone(),
                 url: pr.url.clone(),
-                repo_name: repo.name.clone(),
+                slug: format!("{}/{}", owner, repo.name),
                 merge_state_status: pr.merge_state_status.clone(),
+                reviewers: extract_reviewer_names(&pr.review_requests),
             });
         }
     }
@@ -292,8 +344,9 @@ async fn fetch_repo_prs(owner: &str, name: &str) -> surf::Result<Vec<PrData>> {
             number: pr.number,
             title: pr.title.clone(),
             url: pr.url.clone(),
-            repo_name: name.to_string(),
+            slug: format!("{}/{}", owner, name),
             merge_state_status: pr.merge_state_status.clone(),
+            reviewers: extract_reviewer_names(&pr.review_requests),
         });
     }
     Ok(prs)
@@ -304,10 +357,11 @@ struct App {
     list_state: ListState,
     should_quit: bool,
     status_message: Option<String>,
+    specs: Vec<SlugSpec>,
 }
 
 impl App {
-    fn new(prs: Vec<PrData>) -> App {
+    fn new(prs: Vec<PrData>, specs: Vec<SlugSpec>) -> App {
         let mut list_state = ListState::default();
         if !prs.is_empty() {
             list_state.select(Some(0));
@@ -317,6 +371,7 @@ impl App {
             list_state,
             should_quit: false,
             status_message: None,
+            specs,
         }
     }
 
@@ -363,23 +418,38 @@ impl App {
     }
 
     async fn merge_selected(&mut self) {
-        if let Some(pr) = self.get_selected_pr().cloned() {
-            if pr.merge_state_status == MergeStateStatus::Clean {
-                self.status_message = Some(format!("Merging PR #{}...", pr.number));
-                match merge_pr(&pr.id).await {
-                    Ok(_) => {
-                        self.status_message = Some(format!("✅ Merged PR #{}", pr.number));
+        if let Some(selected_index) = self.list_state.selected() {
+            if let Some(pr) = self.prs.get(selected_index).cloned() {
+                if pr.merge_state_status == MergeStateStatus::Clean {
+                    self.status_message =
+                        Some(format!("Merging PR #{} in {}...", pr.number, pr.slug));
+                    match merge_pr(&pr.id).await {
+                        Ok(_) => {
+                            self.status_message =
+                                Some(format!("✅ Merged PR #{} in {}", pr.number, pr.slug));
+                            // Remove the merged PR from the list
+                            self.prs.remove(selected_index);
+                            // Adjust selection after removal
+                            if self.prs.is_empty() {
+                                self.list_state.select(None);
+                            } else if selected_index >= self.prs.len() {
+                                self.list_state.select(Some(self.prs.len() - 1));
+                            }
+                            // Keep the current selection index if it's still valid
+                        }
+                        Err(e) => {
+                            self.status_message = Some(format!(
+                                "❌ Failed to merge PR #{} in {}: {}",
+                                pr.number, pr.slug, e
+                            ));
+                        }
                     }
-                    Err(e) => {
-                        self.status_message =
-                            Some(format!("❌ Failed to merge PR #{}: {}", pr.number, e));
-                    }
+                } else {
+                    self.status_message = Some(format!(
+                        "Cannot merge PR #{} in {}: not in clean state",
+                        pr.number, pr.slug
+                    ));
                 }
-            } else {
-                self.status_message = Some(format!(
-                    "Cannot merge PR #{}: not in clean state",
-                    pr.number
-                ));
             }
         }
     }
@@ -391,16 +461,48 @@ impl App {
             }
         }
     }
+
+    async fn reload(&mut self) {
+        self.status_message = Some("🔄 Reloading...".to_string());
+        let mut new_list: Vec<PrData> = Vec::new();
+        let mut any_err: Option<String> = None;
+        for spec in self.specs.clone() {
+            match spec {
+                SlugSpec::Owner(owner) => match fetch_owner_prs(&owner).await {
+                    Ok(mut prs) => new_list.append(&mut prs),
+                    Err(e) => any_err = Some(format!("Failed to fetch {}: {}", owner, e)),
+                },
+                SlugSpec::Repo { owner, name } => match fetch_repo_prs(&owner, &name).await {
+                    Ok(mut prs) => new_list.append(&mut prs),
+                    Err(e) => any_err = Some(format!("Failed to fetch {}/{}: {}", owner, name, e)),
+                },
+            }
+        }
+        if let Some(err) = any_err {
+            self.status_message = Some(format!("❌ Reload error: {}", err));
+        } else {
+            // Preserve selection index as best effort
+            let sel = self.list_state.selected().unwrap_or(0);
+            self.prs = new_list;
+            if self.prs.is_empty() {
+                self.list_state.select(None);
+            } else {
+                let new_sel = sel.min(self.prs.len().saturating_sub(1));
+                self.list_state.select(Some(new_sel));
+            }
+            self.status_message = Some(format!("✅ Reloaded. {} PRs.", self.prs.len()));
+        }
+    }
 }
 
-fn run_tui(prs: Vec<PrData>) -> Result<(), Box<dyn std::error::Error>> {
+fn run_tui(prs: Vec<PrData>, specs: Vec<SlugSpec>) -> Result<(), Box<dyn std::error::Error>> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let mut app = App::new(prs);
+    let mut app = App::new(prs, specs);
     let res = async_std::task::block_on(run_app(&mut terminal, &mut app));
 
     disable_raw_mode()?;
@@ -442,6 +544,9 @@ async fn run_app(
                     }
                     KeyCode::Char('m') => {
                         app.merge_selected().await;
+                    }
+                    KeyCode::Char('r') => {
+                        app.reload().await;
                     }
                     _ => {}
                 }
@@ -487,7 +592,7 @@ fn ui(f: &mut Frame, app: &mut App) {
     let help_text = if let Some(ref msg) = app.status_message {
         msg.clone()
     } else {
-        "Press 'q' to quit, 'j/k' or ↑/↓ to navigate, 'Enter' or 'o' to open in browser, 'm' to merge (if clean)".to_string()
+        "Press 'q' to quit, 'j/k' or ↑/↓ to navigate, 'Enter' or 'o' to open in browser, 'm' to merge (if clean), 'r' to reload".to_string()
     };
 
     let help = Paragraph::new(help_text)

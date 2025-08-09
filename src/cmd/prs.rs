@@ -180,7 +180,10 @@ pub async fn check(slugs: Vec<String>, merge: bool, tui: bool) -> surf::Result<(
                     all_prs.extend(prs);
                 }
                 2 => {
-                    specs.push(SlugSpec::Repo { owner: vs[0].clone(), name: vs[1].clone() });
+                    specs.push(SlugSpec::Repo {
+                        owner: vs[0].clone(),
+                        name: vs[1].clone(),
+                    });
                     let prs = fetch_repo_prs(&vs[0], &vs[1]).await?;
                     all_prs.extend(prs);
                 }

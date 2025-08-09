@@ -406,10 +406,12 @@ impl App {
         if let Some(selected_index) = self.list_state.selected() {
             if let Some(pr) = self.prs.get(selected_index).cloned() {
                 if pr.merge_state_status == MergeStateStatus::Clean {
-                    self.status_message = Some(format!("Merging PR #{}...", pr.number));
+                    self.status_message =
+                        Some(format!("Merging PR #{} in {}...", pr.number, pr.slug));
                     match merge_pr(&pr.id).await {
                         Ok(_) => {
-                            self.status_message = Some(format!("✅ Merged PR #{}", pr.number));
+                            self.status_message =
+                                Some(format!("✅ Merged PR #{} in {}", pr.number, pr.slug));
                             // Remove the merged PR from the list
                             self.prs.remove(selected_index);
                             // Adjust selection after removal
@@ -421,14 +423,16 @@ impl App {
                             // Keep the current selection index if it's still valid
                         }
                         Err(e) => {
-                            self.status_message =
-                                Some(format!("❌ Failed to merge PR #{}: {}", pr.number, e));
+                            self.status_message = Some(format!(
+                                "❌ Failed to merge PR #{} in {}: {}",
+                                pr.number, pr.slug, e
+                            ));
                         }
                     }
                 } else {
                     self.status_message = Some(format!(
-                        "Cannot merge PR #{}: not in clean state",
-                        pr.number
+                        "Cannot merge PR #{} in {}: not in clean state",
+                        pr.number, pr.slug
                     ));
                 }
             }

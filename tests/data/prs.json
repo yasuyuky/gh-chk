@@ -12,7 +12,10 @@
                   "number": 1,
                   "title": "Test PR",
                   "url": "http://example.com/pr1",
-                  "mergeStateStatus": "CLEAN"
+                  "mergeStateStatus": "CLEAN",
+                  "reviewRequests": {
+                    "nodes": []
+                  }
                 }
               ]
             }

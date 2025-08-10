@@ -751,12 +751,16 @@ fn make_diff_text(diff: &str) -> Text {
         let styled = if line.starts_with("===") {
             Line::from(Span::styled(
                 line.to_string(),
-                Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
             ))
         } else if line.starts_with("@@") {
             Line::from(Span::styled(
                 line.to_string(),
-                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
             ))
         } else if line.starts_with('+') {
             Line::from(Span::styled(

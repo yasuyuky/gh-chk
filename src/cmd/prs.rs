@@ -14,9 +14,9 @@ use ratatui::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::collections::HashMap;
 use std::fmt::Display;
 use std::io;
-use std::collections::HashMap;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(untagged)]
@@ -503,7 +503,9 @@ impl App {
     }
 
     async fn maybe_prefetch_on_move(&mut self) {
-        if !self.preview_open { return; }
+        if !self.preview_open {
+            return;
+        }
         if let Some(pr) = self.get_selected_pr().cloned() {
             if !self.preview_cache.contains_key(&pr.id) {
                 let _ = self.load_preview_for(&pr).await;
@@ -669,12 +671,7 @@ fn ui(f: &mut Frame, app: &mut App) {
     if app.preview_open {
         let preview_text = if let Some(pr) = app.get_selected_pr() {
             match app.preview_cache.get(&pr.id) {
-                Some(body) => format!(
-                    "{}\n{}\n\n{}",
-                    pr.title,
-                    pr.url,
-                    body
-                ),
+                Some(body) => format!("{}\n{}\n\n{}", pr.title, pr.url, body),
                 None => "Loading preview...".to_string(),
             }
         } else {
@@ -684,7 +681,11 @@ fn ui(f: &mut Frame, app: &mut App) {
         let preview = Paragraph::new(preview_text)
             .block(Block::default().borders(Borders::ALL).title("Preview"))
             .wrap(Wrap { trim: false });
-        let area = if main_chunks.len() > 1 { main_chunks[1] } else { outer[0] };
+        let area = if main_chunks.len() > 1 {
+            main_chunks[1]
+        } else {
+            outer[0]
+        };
         f.render_widget(preview, area);
     }
 

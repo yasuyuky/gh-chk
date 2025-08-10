@@ -1,6 +1,7 @@
+use crate::rest;
 use colored::Colorize;
 use crossterm::{
-    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
+    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, MouseEventKind},
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
@@ -17,7 +18,6 @@ use serde_json::json;
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::io;
-use crate::rest;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(untagged)]
@@ -384,6 +384,8 @@ struct App {
     preview_cache: HashMap<String, String>,
     diff_cache: HashMap<String, String>,
     preview_mode: PreviewMode,
+    preview_scroll: u16,
+    preview_area_height: u16,
 }
 
 impl App {
@@ -402,6 +404,8 @@ impl App {
             preview_cache: HashMap::new(),
             diff_cache: HashMap::new(),
             preview_mode: PreviewMode::Body,
+            preview_scroll: 0,
+            preview_area_height: 0,
         }
     }
 
@@ -420,6 +424,7 @@ impl App {
             None => 0,
         };
         self.list_state.select(Some(i));
+        self.preview_scroll = 0;
     }
 
     fn previous(&mut self) {
@@ -437,6 +442,7 @@ impl App {
             None => 0,
         };
         self.list_state.select(Some(i));
+        self.preview_scroll = 0;
     }
 
     fn get_selected_pr(&self) -> Option<&PrData> {
@@ -499,6 +505,7 @@ impl App {
     async fn toggle_preview(&mut self) {
         self.preview_open = !self.preview_open;
         if self.preview_open {
+            self.preview_scroll = 0;
             // Ensure current selection's preview is loaded
             if let Some(pr) = self.get_selected_pr().cloned() {
                 if !self.preview_cache.contains_key(&pr.id) {
@@ -548,11 +555,16 @@ impl App {
         let files = fetch_pr_files(&owner, &name, pr.number).await?;
         let mut out = String::new();
         for f in files {
-            out.push_str(&format!("=== {} (+{}, -{}) ===\n", f.filename, f.additions, f.deletions));
+            out.push_str(&format!(
+                "=== {} (+{}, -{}) ===\n",
+                f.filename, f.additions, f.deletions
+            ));
             match f.patch {
                 Some(p) => {
                     out.push_str(&p);
-                    if !out.ends_with('\n') { out.push('\n'); }
+                    if !out.ends_with('\n') {
+                        out.push('\n');
+                    }
                 }
                 None => out.push_str("(no textual diff available)\n"),
             }
@@ -571,6 +583,7 @@ impl App {
         if !self.preview_open {
             self.preview_open = true;
         }
+        self.preview_scroll = 0;
         if let Some(pr) = self.get_selected_pr().cloned() {
             match mode {
                 PreviewMode::Body => {
@@ -584,6 +597,18 @@ impl App {
                     }
                 }
             }
+        }
+    }
+
+    fn scroll_preview_down(&mut self, n: u16) {
+        if self.preview_open {
+            self.preview_scroll = self.preview_scroll.saturating_add(n);
+        }
+    }
+
+    fn scroll_preview_up(&mut self, n: u16) {
+        if self.preview_open {
+            self.preview_scroll = self.preview_scroll.saturating_sub(n);
         }
     }
 
@@ -653,43 +678,63 @@ async fn run_app(
         terminal.draw(|f| ui(f, app))?;
 
         if event::poll(std::time::Duration::from_millis(100))? {
-            if let Event::Key(key) = event::read()? {
-                match key.code {
-                    KeyCode::Char('q') => {
-                        app.should_quit = true;
+            match event::read()? {
+                Event::Key(key) => {
+                    match key.code {
+                        KeyCode::Char('q') => {
+                            app.should_quit = true;
+                        }
+                        KeyCode::Down | KeyCode::Char('j') => {
+                            if app.preview_open {
+                                app.scroll_preview_down(1);
+                            } else {
+                                app.next();
+                                app.maybe_prefetch_on_move().await;
+                            }
+                        }
+                        KeyCode::Up | KeyCode::Char('k') => {
+                            if app.preview_open {
+                                app.scroll_preview_up(1);
+                            } else {
+                                app.previous();
+                                app.maybe_prefetch_on_move().await;
+                            }
+                        }
+                        KeyCode::Enter | KeyCode::Char('o') => {
+                            app.open_url();
+                        }
+                        KeyCode::Char('m') => {
+                            app.merge_selected().await;
+                        }
+                        KeyCode::Char('r') => {
+                            app.reload().await;
+                        }
+                        KeyCode::Char('p') => {
+                            app.toggle_preview().await;
+                        }
+                        KeyCode::Char('?') => {
+                            // Clear status to show the default help instructions again
+                            app.status_message = None;
+                        }
+                        KeyCode::Char('d') => {
+                            app.switch_preview_mode(PreviewMode::Diff).await;
+                        }
+                        KeyCode::Char('b') => {
+                            app.switch_preview_mode(PreviewMode::Body).await;
+                        }
+                        _ => {}
                     }
-                    KeyCode::Down | KeyCode::Char('j') => {
-                        app.next();
-                        app.maybe_prefetch_on_move().await;
+                }
+                Event::Mouse(m) => match m.kind {
+                    MouseEventKind::ScrollDown => {
+                        app.scroll_preview_down(3);
                     }
-                    KeyCode::Up | KeyCode::Char('k') => {
-                        app.previous();
-                        app.maybe_prefetch_on_move().await;
-                    }
-                    KeyCode::Enter | KeyCode::Char('o') => {
-                        app.open_url();
-                    }
-                    KeyCode::Char('m') => {
-                        app.merge_selected().await;
-                    }
-                    KeyCode::Char('r') => {
-                        app.reload().await;
-                    }
-                    KeyCode::Char('p') => {
-                        app.toggle_preview().await;
-                    }
-                    KeyCode::Char('?') => {
-                        // Clear status to show the default help instructions again
-                        app.status_message = None;
-                    }
-                    KeyCode::Char('d') => {
-                        app.switch_preview_mode(PreviewMode::Diff).await;
-                    }
-                    KeyCode::Char('b') => {
-                        app.switch_preview_mode(PreviewMode::Body).await;
+                    MouseEventKind::ScrollUp => {
+                        app.scroll_preview_up(3);
                     }
                     _ => {}
-                }
+                },
+                _ => {}
             }
         }
 
@@ -758,19 +803,30 @@ fn ui(f: &mut Frame, app: &mut App) {
 
         let preview = Paragraph::new(preview_text)
             .block(Block::default().borders(Borders::ALL).title("Preview"))
-            .wrap(Wrap { trim: false });
+            .wrap(Wrap { trim: false })
+            .scroll((app.preview_scroll, 0));
         let area = if main_chunks.len() > 1 {
             main_chunks[1]
         } else {
             outer[0]
         };
+        app.preview_area_height = area.height;
         f.render_widget(preview, area);
     }
 
     let help_text = if let Some(ref msg) = app.status_message {
         msg.clone()
     } else {
-        "Press 'q' quit • 'j/k' or ↑/↓ navigate • 'Enter'/'o' open • 'm' merge • 'r' reload • 'p' toggle pane • 'b' body • 'd' diff".to_string()
+        let base = "q:quit • ?:help • Enter/o:open • m:merge • r:reload • p:toggle • b:body • d:diff";
+        let nav = if app.preview_open {
+            // Implemented: j/k, ↑/↓ (scroll); mouse wheel scrolls faster
+            "j/k or ↑/↓:scroll • wheel:scroll"
+        } else {
+            // Implemented: j/k, ↑/↓ navigation in list
+            "j/k or ↑/↓:navigate"
+        };
+        let mode = match app.preview_mode { PreviewMode::Body => "Body", PreviewMode::Diff => "Diff" };
+        format!("{} • {} • mode:{}", base, nav, mode)
     };
 
     let help = Paragraph::new(help_text)

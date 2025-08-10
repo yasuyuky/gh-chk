@@ -678,6 +678,10 @@ async fn run_app(
                     KeyCode::Char('p') => {
                         app.toggle_preview().await;
                     }
+                    KeyCode::Char('?') => {
+                        // Clear status to show the default help instructions again
+                        app.status_message = None;
+                    }
                     KeyCode::Char('d') => {
                         app.switch_preview_mode(PreviewMode::Diff).await;
                     }

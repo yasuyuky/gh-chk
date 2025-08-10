@@ -10,7 +10,7 @@ use ratatui::{
     backend::CrosstermBackend,
     layout::{Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
-    text::{Line, Span},
+    text::{Line, Span, Text},
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap},
 };
 use serde::{Deserialize, Serialize};
@@ -745,6 +745,37 @@ async fn run_app(
     Ok(())
 }
 
+fn make_diff_text(diff: &str) -> Text {
+    let mut text = Text::default();
+    for line in diff.lines() {
+        let styled = if line.starts_with("===") {
+            Line::from(Span::styled(
+                line.to_string(),
+                Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+            ))
+        } else if line.starts_with("@@") {
+            Line::from(Span::styled(
+                line.to_string(),
+                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+            ))
+        } else if line.starts_with('+') {
+            Line::from(Span::styled(
+                line.to_string(),
+                Style::default().fg(Color::Green),
+            ))
+        } else if line.starts_with('-') {
+            Line::from(Span::styled(
+                line.to_string(),
+                Style::default().fg(Color::Red),
+            ))
+        } else {
+            Line::from(line.to_string())
+        };
+        text.lines.push(styled);
+    }
+    text
+}
+
 fn ui(f: &mut Frame, app: &mut App) {
     let outer = Layout::default()
         .direction(Direction::Vertical)
@@ -786,19 +817,27 @@ fn ui(f: &mut Frame, app: &mut App) {
 
     // Render preview panel if open
     if app.preview_open {
-        let preview_text = if let Some(pr) = app.get_selected_pr() {
+        let preview_text: Text = if let Some(pr) = app.get_selected_pr() {
             match app.preview_mode {
                 PreviewMode::Body => match app.preview_cache.get(&pr.id) {
-                    Some(body) => format!("{}\n{}\n\n{}", pr.title, pr.url, body),
-                    None => "Loading preview...".to_string(),
+                    Some(body) => Text::from(format!("{}\n{}\n\n{}", pr.title, pr.url, body)),
+                    None => Text::from("Loading preview..."),
                 },
                 PreviewMode::Diff => match app.diff_cache.get(&pr.id) {
-                    Some(diff) => format!("Diff for #{} {}\n\n{}", pr.number, pr.slug, diff),
-                    None => "Loading diff...".to_string(),
+                    Some(diff) => {
+                        // Prepend a header line for context
+                        let header = format!("Diff for #{} {}", pr.number, pr.slug);
+                        let mut text = Text::from(header);
+                        text.lines.push(Line::from(""));
+                        let mut colored = make_diff_text(diff);
+                        text.lines.append(&mut colored.lines);
+                        text
+                    }
+                    None => Text::from("Loading diff..."),
                 },
             }
         } else {
-            "No selection".to_string()
+            Text::from("No selection")
         };
 
         let preview = Paragraph::new(preview_text)

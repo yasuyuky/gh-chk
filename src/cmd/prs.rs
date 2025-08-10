@@ -17,6 +17,7 @@ use serde_json::json;
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::io;
+use crate::rest;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(untagged)]
@@ -367,6 +368,12 @@ async fn fetch_repo_prs(owner: &str, name: &str) -> surf::Result<Vec<PrData>> {
     Ok(prs)
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PreviewMode {
+    Body,
+    Diff,
+}
+
 struct App {
     prs: Vec<PrData>,
     list_state: ListState,
@@ -375,6 +382,8 @@ struct App {
     specs: Vec<SlugSpec>,
     preview_open: bool,
     preview_cache: HashMap<String, String>,
+    diff_cache: HashMap<String, String>,
+    preview_mode: PreviewMode,
 }
 
 impl App {
@@ -391,6 +400,8 @@ impl App {
             specs,
             preview_open: false,
             preview_cache: HashMap::new(),
+            diff_cache: HashMap::new(),
+            preview_mode: PreviewMode::Body,
         }
     }
 
@@ -510,6 +521,9 @@ impl App {
             if !self.preview_cache.contains_key(&pr.id) {
                 let _ = self.load_preview_for(&pr).await;
             }
+            if self.preview_mode == PreviewMode::Diff && !self.diff_cache.contains_key(&pr.id) {
+                let _ = self.load_diff_for(&pr).await;
+            }
         }
     }
 
@@ -523,6 +537,54 @@ impl App {
         self.preview_cache.insert(pr.id.clone(), body);
         self.status_message = Some(format!("✅ Loaded preview for #{}", pr.number));
         Ok(())
+    }
+
+    async fn load_diff_for(&mut self, pr: &PrData) -> surf::Result<()> {
+        self.status_message = Some(format!("🔎 Loading diff for #{}...", pr.number));
+        let (owner, name) = match pr.slug.split_once('/') {
+            Some((o, n)) => (o.to_string(), n.to_string()),
+            None => return Ok(()),
+        };
+        let files = fetch_pr_files(&owner, &name, pr.number).await?;
+        let mut out = String::new();
+        for f in files {
+            out.push_str(&format!("=== {} (+{}, -{}) ===\n", f.filename, f.additions, f.deletions));
+            match f.patch {
+                Some(p) => {
+                    out.push_str(&p);
+                    if !out.ends_with('\n') { out.push('\n'); }
+                }
+                None => out.push_str("(no textual diff available)\n"),
+            }
+            out.push('\n');
+        }
+        if out.is_empty() {
+            out = "No file changes found.".to_string();
+        }
+        self.diff_cache.insert(pr.id.clone(), out);
+        self.status_message = Some(format!("✅ Loaded diff for #{}", pr.number));
+        Ok(())
+    }
+
+    async fn switch_preview_mode(&mut self, mode: PreviewMode) {
+        self.preview_mode = mode;
+        if !self.preview_open {
+            self.preview_open = true;
+        }
+        if let Some(pr) = self.get_selected_pr().cloned() {
+            match mode {
+                PreviewMode::Body => {
+                    if !self.preview_cache.contains_key(&pr.id) {
+                        let _ = self.load_preview_for(&pr).await;
+                    }
+                }
+                PreviewMode::Diff => {
+                    if !self.diff_cache.contains_key(&pr.id) {
+                        let _ = self.load_diff_for(&pr).await;
+                    }
+                }
+            }
+        }
     }
 
     async fn reload(&mut self) {
@@ -616,6 +678,12 @@ async fn run_app(
                     KeyCode::Char('p') => {
                         app.toggle_preview().await;
                     }
+                    KeyCode::Char('d') => {
+                        app.switch_preview_mode(PreviewMode::Diff).await;
+                    }
+                    KeyCode::Char('b') => {
+                        app.switch_preview_mode(PreviewMode::Body).await;
+                    }
                     _ => {}
                 }
             }
@@ -670,9 +738,15 @@ fn ui(f: &mut Frame, app: &mut App) {
     // Render preview panel if open
     if app.preview_open {
         let preview_text = if let Some(pr) = app.get_selected_pr() {
-            match app.preview_cache.get(&pr.id) {
-                Some(body) => format!("{}\n{}\n\n{}", pr.title, pr.url, body),
-                None => "Loading preview...".to_string(),
+            match app.preview_mode {
+                PreviewMode::Body => match app.preview_cache.get(&pr.id) {
+                    Some(body) => format!("{}\n{}\n\n{}", pr.title, pr.url, body),
+                    None => "Loading preview...".to_string(),
+                },
+                PreviewMode::Diff => match app.diff_cache.get(&pr.id) {
+                    Some(diff) => format!("Diff for #{} {}\n\n{}", pr.number, pr.slug, diff),
+                    None => "Loading diff...".to_string(),
+                },
             }
         } else {
             "No selection".to_string()
@@ -692,7 +766,7 @@ fn ui(f: &mut Frame, app: &mut App) {
     let help_text = if let Some(ref msg) = app.status_message {
         msg.clone()
     } else {
-        "Press 'q' to quit, 'j/k' or ↑/↓ to navigate, 'Enter' or 'o' to open, 'm' to merge (if clean), 'r' to reload, 'p' to toggle preview".to_string()
+        "Press 'q' quit • 'j/k' or ↑/↓ navigate • 'Enter'/'o' open • 'm' merge • 'r' reload • 'p' toggle pane • 'b' body • 'd' diff".to_string()
     };
 
     let help = Paragraph::new(help_text)
@@ -707,4 +781,34 @@ async fn fetch_pr_body(owner: &str, name: &str, number: usize) -> surf::Result<S
     let q = json!({ "query": include_str!("../query/pr.body.graphql"), "variables": vars });
     let res = crate::graphql::query::<pr_body_res::PrBodyRes>(&q).await?;
     Ok(res.data.repository.pull_request.body_text)
+}
+
+#[derive(Deserialize)]
+struct PrFileRes {
+    filename: String,
+    additions: i64,
+    deletions: i64,
+    patch: Option<String>,
+}
+
+struct PrFile {
+    filename: String,
+    additions: i64,
+    deletions: i64,
+    patch: Option<String>,
+}
+
+async fn fetch_pr_files(owner: &str, name: &str, number: usize) -> surf::Result<Vec<PrFile>> {
+    let path = format!("repos/{}/{}/pulls/{}/files", owner, name, number);
+    let q: rest::QueryMap = Default::default();
+    let res: Vec<PrFileRes> = rest::get(&path, 1, &q).await?;
+    Ok(res
+        .into_iter()
+        .map(|f| PrFile {
+            filename: f.filename,
+            additions: f.additions,
+            deletions: f.deletions,
+            patch: f.patch,
+        })
+        .collect())
 }

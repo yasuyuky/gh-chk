@@ -1,6 +1,7 @@
+use crate::rest::{self, QueryMap};
 use colored::Colorize;
 use crossterm::{
-    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
+    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, MouseEventKind},
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
@@ -9,11 +10,12 @@ use ratatui::{
     backend::CrosstermBackend,
     layout::{Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
-    text::{Line, Span},
+    text::{Line, Span, Text},
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap},
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::collections::HashMap;
 use std::fmt::Display;
 use std::io;
 
@@ -86,6 +88,20 @@ nestruct::nest! {
         data: {
             repository_owner: {
                 repository: crate::cmd::prs::repository::Repository
+            }
+        }
+    }
+}
+
+nestruct::nest! {
+    #[derive(serde::Serialize, serde::Deserialize, Debug)]
+    #[serde(rename_all = "camelCase")]
+    PrBodyRes {
+        data: {
+            repository: {
+                pull_request: {
+                    body_text: String,
+                }
             }
         }
     }
@@ -352,12 +368,24 @@ async fn fetch_repo_prs(owner: &str, name: &str) -> surf::Result<Vec<PrData>> {
     Ok(prs)
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PreviewMode {
+    Body,
+    Diff,
+}
+
 struct App {
     prs: Vec<PrData>,
     list_state: ListState,
     should_quit: bool,
     status_message: Option<String>,
     specs: Vec<SlugSpec>,
+    preview_open: bool,
+    preview_cache: HashMap<String, String>,
+    diff_cache: HashMap<String, String>,
+    preview_mode: PreviewMode,
+    preview_scroll: u16,
+    preview_area_height: u16,
 }
 
 impl App {
@@ -372,6 +400,12 @@ impl App {
             should_quit: false,
             status_message: None,
             specs,
+            preview_open: false,
+            preview_cache: HashMap::new(),
+            diff_cache: HashMap::new(),
+            preview_mode: PreviewMode::Body,
+            preview_scroll: 0,
+            preview_area_height: 0,
         }
     }
 
@@ -390,6 +424,7 @@ impl App {
             None => 0,
         };
         self.list_state.select(Some(i));
+        self.preview_scroll = 0;
     }
 
     fn previous(&mut self) {
@@ -407,6 +442,7 @@ impl App {
             None => 0,
         };
         self.list_state.select(Some(i));
+        self.preview_scroll = 0;
     }
 
     fn get_selected_pr(&self) -> Option<&PrData> {
@@ -459,6 +495,120 @@ impl App {
             if let Err(e) = open::that(&pr.url) {
                 eprintln!("Failed to open URL: {}", e);
             }
+        }
+    }
+
+    fn selected_key(&self) -> Option<String> {
+        self.get_selected_pr().map(|p| p.id.clone())
+    }
+
+    async fn toggle_preview(&mut self) {
+        self.preview_open = !self.preview_open;
+        if self.preview_open {
+            self.preview_scroll = 0;
+            // Ensure current selection's preview is loaded
+            if let Some(pr) = self.get_selected_pr().cloned() {
+                if !self.preview_cache.contains_key(&pr.id) {
+                    if let Err(e) = self.load_preview_for(&pr).await {
+                        self.status_message = Some(format!(
+                            "❌ Failed to load preview for #{} in {}: {}",
+                            pr.number, pr.slug, e
+                        ));
+                    }
+                }
+            }
+        }
+    }
+
+    async fn maybe_prefetch_on_move(&mut self) {
+        if !self.preview_open {
+            return;
+        }
+        if let Some(pr) = self.get_selected_pr().cloned() {
+            if !self.preview_cache.contains_key(&pr.id) {
+                let _ = self.load_preview_for(&pr).await;
+            }
+            if self.preview_mode == PreviewMode::Diff && !self.diff_cache.contains_key(&pr.id) {
+                let _ = self.load_diff_for(&pr).await;
+            }
+        }
+    }
+
+    async fn load_preview_for(&mut self, pr: &PrData) -> surf::Result<()> {
+        self.status_message = Some(format!("🔎 Loading preview for #{}...", pr.number));
+        let (owner, name) = match pr.slug.split_once('/') {
+            Some((o, n)) => (o.to_string(), n.to_string()),
+            None => return Ok(()),
+        };
+        let body = fetch_pr_body(&owner, &name, pr.number).await?;
+        self.preview_cache.insert(pr.id.clone(), body);
+        self.status_message = Some(format!("✅ Loaded preview for #{}", pr.number));
+        Ok(())
+    }
+
+    async fn load_diff_for(&mut self, pr: &PrData) -> surf::Result<()> {
+        self.status_message = Some(format!("🔎 Loading diff for #{}...", pr.number));
+        let (owner, name) = match pr.slug.split_once('/') {
+            Some((o, n)) => (o.to_string(), n.to_string()),
+            None => return Ok(()),
+        };
+        let files = fetch_pr_files(&owner, &name, pr.number).await?;
+        let mut out = String::default();
+        for f in files {
+            out.push_str(&format!(
+                "=== {} (+{}, -{}) ===\n",
+                f.filename, f.additions, f.deletions
+            ));
+            match f.patch {
+                Some(p) => {
+                    out.push_str(&p);
+                    if !out.ends_with('\n') {
+                        out.push('\n');
+                    }
+                }
+                None => out.push_str("(no textual diff available)\n"),
+            }
+            out.push('\n');
+        }
+        if out.is_empty() {
+            out = "No file changes found.".to_string();
+        }
+        self.diff_cache.insert(pr.id.clone(), out);
+        self.status_message = Some(format!("✅ Loaded diff for #{}", pr.number));
+        Ok(())
+    }
+
+    async fn switch_preview_mode(&mut self, mode: PreviewMode) {
+        self.preview_mode = mode;
+        if !self.preview_open {
+            self.preview_open = true;
+        }
+        self.preview_scroll = 0;
+        if let Some(pr) = self.get_selected_pr().cloned() {
+            match mode {
+                PreviewMode::Body => {
+                    if !self.preview_cache.contains_key(&pr.id) {
+                        let _ = self.load_preview_for(&pr).await;
+                    }
+                }
+                PreviewMode::Diff => {
+                    if !self.diff_cache.contains_key(&pr.id) {
+                        let _ = self.load_diff_for(&pr).await;
+                    }
+                }
+            }
+        }
+    }
+
+    fn scroll_preview_down(&mut self, n: u16) {
+        if self.preview_open {
+            self.preview_scroll = self.preview_scroll.saturating_add(n);
+        }
+    }
+
+    fn scroll_preview_up(&mut self, n: u16) {
+        if self.preview_open {
+            self.preview_scroll = self.preview_scroll.saturating_sub(n);
         }
     }
 
@@ -528,28 +678,63 @@ async fn run_app(
         terminal.draw(|f| ui(f, app))?;
 
         if event::poll(std::time::Duration::from_millis(100))? {
-            if let Event::Key(key) = event::read()? {
-                match key.code {
-                    KeyCode::Char('q') => {
-                        app.should_quit = true;
+            match event::read()? {
+                Event::Key(key) => {
+                    match key.code {
+                        KeyCode::Char('q') => {
+                            app.should_quit = true;
+                        }
+                        KeyCode::Down | KeyCode::Char('j') => {
+                            if app.preview_open {
+                                app.scroll_preview_down(1);
+                            } else {
+                                app.next();
+                                app.maybe_prefetch_on_move().await;
+                            }
+                        }
+                        KeyCode::Up | KeyCode::Char('k') => {
+                            if app.preview_open {
+                                app.scroll_preview_up(1);
+                            } else {
+                                app.previous();
+                                app.maybe_prefetch_on_move().await;
+                            }
+                        }
+                        KeyCode::Enter | KeyCode::Char('o') => {
+                            app.open_url();
+                        }
+                        KeyCode::Char('m') => {
+                            app.merge_selected().await;
+                        }
+                        KeyCode::Char('r') => {
+                            app.reload().await;
+                        }
+                        KeyCode::Char('p') => {
+                            app.toggle_preview().await;
+                        }
+                        KeyCode::Char('?') => {
+                            // Clear status to show the default help instructions again
+                            app.status_message = None;
+                        }
+                        KeyCode::Char('d') => {
+                            app.switch_preview_mode(PreviewMode::Diff).await;
+                        }
+                        KeyCode::Char('b') => {
+                            app.switch_preview_mode(PreviewMode::Body).await;
+                        }
+                        _ => {}
                     }
-                    KeyCode::Down | KeyCode::Char('j') => {
-                        app.next();
+                }
+                Event::Mouse(m) => match m.kind {
+                    MouseEventKind::ScrollDown => {
+                        app.scroll_preview_down(3);
                     }
-                    KeyCode::Up | KeyCode::Char('k') => {
-                        app.previous();
-                    }
-                    KeyCode::Enter | KeyCode::Char('o') => {
-                        app.open_url();
-                    }
-                    KeyCode::Char('m') => {
-                        app.merge_selected().await;
-                    }
-                    KeyCode::Char('r') => {
-                        app.reload().await;
+                    MouseEventKind::ScrollUp => {
+                        app.scroll_preview_up(3);
                     }
                     _ => {}
-                }
+                },
+                _ => {}
             }
         }
 
@@ -560,11 +745,56 @@ async fn run_app(
     Ok(())
 }
 
+fn make_diff_text(diff: &str) -> Text {
+    let mut text = Text::default();
+    for line in diff.lines() {
+        let styled = if line.starts_with("===") {
+            Line::from(Span::styled(
+                line.to_string(),
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            ))
+        } else if line.starts_with("@@") {
+            Line::from(Span::styled(
+                line.to_string(),
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ))
+        } else if line.starts_with('+') {
+            Line::from(Span::styled(
+                line.to_string(),
+                Style::default().fg(Color::Green),
+            ))
+        } else if line.starts_with('-') {
+            Line::from(Span::styled(
+                line.to_string(),
+                Style::default().fg(Color::Red),
+            ))
+        } else {
+            Line::from(line.to_string())
+        };
+        text.lines.push(styled);
+    }
+    text
+}
+
 fn ui(f: &mut Frame, app: &mut App) {
-    let chunks = Layout::default()
+    let outer = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Min(0), Constraint::Length(3)].as_ref())
         .split(f.area());
+
+    // If preview is open, split the main area horizontally
+    let main_chunks = if app.preview_open {
+        Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)].as_ref())
+            .split(outer[0])
+    } else {
+        vec![outer[0]].into()
+    };
 
     let items: Vec<ListItem> = app
         .prs
@@ -587,17 +817,105 @@ fn ui(f: &mut Frame, app: &mut App) {
         .highlight_style(Style::default().add_modifier(Modifier::BOLD))
         .highlight_symbol(">> ");
 
-    f.render_stateful_widget(items, chunks[0], &mut app.list_state);
+    f.render_stateful_widget(items, main_chunks[0], &mut app.list_state);
+
+    // Render preview panel if open
+    if app.preview_open {
+        let preview_text: Text = if let Some(pr) = app.get_selected_pr() {
+            match app.preview_mode {
+                PreviewMode::Body => match app.preview_cache.get(&pr.id) {
+                    Some(body) => Text::from(format!("{}\n{}\n\n{}", pr.title, pr.url, body)),
+                    None => Text::from("Loading preview..."),
+                },
+                PreviewMode::Diff => match app.diff_cache.get(&pr.id) {
+                    Some(diff) => {
+                        // Prepend a header line for context
+                        let header = format!("Diff for #{} {}", pr.number, pr.slug);
+                        let mut text = Text::from(header);
+                        text.lines.push(Line::from(""));
+                        let mut colored = make_diff_text(diff);
+                        text.lines.append(&mut colored.lines);
+                        text
+                    }
+                    None => Text::from("Loading diff..."),
+                },
+            }
+        } else {
+            Text::from("No selection")
+        };
+
+        let preview = Paragraph::new(preview_text)
+            .block(Block::default().borders(Borders::ALL).title("Preview"))
+            .wrap(Wrap { trim: false })
+            .scroll((app.preview_scroll, 0));
+        let area = if main_chunks.len() > 1 {
+            main_chunks[1]
+        } else {
+            outer[0]
+        };
+        app.preview_area_height = area.height;
+        f.render_widget(preview, area);
+    }
 
     let help_text = if let Some(ref msg) = app.status_message {
         msg.clone()
     } else {
-        "Press 'q' to quit, 'j/k' or ↑/↓ to navigate, 'Enter' or 'o' to open in browser, 'm' to merge (if clean), 'r' to reload".to_string()
+        let base =
+            "q:quit • ?:help • Enter/o:open • m:merge • r:reload • p:toggle • b:body • d:diff";
+        let nav = if app.preview_open {
+            // Implemented: j/k, ↑/↓ (scroll); mouse wheel scrolls faster
+            "j/k or ↑/↓:scroll • wheel:scroll"
+        } else {
+            // Implemented: j/k, ↑/↓ navigation in list
+            "j/k or ↑/↓:navigate"
+        };
+        let mode = match app.preview_mode {
+            PreviewMode::Body => "Body",
+            PreviewMode::Diff => "Diff",
+        };
+        format!("{} • {} • mode:{}", base, nav, mode)
     };
 
     let help = Paragraph::new(help_text)
         .block(Block::default().borders(Borders::ALL).title("Help"))
         .wrap(Wrap { trim: true });
 
-    f.render_widget(help, chunks[1]);
+    f.render_widget(help, outer[1]);
+}
+
+async fn fetch_pr_body(owner: &str, name: &str, number: usize) -> surf::Result<String> {
+    let vars = json!({ "owner": owner, "name": name, "number": number as i64 });
+    let q = json!({ "query": include_str!("../query/pr.body.graphql"), "variables": vars });
+    let res = crate::graphql::query::<pr_body_res::PrBodyRes>(&q).await?;
+    Ok(res.data.repository.pull_request.body_text)
+}
+
+#[derive(Deserialize)]
+struct PrFileRes {
+    filename: String,
+    additions: i64,
+    deletions: i64,
+    patch: Option<String>,
+}
+
+struct PrFile {
+    filename: String,
+    additions: i64,
+    deletions: i64,
+    patch: Option<String>,
+}
+
+async fn fetch_pr_files(owner: &str, name: &str, number: usize) -> surf::Result<Vec<PrFile>> {
+    let path = format!("repos/{}/{}/pulls/{}/files", owner, name, number);
+    let q: rest::QueryMap = QueryMap::default();
+    let res: Vec<PrFileRes> = rest::get(&path, 1, &q).await?;
+    Ok(res
+        .into_iter()
+        .map(|f| PrFile {
+            filename: f.filename,
+            additions: f.additions,
+            deletions: f.deletions,
+            patch: f.patch,
+        })
+        .collect())
 }

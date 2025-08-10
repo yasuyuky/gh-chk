@@ -553,7 +553,7 @@ impl App {
             None => return Ok(()),
         };
         let files = fetch_pr_files(&owner, &name, pr.number).await?;
-        let mut out = String::new();
+        let mut out = String::default();
         for f in files {
             out.push_str(&format!(
                 "=== {} (+{}, -{}) ===\n",

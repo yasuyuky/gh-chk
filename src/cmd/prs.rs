@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::fmt::Display;
 use std::io;
+use std::collections::HashMap;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(untagged)]
@@ -86,6 +87,20 @@ nestruct::nest! {
         data: {
             repository_owner: {
                 repository: crate::cmd::prs::repository::Repository
+            }
+        }
+    }
+}
+
+nestruct::nest! {
+    #[derive(serde::Serialize, serde::Deserialize, Debug)]
+    #[serde(rename_all = "camelCase")]
+    PrBodyRes {
+        data: {
+            repository: {
+                pull_request: {
+                    body_text: String,
+                }
             }
         }
     }
@@ -358,6 +373,8 @@ struct App {
     should_quit: bool,
     status_message: Option<String>,
     specs: Vec<SlugSpec>,
+    preview_open: bool,
+    preview_cache: HashMap<String, String>,
 }
 
 impl App {
@@ -372,6 +389,8 @@ impl App {
             should_quit: false,
             status_message: None,
             specs,
+            preview_open: false,
+            preview_cache: HashMap::new(),
         }
     }
 
@@ -462,6 +481,48 @@ impl App {
         }
     }
 
+    fn selected_key(&self) -> Option<String> {
+        self.get_selected_pr().map(|p| p.id.clone())
+    }
+
+    async fn toggle_preview(&mut self) {
+        self.preview_open = !self.preview_open;
+        if self.preview_open {
+            // Ensure current selection's preview is loaded
+            if let Some(pr) = self.get_selected_pr().cloned() {
+                if !self.preview_cache.contains_key(&pr.id) {
+                    if let Err(e) = self.load_preview_for(&pr).await {
+                        self.status_message = Some(format!(
+                            "❌ Failed to load preview for #{} in {}: {}",
+                            pr.number, pr.slug, e
+                        ));
+                    }
+                }
+            }
+        }
+    }
+
+    async fn maybe_prefetch_on_move(&mut self) {
+        if !self.preview_open { return; }
+        if let Some(pr) = self.get_selected_pr().cloned() {
+            if !self.preview_cache.contains_key(&pr.id) {
+                let _ = self.load_preview_for(&pr).await;
+            }
+        }
+    }
+
+    async fn load_preview_for(&mut self, pr: &PrData) -> surf::Result<()> {
+        self.status_message = Some(format!("🔎 Loading preview for #{}...", pr.number));
+        let (owner, name) = match pr.slug.split_once('/') {
+            Some((o, n)) => (o.to_string(), n.to_string()),
+            None => return Ok(()),
+        };
+        let body = fetch_pr_body(&owner, &name, pr.number).await?;
+        self.preview_cache.insert(pr.id.clone(), body);
+        self.status_message = Some(format!("✅ Loaded preview for #{}", pr.number));
+        Ok(())
+    }
+
     async fn reload(&mut self) {
         self.status_message = Some("🔄 Reloading...".to_string());
         let mut new_list: Vec<PrData> = Vec::new();
@@ -535,9 +596,11 @@ async fn run_app(
                     }
                     KeyCode::Down | KeyCode::Char('j') => {
                         app.next();
+                        app.maybe_prefetch_on_move().await;
                     }
                     KeyCode::Up | KeyCode::Char('k') => {
                         app.previous();
+                        app.maybe_prefetch_on_move().await;
                     }
                     KeyCode::Enter | KeyCode::Char('o') => {
                         app.open_url();
@@ -547,6 +610,9 @@ async fn run_app(
                     }
                     KeyCode::Char('r') => {
                         app.reload().await;
+                    }
+                    KeyCode::Char('p') => {
+                        app.toggle_preview().await;
                     }
                     _ => {}
                 }
@@ -561,10 +627,20 @@ async fn run_app(
 }
 
 fn ui(f: &mut Frame, app: &mut App) {
-    let chunks = Layout::default()
+    let outer = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Min(0), Constraint::Length(3)].as_ref())
         .split(f.area());
+
+    // If preview is open, split the main area horizontally
+    let main_chunks = if app.preview_open {
+        Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)].as_ref())
+            .split(outer[0])
+    } else {
+        vec![outer[0]].into()
+    };
 
     let items: Vec<ListItem> = app
         .prs
@@ -587,17 +663,47 @@ fn ui(f: &mut Frame, app: &mut App) {
         .highlight_style(Style::default().add_modifier(Modifier::BOLD))
         .highlight_symbol(">> ");
 
-    f.render_stateful_widget(items, chunks[0], &mut app.list_state);
+    f.render_stateful_widget(items, main_chunks[0], &mut app.list_state);
+
+    // Render preview panel if open
+    if app.preview_open {
+        let preview_text = if let Some(pr) = app.get_selected_pr() {
+            match app.preview_cache.get(&pr.id) {
+                Some(body) => format!(
+                    "{}\n{}\n\n{}",
+                    pr.title,
+                    pr.url,
+                    body
+                ),
+                None => "Loading preview...".to_string(),
+            }
+        } else {
+            "No selection".to_string()
+        };
+
+        let preview = Paragraph::new(preview_text)
+            .block(Block::default().borders(Borders::ALL).title("Preview"))
+            .wrap(Wrap { trim: false });
+        let area = if main_chunks.len() > 1 { main_chunks[1] } else { outer[0] };
+        f.render_widget(preview, area);
+    }
 
     let help_text = if let Some(ref msg) = app.status_message {
         msg.clone()
     } else {
-        "Press 'q' to quit, 'j/k' or ↑/↓ to navigate, 'Enter' or 'o' to open in browser, 'm' to merge (if clean), 'r' to reload".to_string()
+        "Press 'q' to quit, 'j/k' or ↑/↓ to navigate, 'Enter' or 'o' to open, 'm' to merge (if clean), 'r' to reload, 'p' to toggle preview".to_string()
     };
 
     let help = Paragraph::new(help_text)
         .block(Block::default().borders(Borders::ALL).title("Help"))
         .wrap(Wrap { trim: true });
 
-    f.render_widget(help, chunks[1]);
+    f.render_widget(help, outer[1]);
+}
+
+async fn fetch_pr_body(owner: &str, name: &str, number: usize) -> surf::Result<String> {
+    let vars = json!({ "owner": owner, "name": name, "number": number as i64 });
+    let q = json!({ "query": include_str!("../query/pr.body.graphql"), "variables": vars });
+    let res = crate::graphql::query::<pr_body_res::PrBodyRes>(&q).await?;
+    Ok(res.data.repository.pull_request.body_text)
 }

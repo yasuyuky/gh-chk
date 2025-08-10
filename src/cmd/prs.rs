@@ -817,7 +817,8 @@ fn ui(f: &mut Frame, app: &mut App) {
     let help_text = if let Some(ref msg) = app.status_message {
         msg.clone()
     } else {
-        let base = "q:quit • ?:help • Enter/o:open • m:merge • r:reload • p:toggle • b:body • d:diff";
+        let base =
+            "q:quit • ?:help • Enter/o:open • m:merge • r:reload • p:toggle • b:body • d:diff";
         let nav = if app.preview_open {
             // Implemented: j/k, ↑/↓ (scroll); mouse wheel scrolls faster
             "j/k or ↑/↓:scroll • wheel:scroll"
@@ -825,7 +826,10 @@ fn ui(f: &mut Frame, app: &mut App) {
             // Implemented: j/k, ↑/↓ navigation in list
             "j/k or ↑/↓:navigate"
         };
-        let mode = match app.preview_mode { PreviewMode::Body => "Body", PreviewMode::Diff => "Diff" };
+        let mode = match app.preview_mode {
+            PreviewMode::Body => "Body",
+            PreviewMode::Diff => "Diff",
+        };
         format!("{} • {} • mode:{}", base, nav, mode)
     };
 

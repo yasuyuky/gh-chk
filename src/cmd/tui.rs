@@ -651,7 +651,7 @@ struct PrFile {
 
 async fn fetch_pr_files(owner: &str, name: &str, number: usize) -> surf::Result<Vec<PrFile>> {
     let path = format!("repos/{}/{}/pulls/{}/files", owner, name, number);
-    let q: rest::QueryMap = Default::default();
+    let q: rest::QueryMap = rest::QueryMap::default();
     let res: Vec<PrFileRes> = rest::get(&path, 1, &q).await?;
     Ok(res
         .into_iter()

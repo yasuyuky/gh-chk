@@ -360,10 +360,12 @@ impl App {
     async fn approve_selected(&mut self) {
         if let Some(selected_index) = self.list_state.selected() {
             if let Some(pr) = self.prs.get(selected_index).cloned() {
-                self.status_message = Some(format!("Approving PR #{} in {}...", pr.number, pr.slug));
+                self.status_message =
+                    Some(format!("Approving PR #{} in {}...", pr.number, pr.slug));
                 match approve_pr(&pr.id).await {
                     Ok(_) => {
-                        self.status_message = Some(format!("✅ Approved PR #{} in {}", pr.number, pr.slug));
+                        self.status_message =
+                            Some(format!("✅ Approved PR #{} in {}", pr.number, pr.slug));
                     }
                     Err(e) => {
                         self.status_message = Some(format!(
@@ -631,8 +633,7 @@ fn ui(f: &mut Frame, app: &mut App) {
     let help_text = if let Some(ref msg) = app.status_message {
         msg.clone()
     } else {
-        let base =
-            "q:quit • ?:help • Enter/o:open • m:merge • a:approve • r:reload • p:toggle • b:body • d:diff";
+        let base = "q:quit • ?:help • Enter/o:open • m:merge • a:approve • r:reload • p:toggle • b:body • d:diff";
         let nav = if app.preview_open {
             "j/k or ↑/↓:scroll • wheel:scroll"
         } else {
@@ -748,8 +749,12 @@ async fn run_app(
                     KeyCode::Char('m') => {
                         app.merge_selected().await;
                     }
-                    KeyCode::Char('a') => { app.approve_selected().await; }
-                    KeyCode::Char('r') => { app.reload().await; }
+                    KeyCode::Char('a') => {
+                        app.approve_selected().await;
+                    }
+                    KeyCode::Char('r') => {
+                        app.reload().await;
+                    }
                     KeyCode::Char('p') => {
                         app.toggle_preview().await;
                     }

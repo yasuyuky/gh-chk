@@ -207,4 +207,3 @@ async fn print_repo_text(res: &repo_res::RepoRes, merge: bool) -> surf::Result<(
     println!("Count of PRs: {count}");
     Ok(())
 }
-

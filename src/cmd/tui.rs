@@ -2,16 +2,16 @@ use crate::{graphql, rest};
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, MouseEventKind},
     execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use open;
 use ratatui::{
+    Frame, Terminal,
     backend::CrosstermBackend,
     layout::{Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
     text::{Line, Span, Text},
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap},
-    Frame, Terminal,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -283,7 +283,11 @@ impl App {
         }
         let i = match self.list_state.selected() {
             Some(i) => {
-                if i >= self.prs.len() - 1 { 0 } else { i + 1 }
+                if i >= self.prs.len() - 1 {
+                    0
+                } else {
+                    i + 1
+                }
             }
             None => 0,
         };
@@ -297,7 +301,11 @@ impl App {
         }
         let i = match self.list_state.selected() {
             Some(i) => {
-                if i == 0 { self.prs.len() - 1 } else { i - 1 }
+                if i == 0 {
+                    self.prs.len() - 1
+                } else {
+                    i - 1
+                }
             }
             None => 0,
         };
@@ -313,10 +321,12 @@ impl App {
         if let Some(selected_index) = self.list_state.selected() {
             if let Some(pr) = self.prs.get(selected_index).cloned() {
                 if pr.merge_state_status == MergeStateStatus::Clean {
-                    self.status_message = Some(format!("Merging PR #{} in {}...", pr.number, pr.slug));
+                    self.status_message =
+                        Some(format!("Merging PR #{} in {}...", pr.number, pr.slug));
                     match merge_pr(&pr.id).await {
                         Ok(_) => {
-                            self.status_message = Some(format!("✅ Merged PR #{} in {}", pr.number, pr.slug));
+                            self.status_message =
+                                Some(format!("✅ Merged PR #{} in {}", pr.number, pr.slug));
                             self.prs.remove(selected_index);
                             if self.prs.is_empty() {
                                 self.list_state.select(None);
@@ -362,7 +372,9 @@ impl App {
     }
 
     async fn maybe_prefetch_on_move(&mut self) {
-        if !self.preview_open { return; }
+        if !self.preview_open {
+            return;
+        }
         if let Some(pr) = self.get_selected_pr().cloned() {
             if !self.preview_cache.contains_key(&pr.id) {
                 let _ = self.load_preview_for(&pr).await;
@@ -375,7 +387,10 @@ impl App {
 
     async fn load_preview_for(&mut self, pr: &PrData) -> surf::Result<()> {
         self.status_message = Some(format!("🔎 Loading preview for #{}...", pr.number));
-        let (owner, name) = match pr.slug.split_once('/') { Some((o, n)) => (o.to_string(), n.to_string()), None => return Ok(()) };
+        let (owner, name) = match pr.slug.split_once('/') {
+            Some((o, n)) => (o.to_string(), n.to_string()),
+            None => return Ok(()),
+        };
         let body = fetch_pr_body(&owner, &name, pr.number).await?;
         self.preview_cache.insert(pr.id.clone(), body);
         self.status_message = Some(format!("✅ Loaded preview for #{}", pr.number));
@@ -384,18 +399,31 @@ impl App {
 
     async fn load_diff_for(&mut self, pr: &PrData) -> surf::Result<()> {
         self.status_message = Some(format!("🔎 Loading diff for #{}...", pr.number));
-        let (owner, name) = match pr.slug.split_once('/') { Some((o, n)) => (o.to_string(), n.to_string()), None => return Ok(()) };
+        let (owner, name) = match pr.slug.split_once('/') {
+            Some((o, n)) => (o.to_string(), n.to_string()),
+            None => return Ok(()),
+        };
         let files = fetch_pr_files(&owner, &name, pr.number).await?;
         let mut out = String::new();
         for f in files {
-            out.push_str(&format!("=== {} (+{}, -{}) ===\n", f.filename, f.additions, f.deletions));
+            out.push_str(&format!(
+                "=== {} (+{}, -{}) ===\n",
+                f.filename, f.additions, f.deletions
+            ));
             match f.patch {
-                Some(p) => { out.push_str(&p); if !out.ends_with('\n') { out.push('\n'); } }
+                Some(p) => {
+                    out.push_str(&p);
+                    if !out.ends_with('\n') {
+                        out.push('\n');
+                    }
+                }
                 None => out.push_str("(no textual diff available)\n"),
             }
             out.push('\n');
         }
-        if out.is_empty() { out = "No file changes found.".to_string(); }
+        if out.is_empty() {
+            out = "No file changes found.".to_string();
+        }
         self.diff_cache.insert(pr.id.clone(), out);
         self.status_message = Some(format!("✅ Loaded diff for #{}", pr.number));
         Ok(())
@@ -403,18 +431,36 @@ impl App {
 
     async fn switch_preview_mode(&mut self, mode: PreviewMode) {
         self.preview_mode = mode;
-        if !self.preview_open { self.preview_open = true; }
+        if !self.preview_open {
+            self.preview_open = true;
+        }
         self.preview_scroll = 0;
         if let Some(pr) = self.get_selected_pr().cloned() {
             match mode {
-                PreviewMode::Body => { if !self.preview_cache.contains_key(&pr.id) { let _ = self.load_preview_for(&pr).await; } }
-                PreviewMode::Diff => { if !self.diff_cache.contains_key(&pr.id) { let _ = self.load_diff_for(&pr).await; } }
+                PreviewMode::Body => {
+                    if !self.preview_cache.contains_key(&pr.id) {
+                        let _ = self.load_preview_for(&pr).await;
+                    }
+                }
+                PreviewMode::Diff => {
+                    if !self.diff_cache.contains_key(&pr.id) {
+                        let _ = self.load_diff_for(&pr).await;
+                    }
+                }
             }
         }
     }
 
-    fn scroll_preview_down(&mut self, n: u16) { if self.preview_open { self.preview_scroll = self.preview_scroll.saturating_add(n); } }
-    fn scroll_preview_up(&mut self, n: u16) { if self.preview_open { self.preview_scroll = self.preview_scroll.saturating_sub(n); } }
+    fn scroll_preview_down(&mut self, n: u16) {
+        if self.preview_open {
+            self.preview_scroll = self.preview_scroll.saturating_add(n);
+        }
+    }
+    fn scroll_preview_up(&mut self, n: u16) {
+        if self.preview_open {
+            self.preview_scroll = self.preview_scroll.saturating_sub(n);
+        }
+    }
 
     async fn reload(&mut self) {
         self.status_message = Some("🔄 Reloading...".to_string());
@@ -452,13 +498,29 @@ fn make_diff_text(diff: &str) -> Text {
     let mut text = Text::default();
     for line in diff.lines() {
         let styled = if line.starts_with("===") {
-            Line::from(Span::styled(line.to_string(), Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)))
+            Line::from(Span::styled(
+                line.to_string(),
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            ))
         } else if line.starts_with("@@") {
-            Line::from(Span::styled(line.to_string(), Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)))
+            Line::from(Span::styled(
+                line.to_string(),
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ))
         } else if line.starts_with('+') {
-            Line::from(Span::styled(line.to_string(), Style::default().fg(Color::Green)))
+            Line::from(Span::styled(
+                line.to_string(),
+                Style::default().fg(Color::Green),
+            ))
         } else if line.starts_with('-') {
-            Line::from(Span::styled(line.to_string(), Style::default().fg(Color::Red)))
+            Line::from(Span::styled(
+                line.to_string(),
+                Style::default().fg(Color::Red),
+            ))
         } else {
             Line::from(line.to_string())
         };
@@ -487,12 +549,19 @@ fn ui(f: &mut Frame, app: &mut App) {
         .iter()
         .map(|pr| {
             let line = pr.display_line();
-            ListItem::new(Line::from(Span::styled(line, Style::default().fg(pr.get_color()))))
+            ListItem::new(Line::from(Span::styled(
+                line,
+                Style::default().fg(pr.get_color()),
+            )))
         })
         .collect();
 
     let items = List::new(items)
-        .block(Block::default().borders(Borders::ALL).title("Pull Requests"))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Pull Requests"),
+        )
         .highlight_style(Style::default().add_modifier(Modifier::BOLD))
         .highlight_symbol(">> ");
 
@@ -525,7 +594,11 @@ fn ui(f: &mut Frame, app: &mut App) {
             .block(Block::default().borders(Borders::ALL).title("Preview"))
             .wrap(Wrap { trim: false })
             .scroll((app.preview_scroll, 0));
-        let area = if main_chunks.len() > 1 { main_chunks[1] } else { outer[0] };
+        let area = if main_chunks.len() > 1 {
+            main_chunks[1]
+        } else {
+            outer[0]
+        };
         app.preview_area_height = area.height;
         f.render_widget(preview, area);
     }
@@ -533,9 +606,17 @@ fn ui(f: &mut Frame, app: &mut App) {
     let help_text = if let Some(ref msg) = app.status_message {
         msg.clone()
     } else {
-        let base = "q:quit • ?:help • Enter/o:open • m:merge • r:reload • p:toggle • b:body • d:diff";
-        let nav = if app.preview_open { "j/k or ↑/↓:scroll • wheel:scroll" } else { "j/k or ↑/↓:navigate" };
-        let mode = match app.preview_mode { PreviewMode::Body => "Body", PreviewMode::Diff => "Diff" };
+        let base =
+            "q:quit • ?:help • Enter/o:open • m:merge • r:reload • p:toggle • b:body • d:diff";
+        let nav = if app.preview_open {
+            "j/k or ↑/↓:scroll • wheel:scroll"
+        } else {
+            "j/k or ↑/↓:navigate"
+        };
+        let mode = match app.preview_mode {
+            PreviewMode::Body => "Body",
+            PreviewMode::Diff => "Diff",
+        };
         format!("{} • {} • mode:{}", base, nav, mode)
     };
 
@@ -574,7 +655,12 @@ async fn fetch_pr_files(owner: &str, name: &str, number: usize) -> surf::Result<
     let res: Vec<PrFileRes> = rest::get(&path, 1, &q).await?;
     Ok(res
         .into_iter()
-        .map(|f| PrFile { filename: f.filename, additions: f.additions, deletions: f.deletions, patch: f.patch })
+        .map(|f| PrFile {
+            filename: f.filename,
+            additions: f.additions,
+            deletions: f.deletions,
+            patch: f.patch,
+        })
         .collect())
 }
 
@@ -589,10 +675,16 @@ fn run_tui(prs: Vec<PrData>, specs: Vec<SlugSpec>) -> Result<(), Box<dyn std::er
     let res = async_std::task::block_on(run_app(&mut terminal, &mut app));
 
     disable_raw_mode()?;
-    execute!(terminal.backend_mut(), LeaveAlternateScreen, DisableMouseCapture)?;
+    execute!(
+        terminal.backend_mut(),
+        LeaveAlternateScreen,
+        DisableMouseCapture
+    )?;
     terminal.show_cursor()?;
 
-    if let Err(err) = res { println!("{:?}", err) }
+    if let Err(err) = res {
+        println!("{:?}", err)
+    }
     Ok(())
 }
 
@@ -606,32 +698,64 @@ async fn run_app(
         if event::poll(std::time::Duration::from_millis(100))? {
             match event::read()? {
                 Event::Key(key) => match key.code {
-                    KeyCode::Char('q') => { app.should_quit = true; }
+                    KeyCode::Char('q') => {
+                        app.should_quit = true;
+                    }
                     KeyCode::Down | KeyCode::Char('j') => {
-                        if app.preview_open { app.scroll_preview_down(1); } else { app.next(); app.maybe_prefetch_on_move().await; }
+                        if app.preview_open {
+                            app.scroll_preview_down(1);
+                        } else {
+                            app.next();
+                            app.maybe_prefetch_on_move().await;
+                        }
                     }
                     KeyCode::Up | KeyCode::Char('k') => {
-                        if app.preview_open { app.scroll_preview_up(1); } else { app.previous(); app.maybe_prefetch_on_move().await; }
+                        if app.preview_open {
+                            app.scroll_preview_up(1);
+                        } else {
+                            app.previous();
+                            app.maybe_prefetch_on_move().await;
+                        }
                     }
-                    KeyCode::Enter | KeyCode::Char('o') => { app.open_url(); }
-                    KeyCode::Char('m') => { app.merge_selected().await; }
-                    KeyCode::Char('r') => { app.reload().await; }
-                    KeyCode::Char('p') => { app.toggle_preview().await; }
-                    KeyCode::Char('?') => { app.status_message = None; }
-                    KeyCode::Char('d') => { app.switch_preview_mode(PreviewMode::Diff).await; }
-                    KeyCode::Char('b') => { app.switch_preview_mode(PreviewMode::Body).await; }
+                    KeyCode::Enter | KeyCode::Char('o') => {
+                        app.open_url();
+                    }
+                    KeyCode::Char('m') => {
+                        app.merge_selected().await;
+                    }
+                    KeyCode::Char('r') => {
+                        app.reload().await;
+                    }
+                    KeyCode::Char('p') => {
+                        app.toggle_preview().await;
+                    }
+                    KeyCode::Char('?') => {
+                        app.status_message = None;
+                    }
+                    KeyCode::Char('d') => {
+                        app.switch_preview_mode(PreviewMode::Diff).await;
+                    }
+                    KeyCode::Char('b') => {
+                        app.switch_preview_mode(PreviewMode::Body).await;
+                    }
                     _ => {}
                 },
                 Event::Mouse(m) => match m.kind {
-                    MouseEventKind::ScrollDown => { app.scroll_preview_down(3); }
-                    MouseEventKind::ScrollUp => { app.scroll_preview_up(3); }
+                    MouseEventKind::ScrollDown => {
+                        app.scroll_preview_down(3);
+                    }
+                    MouseEventKind::ScrollUp => {
+                        app.scroll_preview_up(3);
+                    }
                     _ => {}
                 },
                 _ => {}
             }
         }
 
-        if app.should_quit { break; }
+        if app.should_quit {
+            break;
+        }
     }
     Ok(())
 }
@@ -654,7 +778,10 @@ pub async fn run(slugs: Vec<String>) -> surf::Result<()> {
                 all_prs.extend(prs);
             }
             2 => {
-                specs.push(SlugSpec::Repo { owner: vs[0].clone(), name: vs[1].clone() });
+                specs.push(SlugSpec::Repo {
+                    owner: vs[0].clone(),
+                    name: vs[1].clone(),
+                });
                 let prs = fetch_repo_prs(&vs[0], &vs[1]).await?;
                 all_prs.extend(prs);
             }
@@ -662,6 +789,11 @@ pub async fn run(slugs: Vec<String>) -> surf::Result<()> {
         }
     }
 
-    run_tui(all_prs, specs).map_err(|e| surf::Error::from_str(surf::StatusCode::InternalServerError, format!("TUI error: {}", e)))?;
+    run_tui(all_prs, specs).map_err(|e| {
+        surf::Error::from_str(
+            surf::StatusCode::InternalServerError,
+            format!("TUI error: {}", e),
+        )
+    })?;
     Ok(())
 }

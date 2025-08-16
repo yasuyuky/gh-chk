@@ -1,0 +1,6 @@
+mutation($pullRequestId: ID!) {
+  addPullRequestReview(input: { pullRequestId: $pullRequestId, event: APPROVE }) {
+    clientMutationId
+  }
+}
+

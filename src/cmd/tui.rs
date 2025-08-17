@@ -89,6 +89,30 @@ impl MergeStateStatus {
 nestruct::nest! {
     #[derive(serde::Serialize, serde::Deserialize, Debug)]
     #[serde(rename_all = "camelCase")]
+    ContribRes {
+        data: {
+            user: {
+                contributions_collection: {
+                    contribution_calendar: {
+                        total_contributions: usize,
+                        weeks: [{
+                            first_day: String,
+                            contribution_days: [{
+                                color: String,
+                                contribution_count: usize,
+                                date: String
+                            }]
+                        }]
+                    }
+                }
+            }
+        }
+    }
+}
+
+nestruct::nest! {
+    #[derive(serde::Serialize, serde::Deserialize, Debug)]
+    #[serde(rename_all = "camelCase")]
     Repository {
         name: String,
         pull_requests: {

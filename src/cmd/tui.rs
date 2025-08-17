@@ -571,8 +571,10 @@ impl App {
             for w in weeks {
                 if let Some(d) = w.contribution_days.get(day) {
                     let (r, g, b) = hex_to_rgb(&d.color);
-                    // Use full block chars with foreground color to avoid blank-line artifacts
-                    spans.push(Span::styled("██", Style::default().fg(Color::Rgb(r, g, b))));
+                    let fg = contrast_fg(r, g, b);
+                    let cnt = d.contribution_count;
+                    let txt = if cnt >= 100 { String::from("++") } else { format!("{:>2}", cnt) };
+                    spans.push(Span::styled(txt, Style::default().bg(Color::Rgb(r, g, b)).fg(fg)));
                 } else {
                     spans.push(Span::raw("  "));
                 }
@@ -593,6 +595,14 @@ fn hex_to_rgb(s: &str) -> (u8, u8, u8) {
     let g = u8::from_str_radix(&hex[2..4], 16).unwrap_or(0);
     let b = u8::from_str_radix(&hex[4..6], 16).unwrap_or(0);
     (r, g, b)
+}
+
+fn contrast_fg(r: u8, g: u8, b: u8) -> Color {
+    let r_f = r as f32 / 255.0;
+    let g_f = g as f32 / 255.0;
+    let b_f = b as f32 / 255.0;
+    let lum = 0.2126 * r_f + 0.7152 * g_f + 0.0722 * b_f;
+    if lum > 0.6 { Color::Black } else { Color::White }
 }
 
 fn make_diff_text(diff: &str) -> Text {

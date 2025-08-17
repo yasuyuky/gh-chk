@@ -556,13 +556,10 @@ impl App {
     async fn load_contributions(&mut self) -> surf::Result<()> {
         let login = crate::cmd::viewer::get().await?;
         let vars = json!({ "login": login });
-        let q = json!({ "query": include_str!("../query/contributions.graphql"), "variables": vars });
+        let q =
+            json!({ "query": include_str!("../query/contributions.graphql"), "variables": vars });
         let res = graphql::query::<contrib_res::ContribRes>(&q).await?;
-        let cal = &res
-            .data
-            .user
-            .contributions_collection
-            .contribution_calendar;
+        let cal = &res.data.user.contributions_collection.contribution_calendar;
         let weeks = &cal.weeks;
         let mut lines: Vec<Line> = Vec::new();
         self.contrib_title = format!("Contributions: total {}", cal.total_contributions);
@@ -573,8 +570,15 @@ impl App {
                     let (r, g, b) = hex_to_rgb(&d.color);
                     let fg = contrast_fg(r, g, b);
                     let cnt = d.contribution_count;
-                    let txt = if cnt >= 100 { String::from("++") } else { format!("{:>2}", cnt) };
-                    spans.push(Span::styled(txt, Style::default().bg(Color::Rgb(r, g, b)).fg(fg)));
+                    let txt = if cnt >= 100 {
+                        String::from("++")
+                    } else {
+                        format!("{:>2}", cnt)
+                    };
+                    spans.push(Span::styled(
+                        txt,
+                        Style::default().bg(Color::Rgb(r, g, b)).fg(fg),
+                    ));
                 } else {
                     spans.push(Span::raw("  "));
                 }
@@ -602,7 +606,11 @@ fn contrast_fg(r: u8, g: u8, b: u8) -> Color {
     let g_f = g as f32 / 255.0;
     let b_f = b as f32 / 255.0;
     let lum = 0.2126 * r_f + 0.7152 * g_f + 0.0722 * b_f;
-    if lum > 0.6 { Color::Black } else { Color::White }
+    if lum > 0.6 {
+        Color::Black
+    } else {
+        Color::White
+    }
 }
 
 fn make_diff_text(diff: &str) -> Text {

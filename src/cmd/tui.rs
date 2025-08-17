@@ -89,6 +89,30 @@ impl MergeStateStatus {
 nestruct::nest! {
     #[derive(serde::Serialize, serde::Deserialize, Debug)]
     #[serde(rename_all = "camelCase")]
+    ContribRes {
+        data: {
+            user: {
+                contributions_collection: {
+                    contribution_calendar: {
+                        total_contributions: usize,
+                        weeks: [{
+                            first_day: String,
+                            contribution_days: [{
+                                color: String,
+                                contribution_count: usize,
+                                date: String
+                            }]
+                        }]
+                    }
+                }
+            }
+        }
+    }
+}
+
+nestruct::nest! {
+    #[derive(serde::Serialize, serde::Deserialize, Debug)]
+    #[serde(rename_all = "camelCase")]
     Repository {
         name: String,
         pull_requests: {
@@ -261,6 +285,9 @@ struct App {
     preview_mode: PreviewMode,
     preview_scroll: u16,
     preview_area_height: u16,
+    contrib_lines: Option<Vec<Line<'static>>>,
+    contrib_height: u16,
+    contrib_title: String,
 }
 
 impl App {
@@ -281,6 +308,9 @@ impl App {
             preview_mode: PreviewMode::Body,
             preview_scroll: 0,
             preview_area_height: 0,
+            contrib_lines: None,
+            contrib_height: 9,
+            contrib_title: "Contributions".to_string(),
         }
     }
 
@@ -518,6 +548,68 @@ impl App {
             }
             self.status_message = Some(format!("✅ Reloaded. {} PRs.", self.prs.len()));
         }
+        if let Err(e) = self.load_contributions().await {
+            self.status_message = Some(format!("❌ Contrib load error: {}", e));
+        }
+    }
+
+    async fn load_contributions(&mut self) -> surf::Result<()> {
+        let login = crate::cmd::viewer::get().await?;
+        let vars = json!({ "login": login });
+        let q =
+            json!({ "query": include_str!("../query/contributions.graphql"), "variables": vars });
+        let res = graphql::query::<contrib_res::ContribRes>(&q).await?;
+        let cal = &res.data.user.contributions_collection.contribution_calendar;
+        let weeks = &cal.weeks;
+        let mut lines: Vec<Line> = Vec::new();
+        self.contrib_title = format!("Contributions: total {}", cal.total_contributions);
+        for day in 0..7 {
+            let mut spans: Vec<Span> = Vec::new();
+            for w in weeks {
+                if let Some(d) = w.contribution_days.get(day) {
+                    let (r, g, b) = hex_to_rgb(&d.color);
+                    let fg = contrast_fg(r, g, b);
+                    let cnt = d.contribution_count;
+                    let txt = if cnt >= 100 {
+                        String::from("++")
+                    } else {
+                        format!("{:>2}", cnt)
+                    };
+                    spans.push(Span::styled(
+                        txt,
+                        Style::default().bg(Color::Rgb(r, g, b)).fg(fg),
+                    ));
+                } else {
+                    spans.push(Span::raw("  "));
+                }
+            }
+            lines.push(Line::from(spans));
+        }
+        self.contrib_lines = Some(lines);
+        Ok(())
+    }
+}
+
+fn hex_to_rgb(s: &str) -> (u8, u8, u8) {
+    let hex = s.trim_start_matches('#');
+    if hex.len() < 6 {
+        return (0, 0, 0);
+    }
+    let r = u8::from_str_radix(&hex[0..2], 16).unwrap_or(0);
+    let g = u8::from_str_radix(&hex[2..4], 16).unwrap_or(0);
+    let b = u8::from_str_radix(&hex[4..6], 16).unwrap_or(0);
+    (r, g, b)
+}
+
+fn contrast_fg(r: u8, g: u8, b: u8) -> Color {
+    let r_f = r as f32 / 255.0;
+    let g_f = g as f32 / 255.0;
+    let b_f = b as f32 / 255.0;
+    let lum = 0.2126 * r_f + 0.7152 * g_f + 0.0722 * b_f;
+    if lum > 0.6 {
+        Color::Black
+    } else {
+        Color::White
     }
 }
 
@@ -559,7 +651,14 @@ fn make_diff_text(diff: &str) -> Text {
 fn ui(f: &mut Frame, app: &mut App) {
     let outer = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Min(0), Constraint::Length(3)].as_ref())
+        .constraints(
+            [
+                Constraint::Min(0),
+                Constraint::Length(app.contrib_height),
+                Constraint::Length(3),
+            ]
+            .as_ref(),
+        )
         .split(f.area());
 
     let main_chunks = if app.preview_open {
@@ -630,6 +729,22 @@ fn ui(f: &mut Frame, app: &mut App) {
         f.render_widget(preview, area);
     }
 
+    // Contributions pane across full width in the middle row
+    let contrib_block = Block::default()
+        .borders(Borders::ALL)
+        .title(app.contrib_title.clone());
+    if let Some(lines) = &app.contrib_lines {
+        let contrib = Paragraph::new(lines.clone())
+            .block(contrib_block)
+            .wrap(Wrap { trim: false });
+        f.render_widget(contrib, outer[1]);
+    } else {
+        let contrib = Paragraph::new("Loading contributions...")
+            .block(contrib_block)
+            .wrap(Wrap { trim: true });
+        f.render_widget(contrib, outer[1]);
+    }
+
     let help_text = if let Some(ref msg) = app.status_message {
         msg.clone()
     } else {
@@ -650,7 +765,7 @@ fn ui(f: &mut Frame, app: &mut App) {
         .block(Block::default().borders(Borders::ALL).title("Help"))
         .wrap(Wrap { trim: true });
 
-    f.render_widget(help, outer[1]);
+    f.render_widget(help, outer[2]);
 }
 
 async fn fetch_pr_body(owner: &str, name: &str, number: usize) -> surf::Result<String> {
@@ -698,6 +813,7 @@ fn run_tui(prs: Vec<PrData>, specs: Vec<SlugSpec>) -> Result<(), Box<dyn std::er
     let mut terminal = Terminal::new(backend)?;
 
     let mut app = App::new(prs, specs);
+    let _ = async_std::task::block_on(app.load_contributions());
     let res = async_std::task::block_on(run_app(&mut terminal, &mut app));
 
     disable_raw_mode()?;

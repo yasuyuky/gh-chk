@@ -24,4 +24,4 @@ open = "5.0.1"
 
 [dependencies.async-std]
 features = ["attributes"]
-version = "1.13.1"
+version = "1.13.2"

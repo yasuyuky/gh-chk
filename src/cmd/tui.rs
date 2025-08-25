@@ -132,7 +132,7 @@ struct PrData {
 impl PrData {
     pub fn display_line(&self) -> String {
         let reviewers_str = if self.reviewers.is_empty() {
-            String::new()
+            String::default()
         } else {
             format!(" 👥 {}", self.reviewers.join(", "))
         };

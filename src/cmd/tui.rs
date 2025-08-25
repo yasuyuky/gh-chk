@@ -734,7 +734,20 @@ fn ui(f: &mut Frame, app: &mut App) {
         .borders(Borders::ALL)
         .title(app.contrib_title.clone());
     if let Some(lines) = &app.contrib_lines {
-        let contrib = Paragraph::new(lines.clone())
+        // Fit contribution graph to the available inner width.
+        // Each week cell occupies 2 columns (either "++" or right-padded 2-digit number or spaces).
+        let area = outer[1];
+        let inner_width = area.width.saturating_sub(2); // account for block borders
+        let visible_weeks = (inner_width / 2) as usize;
+        let mut trimmed: Vec<Line> = Vec::with_capacity(lines.len());
+        for line in lines.iter() {
+            let spans = &line.spans;
+            let len = spans.len();
+            let start = len.saturating_sub(visible_weeks);
+            let slice: Vec<Span> = spans[start..len].to_vec();
+            trimmed.push(Line::from(slice));
+        }
+        let contrib = Paragraph::new(trimmed)
             .block(contrib_block)
             .wrap(Wrap { trim: false });
         f.render_widget(contrib, outer[1]);

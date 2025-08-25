@@ -5,7 +5,7 @@ use std::fmt::Display;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(untagged)]
-enum RequestedReviewer {
+pub enum RequestedReviewer {
     User { login: String },
     Team { name: String },
 }
@@ -82,7 +82,7 @@ impl Display for repository::pull_requests::nodes::Nodes {
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-enum MergeStateStatus {
+pub enum MergeStateStatus {
     Behind,
     Blocked,
     Clean,
@@ -94,7 +94,7 @@ enum MergeStateStatus {
 }
 
 impl MergeStateStatus {
-    fn to_emoji(&self) -> String {
+    pub fn to_emoji(&self) -> String {
         match self {
             Self::Behind => "⏩",
             Self::Blocked => "🚫",
@@ -124,7 +124,7 @@ impl MergeStateStatus {
     }
 }
 
-async fn merge_pr(pr_id: &str) -> surf::Result<()> {
+pub async fn merge_pr(pr_id: &str) -> surf::Result<()> {
     let v = json!({ "pullRequestId": pr_id });
     let q = json!({ "query": include_str!("../query/merge.pr.graphql"), "variables": v });
     crate::graphql::query::<serde_json::Value>(&q).await?;

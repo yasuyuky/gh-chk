@@ -1,3 +1,4 @@
+use crate::cmd::prs::MergeStateStatus;
 use crate::{graphql, rest};
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, MouseEventKind},
@@ -13,26 +14,13 @@ use ratatui::{
     text::{Line, Span, Text},
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap},
 };
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::json;
 use std::collections::HashMap;
 use std::io;
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-#[serde(untagged)]
-enum RequestedReviewer {
-    User { login: String },
-    Team { name: String },
-}
-
-impl std::fmt::Display for RequestedReviewer {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            RequestedReviewer::User { login } => write!(f, "{}", login),
-            RequestedReviewer::Team { name } => write!(f, "team:{}", name),
-        }
-    }
-}
+// Type alias for GraphQL PR node for brevity
+type PrNode = repository::pull_requests::nodes::Nodes;
 
 fn extract_reviewer_names(
     review_requests: &repository::pull_requests::nodes::review_requests::ReviewRequests,
@@ -44,34 +32,7 @@ fn extract_reviewer_names(
         .collect()
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-enum MergeStateStatus {
-    Behind,
-    Blocked,
-    Clean,
-    Dirty,
-    Draft,
-    HasHooks,
-    Unknown,
-    Unstable,
-}
-
 impl MergeStateStatus {
-    fn to_emoji(&self) -> String {
-        match self {
-            Self::Behind => "⏩",
-            Self::Blocked => "🚫",
-            Self::Clean => "✅",
-            Self::Dirty => "⚠️ ",
-            Self::Draft => "✏️ ",
-            Self::HasHooks => "🪝",
-            Self::Unknown => "❓",
-            Self::Unstable => "❌",
-        }
-        .to_owned()
-    }
-
     fn to_color(&self) -> Color {
         match self {
             Self::Behind => Color::Yellow,
@@ -86,29 +47,8 @@ impl MergeStateStatus {
     }
 }
 
-nestruct::nest! {
-    #[derive(serde::Serialize, serde::Deserialize, Debug)]
-    #[serde(rename_all = "camelCase")]
-    ContribRes {
-        data: {
-            user: {
-                contributions_collection: {
-                    contribution_calendar: {
-                        total_contributions: usize,
-                        weeks: [{
-                            first_day: String,
-                            contribution_days: [{
-                                color: String,
-                                contribution_count: usize,
-                                date: String
-                            }]
-                        }]
-                    }
-                }
-            }
-        }
-    }
-}
+// Contributions GraphQL fetching and types are defined in contributions.rs
+// to avoid duplication. We reuse them here.
 
 nestruct::nest! {
     #[derive(serde::Serialize, serde::Deserialize, Debug)]
@@ -121,10 +61,10 @@ nestruct::nest! {
                 number: usize,
                 title: String,
                 url: String,
-                merge_state_status: crate::cmd::tui::MergeStateStatus,
+                merge_state_status: crate::cmd::prs::MergeStateStatus,
                 review_requests: {
                     nodes: [{
-                        requested_reviewer: Option<crate::cmd::tui::RequestedReviewer>,
+                        requested_reviewer: Option<crate::cmd::prs::RequestedReviewer>,
                     }]
                 }
             }]
@@ -211,25 +151,41 @@ impl PrData {
     }
 }
 
+fn split_slug(slug: &str) -> Option<(String, String)> {
+    slug.split_once('/')
+        .map(|(o, n)| (o.to_string(), n.to_string()))
+}
+
+fn make_pr_data(owner: &str, repo: &str, pr: &PrNode) -> PrData {
+    PrData {
+        id: pr.id.clone(),
+        number: pr.number,
+        title: pr.title.clone(),
+        url: pr.url.clone(),
+        slug: format!("{}/{}", owner, repo),
+        merge_state_status: pr.merge_state_status.clone(),
+        reviewers: extract_reviewer_names(&pr.review_requests),
+    }
+}
+
 async fn fetch_owner_prs(owner: &str) -> surf::Result<Vec<PrData>> {
     let v = json!({ "login": owner });
     let q = json!({ "query": include_str!("../query/prs.graphql"), "variables": v });
     let res = graphql::query::<res::Res>(&q).await?;
 
-    let mut prs = Vec::new();
-    for repo in &res.data.repository_owner.repositories.nodes {
-        for pr in &repo.pull_requests.nodes {
-            prs.push(PrData {
-                id: pr.id.clone(),
-                number: pr.number,
-                title: pr.title.clone(),
-                url: pr.url.clone(),
-                slug: format!("{}/{}", owner, repo.name),
-                merge_state_status: pr.merge_state_status.clone(),
-                reviewers: extract_reviewer_names(&pr.review_requests),
-            });
-        }
-    }
+    let prs = res
+        .data
+        .repository_owner
+        .repositories
+        .nodes
+        .iter()
+        .flat_map(|repo| {
+            repo.pull_requests
+                .nodes
+                .iter()
+                .map(move |pr| make_pr_data(owner, &repo.name, pr))
+        })
+        .collect();
     Ok(prs)
 }
 
@@ -237,27 +193,15 @@ async fn fetch_repo_prs(owner: &str, name: &str) -> surf::Result<Vec<PrData>> {
     let v = json!({ "login": owner, "name": name });
     let q = json!({ "query": include_str!("../query/prs.repo.graphql"), "variables": v });
     let res = graphql::query::<repo_res::RepoRes>(&q).await?;
-
-    let mut prs = Vec::new();
-    for pr in &res.data.repository_owner.repository.pull_requests.nodes {
-        prs.push(PrData {
-            id: pr.id.clone(),
-            number: pr.number,
-            title: pr.title.clone(),
-            url: pr.url.clone(),
-            slug: format!("{}/{}", owner, name),
-            merge_state_status: pr.merge_state_status.clone(),
-            reviewers: extract_reviewer_names(&pr.review_requests),
-        });
-    }
-    Ok(prs)
-}
-
-async fn merge_pr(pr_id: &str) -> surf::Result<()> {
-    let v = json!({ "pullRequestId": pr_id });
-    let q = json!({ "query": include_str!("../query/merge.pr.graphql"), "variables": v });
-    graphql::query::<serde_json::Value>(&q).await?;
-    Ok(())
+    Ok(res
+        .data
+        .repository_owner
+        .repository
+        .pull_requests
+        .nodes
+        .iter()
+        .map(|pr| make_pr_data(owner, name, pr))
+        .collect())
 }
 
 async fn approve_pr(pr_id: &str) -> surf::Result<()> {
@@ -318,16 +262,12 @@ impl App {
         if self.prs.is_empty() {
             return;
         }
-        let i = match self.list_state.selected() {
-            Some(i) => {
-                if i >= self.prs.len() - 1 {
-                    0
-                } else {
-                    i + 1
-                }
-            }
-            None => 0,
-        };
+        let len = self.prs.len();
+        let i = self
+            .list_state
+            .selected()
+            .map(|i| (i + 1) % len)
+            .unwrap_or(0);
         self.list_state.select(Some(i));
         self.preview_scroll = 0;
     }
@@ -336,16 +276,12 @@ impl App {
         if self.prs.is_empty() {
             return;
         }
-        let i = match self.list_state.selected() {
-            Some(i) => {
-                if i == 0 {
-                    self.prs.len() - 1
-                } else {
-                    i - 1
-                }
-            }
-            None => 0,
-        };
+        let len = self.prs.len();
+        let i = self
+            .list_state
+            .selected()
+            .map(|i| (i + len - 1) % len)
+            .unwrap_or(0);
         self.list_state.select(Some(i));
         self.preview_scroll = 0;
     }
@@ -360,7 +296,7 @@ impl App {
                 if pr.merge_state_status == MergeStateStatus::Clean {
                     self.status_message =
                         Some(format!("Merging PR #{} in {}...", pr.number, pr.slug));
-                    match merge_pr(&pr.id).await {
+                    match crate::cmd::prs::merge_pr(&pr.id).await {
                         Ok(_) => {
                             self.status_message =
                                 Some(format!("✅ Merged PR #{} in {}", pr.number, pr.slug));
@@ -420,11 +356,7 @@ impl App {
         self.preview_open = !self.preview_open;
         if self.preview_open {
             self.preview_scroll = 0;
-            if let Some(pr) = self.get_selected_pr().cloned() {
-                if !self.preview_cache.contains_key(&pr.id) {
-                    let _ = self.load_preview_for(&pr).await;
-                }
-            }
+            self.maybe_prefetch_on_move().await;
         }
     }
 
@@ -444,8 +376,8 @@ impl App {
 
     async fn load_preview_for(&mut self, pr: &PrData) -> surf::Result<()> {
         self.status_message = Some(format!("🔎 Loading preview for #{}...", pr.number));
-        let (owner, name) = match pr.slug.split_once('/') {
-            Some((o, n)) => (o.to_string(), n.to_string()),
+        let (owner, name) = match split_slug(&pr.slug) {
+            Some(x) => x,
             None => return Ok(()),
         };
         let body = fetch_pr_body(&owner, &name, pr.number).await?;
@@ -456,8 +388,8 @@ impl App {
 
     async fn load_diff_for(&mut self, pr: &PrData) -> surf::Result<()> {
         self.status_message = Some(format!("🔎 Loading diff for #{}...", pr.number));
-        let (owner, name) = match pr.slug.split_once('/') {
-            Some((o, n)) => (o.to_string(), n.to_string()),
+        let (owner, name) = match split_slug(&pr.slug) {
+            Some(x) => x,
             None => return Ok(()),
         };
         let files = fetch_pr_files(&owner, &name, pr.number).await?;
@@ -555,10 +487,7 @@ impl App {
 
     async fn load_contributions(&mut self) -> surf::Result<()> {
         let login = crate::cmd::viewer::get().await?;
-        let vars = json!({ "login": login });
-        let q =
-            json!({ "query": include_str!("../query/contributions.graphql"), "variables": vars });
-        let res = graphql::query::<contrib_res::ContribRes>(&q).await?;
+        let res = crate::cmd::contributions::fetch_calendar(&login).await?;
         let cal = &res.data.user.contributions_collection.contribution_calendar;
         let weeks = &cal.weeks;
         let mut lines: Vec<Line> = Vec::new();
@@ -734,7 +663,20 @@ fn ui(f: &mut Frame, app: &mut App) {
         .borders(Borders::ALL)
         .title(app.contrib_title.clone());
     if let Some(lines) = &app.contrib_lines {
-        let contrib = Paragraph::new(lines.clone())
+        // Fit contribution graph to the available inner width.
+        // Each week cell occupies 2 columns (either "++" or right-padded 2-digit number or spaces).
+        let area = outer[1];
+        let inner_width = area.width.saturating_sub(2); // account for block borders
+        let visible_weeks = (inner_width / 2) as usize;
+        let mut trimmed: Vec<Line> = Vec::with_capacity(lines.len());
+        for line in lines.iter() {
+            let spans = &line.spans;
+            let len = spans.len();
+            let start = len.saturating_sub(visible_weeks);
+            let slice: Vec<Span> = spans[start..len].to_vec();
+            trimmed.push(Line::from(slice));
+        }
+        let contrib = Paragraph::new(trimmed)
             .block(contrib_block)
             .wrap(Wrap { trim: false });
         f.render_widget(contrib, outer[1]);

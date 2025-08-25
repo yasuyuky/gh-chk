@@ -18,6 +18,9 @@ use serde_json::json;
 use std::collections::HashMap;
 use std::io;
 
+// Type alias for GraphQL PR node for brevity
+type PrNode = repository::pull_requests::nodes::Nodes;
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(untagged)]
 enum RequestedReviewer {
@@ -192,7 +195,7 @@ struct PrData {
 impl PrData {
     pub fn display_line(&self) -> String {
         let reviewers_str = if self.reviewers.is_empty() {
-            String::default()
+            String::new()
         } else {
             format!(" 👥 {}", self.reviewers.join(", "))
         };
@@ -211,25 +214,35 @@ impl PrData {
     }
 }
 
+fn split_slug(slug: &str) -> Option<(String, String)> {
+    slug.split_once('/').map(|(o, n)| (o.to_string(), n.to_string()))
+}
+
+fn make_pr_data(owner: &str, repo: &str, pr: &PrNode) -> PrData {
+    PrData {
+        id: pr.id.clone(),
+        number: pr.number,
+        title: pr.title.clone(),
+        url: pr.url.clone(),
+        slug: format!("{}/{}", owner, repo),
+        merge_state_status: pr.merge_state_status.clone(),
+        reviewers: extract_reviewer_names(&pr.review_requests),
+    }
+}
+
 async fn fetch_owner_prs(owner: &str) -> surf::Result<Vec<PrData>> {
     let v = json!({ "login": owner });
     let q = json!({ "query": include_str!("../query/prs.graphql"), "variables": v });
     let res = graphql::query::<res::Res>(&q).await?;
 
-    let mut prs = Vec::new();
-    for repo in &res.data.repository_owner.repositories.nodes {
-        for pr in &repo.pull_requests.nodes {
-            prs.push(PrData {
-                id: pr.id.clone(),
-                number: pr.number,
-                title: pr.title.clone(),
-                url: pr.url.clone(),
-                slug: format!("{}/{}", owner, repo.name),
-                merge_state_status: pr.merge_state_status.clone(),
-                reviewers: extract_reviewer_names(&pr.review_requests),
-            });
-        }
-    }
+    let prs = res
+        .data
+        .repository_owner
+        .repositories
+        .nodes
+        .iter()
+        .flat_map(|repo| repo.pull_requests.nodes.iter().map(move |pr| make_pr_data(owner, &repo.name, pr)))
+        .collect();
     Ok(prs)
 }
 
@@ -237,20 +250,17 @@ async fn fetch_repo_prs(owner: &str, name: &str) -> surf::Result<Vec<PrData>> {
     let v = json!({ "login": owner, "name": name });
     let q = json!({ "query": include_str!("../query/prs.repo.graphql"), "variables": v });
     let res = graphql::query::<repo_res::RepoRes>(&q).await?;
-
-    let mut prs = Vec::new();
-    for pr in &res.data.repository_owner.repository.pull_requests.nodes {
-        prs.push(PrData {
-            id: pr.id.clone(),
-            number: pr.number,
-            title: pr.title.clone(),
-            url: pr.url.clone(),
-            slug: format!("{}/{}", owner, name),
-            merge_state_status: pr.merge_state_status.clone(),
-            reviewers: extract_reviewer_names(&pr.review_requests),
-        });
-    }
-    Ok(prs)
+    Ok(
+        res
+            .data
+            .repository_owner
+            .repository
+            .pull_requests
+            .nodes
+            .iter()
+            .map(|pr| make_pr_data(owner, name, pr))
+            .collect(),
+    )
 }
 
 async fn merge_pr(pr_id: &str) -> surf::Result<()> {
@@ -318,16 +328,8 @@ impl App {
         if self.prs.is_empty() {
             return;
         }
-        let i = match self.list_state.selected() {
-            Some(i) => {
-                if i >= self.prs.len() - 1 {
-                    0
-                } else {
-                    i + 1
-                }
-            }
-            None => 0,
-        };
+        let len = self.prs.len();
+        let i = self.list_state.selected().map(|i| (i + 1) % len).unwrap_or(0);
         self.list_state.select(Some(i));
         self.preview_scroll = 0;
     }
@@ -336,16 +338,12 @@ impl App {
         if self.prs.is_empty() {
             return;
         }
-        let i = match self.list_state.selected() {
-            Some(i) => {
-                if i == 0 {
-                    self.prs.len() - 1
-                } else {
-                    i - 1
-                }
-            }
-            None => 0,
-        };
+        let len = self.prs.len();
+        let i = self
+            .list_state
+            .selected()
+            .map(|i| (i + len - 1) % len)
+            .unwrap_or(0);
         self.list_state.select(Some(i));
         self.preview_scroll = 0;
     }
@@ -420,11 +418,7 @@ impl App {
         self.preview_open = !self.preview_open;
         if self.preview_open {
             self.preview_scroll = 0;
-            if let Some(pr) = self.get_selected_pr().cloned() {
-                if !self.preview_cache.contains_key(&pr.id) {
-                    let _ = self.load_preview_for(&pr).await;
-                }
-            }
+            self.maybe_prefetch_on_move().await;
         }
     }
 
@@ -444,8 +438,8 @@ impl App {
 
     async fn load_preview_for(&mut self, pr: &PrData) -> surf::Result<()> {
         self.status_message = Some(format!("🔎 Loading preview for #{}...", pr.number));
-        let (owner, name) = match pr.slug.split_once('/') {
-            Some((o, n)) => (o.to_string(), n.to_string()),
+        let (owner, name) = match split_slug(&pr.slug) {
+            Some(x) => x,
             None => return Ok(()),
         };
         let body = fetch_pr_body(&owner, &name, pr.number).await?;
@@ -456,8 +450,8 @@ impl App {
 
     async fn load_diff_for(&mut self, pr: &PrData) -> surf::Result<()> {
         self.status_message = Some(format!("🔎 Loading diff for #{}...", pr.number));
-        let (owner, name) = match pr.slug.split_once('/') {
-            Some((o, n)) => (o.to_string(), n.to_string()),
+        let (owner, name) = match split_slug(&pr.slug) {
+            Some(x) => x,
             None => return Ok(()),
         };
         let files = fetch_pr_files(&owner, &name, pr.number).await?;

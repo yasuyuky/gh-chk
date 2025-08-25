@@ -89,29 +89,8 @@ impl MergeStateStatus {
     }
 }
 
-nestruct::nest! {
-    #[derive(serde::Serialize, serde::Deserialize, Debug)]
-    #[serde(rename_all = "camelCase")]
-    ContribRes {
-        data: {
-            user: {
-                contributions_collection: {
-                    contribution_calendar: {
-                        total_contributions: usize,
-                        weeks: [{
-                            first_day: String,
-                            contribution_days: [{
-                                color: String,
-                                contribution_count: usize,
-                                date: String
-                            }]
-                        }]
-                    }
-                }
-            }
-        }
-    }
-}
+// Contributions GraphQL fetching and types are defined in contributions.rs
+// to avoid duplication. We reuse them here.
 
 nestruct::nest! {
     #[derive(serde::Serialize, serde::Deserialize, Debug)]
@@ -549,10 +528,7 @@ impl App {
 
     async fn load_contributions(&mut self) -> surf::Result<()> {
         let login = crate::cmd::viewer::get().await?;
-        let vars = json!({ "login": login });
-        let q =
-            json!({ "query": include_str!("../query/contributions.graphql"), "variables": vars });
-        let res = graphql::query::<contrib_res::ContribRes>(&q).await?;
+        let res = crate::cmd::contributions::fetch_calendar(&login).await?;
         let cal = &res.data.user.contributions_collection.contribution_calendar;
         let weeks = &cal.weeks;
         let mut lines: Vec<Line> = Vec::new();

@@ -25,11 +25,22 @@ nestruct::nest! {
     }
 }
 
+// Re-export the generated types through a public module for reuse
+pub mod model {
+    pub use super::res::*;
+}
+
+// Fetch raw contribution calendar result for a given login
+pub async fn fetch_calendar(login: &str) -> surf::Result<model::Res> {
+    let var = json!({ "login": login });
+    let q = json!({ "query": include_str!("../query/contributions.graphql"), "variables": var });
+    let res = crate::graphql::query::<model::Res>(&q).await?;
+    Ok(res)
+}
+
 pub async fn check(user: Option<String>) -> surf::Result<()> {
     let user = user.unwrap_or(crate::cmd::viewer::get().await?);
-    let var = json!({ "login": user });
-    let q = json!({ "query": include_str!("../query/contributions.graphql"), "variables": var });
-    let res = crate::graphql::query::<res::Res>(&q).await?;
+    let res = fetch_calendar(&user).await?;
     match crate::config::FORMAT.get() {
         Some(&crate::config::Format::Json) => println!("{}", serde_json::to_string_pretty(&res)?),
         _ => print_text(&res)?,

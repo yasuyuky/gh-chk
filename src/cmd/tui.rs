@@ -19,11 +19,11 @@ use serde_json::json;
 use std::collections::HashMap;
 use std::io;
 
-// Type alias for GraphQL PR node for brevity
-type PrNode = repository::pull_requests::nodes::Nodes;
+// Type alias for GraphQL PR node for brevity (reuse prs module types)
+type PrNode = crate::cmd::prs::repository::pull_requests::nodes::Nodes;
 
 fn extract_reviewer_names(
-    review_requests: &repository::pull_requests::nodes::review_requests::ReviewRequests,
+    review_requests: &crate::cmd::prs::repository::pull_requests::nodes::review_requests::ReviewRequests,
 ) -> Vec<String> {
     review_requests
         .nodes
@@ -48,56 +48,7 @@ impl MergeStateStatus {
 }
 
 // Contributions GraphQL fetching and types are defined in contributions.rs
-// to avoid duplication. We reuse them here.
-
-nestruct::nest! {
-    #[derive(serde::Serialize, serde::Deserialize, Debug)]
-    #[serde(rename_all = "camelCase")]
-    Repository {
-        name: String,
-        pull_requests: {
-            nodes: [{
-                id: String,
-                number: usize,
-                title: String,
-                url: String,
-                created_at: String,
-                merge_state_status: crate::cmd::prs::MergeStateStatus,
-                review_requests: {
-                    nodes: [{
-                        requested_reviewer: Option<crate::cmd::prs::RequestedReviewer>,
-                    }]
-                }
-            }]
-        }
-    }
-}
-
-nestruct::nest! {
-    #[derive(serde::Serialize, serde::Deserialize, Debug)]
-    #[serde(rename_all = "camelCase")]
-    Res {
-        data: {
-            repository_owner: {
-                repositories: {
-                    nodes: [ crate::cmd::tui::repository::Repository ]
-                }
-            }
-        }
-    }
-}
-
-nestruct::nest! {
-    #[derive(serde::Serialize, serde::Deserialize, Debug)]
-    #[serde(rename_all = "camelCase")]
-    RepoRes {
-        data: {
-            repository_owner: {
-                repository: crate::cmd::tui::repository::Repository
-            }
-        }
-    }
-}
+// Reuse PR GraphQL types from prs.rs to avoid duplication.
 
 nestruct::nest! {
     #[derive(serde::Serialize, serde::Deserialize, Debug)]
@@ -181,7 +132,7 @@ fn make_pr_data(owner: &str, repo: &str, pr: &PrNode) -> PrData {
 async fn fetch_owner_prs(owner: &str) -> surf::Result<Vec<PrData>> {
     let v = json!({ "login": owner });
     let q = json!({ "query": include_str!("../query/prs.graphql"), "variables": v });
-    let res = graphql::query::<res::Res>(&q).await?;
+    let res = graphql::query::<crate::cmd::prs::res::Res>(&q).await?;
 
     let prs = res
         .data
@@ -202,7 +153,7 @@ async fn fetch_owner_prs(owner: &str) -> surf::Result<Vec<PrData>> {
 async fn fetch_repo_prs(owner: &str, name: &str) -> surf::Result<Vec<PrData>> {
     let v = json!({ "login": owner, "name": name });
     let q = json!({ "query": include_str!("../query/prs.repo.graphql"), "variables": v });
-    let res = graphql::query::<repo_res::RepoRes>(&q).await?;
+    let res = graphql::query::<crate::cmd::prs::repo_res::RepoRes>(&q).await?;
     Ok(res
         .data
         .repository_owner

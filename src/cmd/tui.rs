@@ -125,6 +125,7 @@ struct PrData {
     pub number: usize,
     pub title: String,
     pub url: String,
+    pub created_at: String,
     pub slug: String,
     pub merge_state_status: MergeStateStatus,
     pub reviewers: Vec<String>,
@@ -137,13 +138,20 @@ impl PrData {
         } else {
             format!(" 👥 {}", self.reviewers.join(", "))
         };
+        let created_date = self
+            .created_at
+            .split('T')
+            .next()
+            .unwrap_or(&self.created_at)
+            .to_string();
         format!(
-            "{} {} {} {}{}",
+            "{} {} {} {}{} ({})",
             format!("#{}", self.number),
             self.merge_state_status.to_emoji(),
             self.slug,
             self.title,
-            reviewers_str
+            reviewers_str,
+            created_date
         )
     }
 
@@ -163,6 +171,7 @@ fn make_pr_data(owner: &str, repo: &str, pr: &PrNode) -> PrData {
         number: pr.number,
         title: pr.title.clone(),
         url: pr.url.clone(),
+        created_at: pr.created_at.clone(),
         slug: format!("{}/{}", owner, repo),
         merge_state_status: pr.merge_state_status.clone(),
         reviewers: extract_reviewer_names(&pr.review_requests),

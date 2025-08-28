@@ -61,6 +61,7 @@ nestruct::nest! {
                 number: usize,
                 title: String,
                 url: String,
+                created_at: String,
                 merge_state_status: crate::cmd::prs::MergeStateStatus,
                 review_requests: {
                     nodes: [{

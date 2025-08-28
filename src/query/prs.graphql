@@ -9,6 +9,7 @@ query ($login: String!) {
             number
             title
             url
+            createdAt
             mergeStateStatus
             reviewRequests(first: 10) {
               nodes {

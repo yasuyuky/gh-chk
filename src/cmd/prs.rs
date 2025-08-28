@@ -30,6 +30,7 @@ nestruct::nest! {
                 number: usize,
                 title: String,
                 url: String,
+                created_at: String,
                 merge_state_status: crate::cmd::prs::MergeStateStatus,
                 review_requests: {
                     nodes: [{
@@ -69,12 +70,19 @@ nestruct::nest! {
 
 impl Display for repository::pull_requests::nodes::Nodes {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let created_date = self
+            .created_at
+            .split('T')
+            .next()
+            .unwrap_or(&self.created_at)
+            .to_string();
         let s = format!(
-            "{:>6} {} {} {}",
+            "{:>6} {} {} {} {}",
             format!("#{}", self.number).bold(),
             self.merge_state_status.to_emoji(),
             self.url,
-            self.title.bold()
+            self.title.bold(),
+            format!("({})", created_date).bright_black()
         );
         write!(f, "{}", self.merge_state_status.colorize(&s))
     }

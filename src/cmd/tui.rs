@@ -654,9 +654,9 @@ fn ui(f: &mut Frame, app: &mut App) {
         let base =
             "q:quit • ?:help • Enter/o:open • m:merge • a:approve • r:reload • ←/→:list/body/diff";
         let nav = if app.preview_open {
-            "j/k or ↑/↓:scroll • wheel:scroll"
+            "↑/↓/wheel:scroll"
         } else {
-            "j/k or ↑/↓:navigate"
+            "↑/↓:navigate"
         };
         let mode = match app.preview_mode {
             PreviewMode::Body => "Body",

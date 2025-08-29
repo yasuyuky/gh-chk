@@ -651,7 +651,8 @@ fn ui(f: &mut Frame, app: &mut App) {
     let help_text = if let Some(ref msg) = app.status_message {
         msg.clone()
     } else {
-        let base = "q:quit • ?:help • Enter/o:open • m:merge • a:approve • r:reload • p:toggle • b:body • d:diff";
+        let base =
+            "q:quit • ?:help • Enter/o:open • m:merge • a:approve • r:reload • ←/→:list/body/diff";
         let nav = if app.preview_open {
             "j/k or ↑/↓:scroll • wheel:scroll"
         } else {

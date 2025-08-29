@@ -747,7 +747,7 @@ async fn run_app(
                     KeyCode::Char('q') => {
                         app.should_quit = true;
                     }
-                    KeyCode::Down | KeyCode::Char('j') => {
+                    KeyCode::Down => {
                         if app.preview_open {
                             app.scroll_preview_down(1);
                         } else {
@@ -755,7 +755,7 @@ async fn run_app(
                             app.maybe_prefetch_on_move().await;
                         }
                     }
-                    KeyCode::Up | KeyCode::Char('k') => {
+                    KeyCode::Up => {
                         if app.preview_open {
                             app.scroll_preview_up(1);
                         } else {

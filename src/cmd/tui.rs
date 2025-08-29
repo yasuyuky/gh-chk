@@ -734,6 +734,71 @@ fn run_tui(prs: Vec<PrData>, specs: Vec<SlugSpec>) -> Result<(), Box<dyn std::er
     Ok(())
 }
 
+async fn handle_key(app: &mut App, code: KeyCode) {
+    match code {
+        KeyCode::Char('q') => {
+            app.should_quit = true;
+        }
+        KeyCode::Down | KeyCode::Char('j') => {
+            if app.preview_open {
+                app.scroll_preview_down(1);
+            } else {
+                app.next();
+                app.maybe_prefetch_on_move().await;
+            }
+        }
+        KeyCode::Up | KeyCode::Char('k') => {
+            if app.preview_open {
+                app.scroll_preview_up(1);
+            } else {
+                app.previous();
+                app.maybe_prefetch_on_move().await;
+            }
+        }
+        KeyCode::Enter | KeyCode::Char('o') => {
+            app.open_url();
+        }
+        KeyCode::Char('m') => {
+            app.merge_selected().await;
+        }
+        KeyCode::Char('a') => {
+            app.approve_selected().await;
+        }
+        KeyCode::Char('r') => {
+            app.reload().await;
+        }
+        KeyCode::Char('?') => {
+            app.status_message = None;
+        }
+        KeyCode::Right => {
+            // Right: closed -> Body, Body -> Diff
+            if !app.preview_open {
+                app.switch_preview_mode(PreviewMode::Body).await;
+            } else if app.preview_mode == PreviewMode::Body {
+                app.switch_preview_mode(PreviewMode::Diff).await;
+            }
+        }
+        KeyCode::Left => {
+            // Left: Diff -> Body -> Close
+            if app.preview_open {
+                match app.preview_mode {
+                    PreviewMode::Diff => app.switch_preview_mode(PreviewMode::Body).await,
+                    PreviewMode::Body => app.toggle_preview().await,
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+fn handle_mouse(app: &mut App, kind: MouseEventKind) {
+    match kind {
+        MouseEventKind::ScrollDown => app.scroll_preview_down(3),
+        MouseEventKind::ScrollUp => app.scroll_preview_up(3),
+        _ => {}
+    }
+}
+
 async fn run_app(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
     app: &mut App,
@@ -743,80 +808,8 @@ async fn run_app(
 
         if event::poll(std::time::Duration::from_millis(100))? {
             match event::read()? {
-                Event::Key(key) => match key.code {
-                    KeyCode::Char('q') => {
-                        app.should_quit = true;
-                    }
-                    KeyCode::Down => {
-                        if app.preview_open {
-                            app.scroll_preview_down(1);
-                        } else {
-                            app.next();
-                            app.maybe_prefetch_on_move().await;
-                        }
-                    }
-                    KeyCode::Up => {
-                        if app.preview_open {
-                            app.scroll_preview_up(1);
-                        } else {
-                            app.previous();
-                            app.maybe_prefetch_on_move().await;
-                        }
-                    }
-                    KeyCode::Enter | KeyCode::Char('o') => {
-                        app.open_url();
-                    }
-                    KeyCode::Char('m') => {
-                        app.merge_selected().await;
-                    }
-                    KeyCode::Char('a') => {
-                        app.approve_selected().await;
-                    }
-                    KeyCode::Char('r') => {
-                        app.reload().await;
-                    }
-                    KeyCode::Char('?') => {
-                        app.status_message = None;
-                    }
-                    KeyCode::Right => {
-                        // Right arrow cycles: closed -> Body, Body -> Diff, Diff -> stay
-                        if !app.preview_open {
-                            app.switch_preview_mode(PreviewMode::Body).await;
-                        } else {
-                            match app.preview_mode {
-                                PreviewMode::Body => {
-                                    app.switch_preview_mode(PreviewMode::Diff).await;
-                                }
-                                PreviewMode::Diff => {
-                                    // no-op on further rights for now
-                                }
-                            }
-                        }
-                    }
-                    KeyCode::Left => {
-                        // Left arrow cycles in reverse: Diff -> Body -> Close
-                        if app.preview_open {
-                            match app.preview_mode {
-                                PreviewMode::Diff => {
-                                    app.switch_preview_mode(PreviewMode::Body).await;
-                                }
-                                PreviewMode::Body => {
-                                    app.toggle_preview().await; // close preview
-                                }
-                            }
-                        }
-                    }
-                    _ => {}
-                },
-                Event::Mouse(m) => match m.kind {
-                    MouseEventKind::ScrollDown => {
-                        app.scroll_preview_down(3);
-                    }
-                    MouseEventKind::ScrollUp => {
-                        app.scroll_preview_up(3);
-                    }
-                    _ => {}
-                },
+                Event::Key(key) => handle_key(app, key.code).await,
+                Event::Mouse(m) => handle_mouse(app, m.kind),
                 _ => {}
             }
         }

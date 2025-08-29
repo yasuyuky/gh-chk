@@ -774,17 +774,36 @@ async fn run_app(
                     KeyCode::Char('r') => {
                         app.reload().await;
                     }
-                    KeyCode::Char('p') => {
-                        app.toggle_preview().await;
-                    }
                     KeyCode::Char('?') => {
                         app.status_message = None;
                     }
-                    KeyCode::Char('d') => {
-                        app.switch_preview_mode(PreviewMode::Diff).await;
+                    KeyCode::Right => {
+                        // Right arrow cycles: closed -> Body, Body -> Diff, Diff -> stay
+                        if !app.preview_open {
+                            app.switch_preview_mode(PreviewMode::Body).await;
+                        } else {
+                            match app.preview_mode {
+                                PreviewMode::Body => {
+                                    app.switch_preview_mode(PreviewMode::Diff).await;
+                                }
+                                PreviewMode::Diff => {
+                                    // no-op on further rights for now
+                                }
+                            }
+                        }
                     }
-                    KeyCode::Char('b') => {
-                        app.switch_preview_mode(PreviewMode::Body).await;
+                    KeyCode::Left => {
+                        // Left arrow cycles in reverse: Diff -> Body -> Close
+                        if app.preview_open {
+                            match app.preview_mode {
+                                PreviewMode::Diff => {
+                                    app.switch_preview_mode(PreviewMode::Body).await;
+                                }
+                                PreviewMode::Body => {
+                                    app.toggle_preview().await; // close preview
+                                }
+                            }
+                        }
                     }
                     _ => {}
                 },

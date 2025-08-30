@@ -658,11 +658,15 @@ fn ui(f: &mut Frame, app: &mut App) {
         } else {
             "↑/↓:navigate"
         };
-        let mode = match app.preview_mode {
-            PreviewMode::Body => "Body",
-            PreviewMode::Diff => "Diff",
-        };
-        format!("{} • {} • mode:{}", base, nav, mode)
+        if app.preview_open {
+            let mode = match app.preview_mode {
+                PreviewMode::Body => "Body",
+                PreviewMode::Diff => "Diff",
+            };
+            format!("{} • {} • mode:{}", base, nav, mode)
+        } else {
+            format!("{} • {}", base, nav)
+        }
     };
 
     let help = Paragraph::new(help_text)

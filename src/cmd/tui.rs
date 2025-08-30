@@ -503,7 +503,7 @@ fn contrast_fg(r: u8, g: u8, b: u8) -> Color {
     }
 }
 
-fn make_diff_text(diff: &str) -> Text {
+fn make_diff_text(diff: &str) -> Text<'_> {
     let mut text = Text::default();
     for line in diff.lines() {
         let styled = if line.starts_with("===") {
@@ -658,11 +658,15 @@ fn ui(f: &mut Frame, app: &mut App) {
         } else {
             "↑/↓:navigate"
         };
-        let mode = match app.preview_mode {
-            PreviewMode::Body => "Body",
-            PreviewMode::Diff => "Diff",
-        };
-        format!("{} • {} • mode:{}", base, nav, mode)
+        if app.preview_open {
+            let mode = match app.preview_mode {
+                PreviewMode::Body => "Body",
+                PreviewMode::Diff => "Diff",
+            };
+            format!("{} • {} • mode:{}", base, nav, mode)
+        } else {
+            format!("{} • {}", base, nav)
+        }
     };
 
     let help = Paragraph::new(help_text)

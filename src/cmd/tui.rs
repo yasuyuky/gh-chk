@@ -89,7 +89,7 @@ impl PrData {
             Some(ReviewDecision::Approved) => " [approved]".to_string(),
             Some(ReviewDecision::ChangesRequested) => " [changes requested]".to_string(),
             Some(ReviewDecision::ReviewRequired) => " [review required]".to_string(),
-            None => String::new(),
+            None => String::default(),
         };
         let reviewers_str = if self.reviewers.is_empty() {
             String::default()

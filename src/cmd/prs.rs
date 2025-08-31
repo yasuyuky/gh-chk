@@ -83,7 +83,7 @@ impl Display for repository::pull_requests::nodes::Nodes {
                 let bracketed = format!("[{}]", label);
                 rd.colorize(&bracketed)
             }
-            None => String::new(),
+            None => String::default(),
         };
         let review_sep = if review.is_empty() { "" } else { " " };
         let s = format!(

@@ -16,6 +16,13 @@ fn run_cmd(args: &[&str], data: &str) -> String {
 fn prs_output() {
     let out = run_cmd(&["-f", "json", "prs", "foo"], "prs.json");
     assert!(out.contains("\"mergeStateStatus\": \"CLEAN\""));
+    assert!(out.contains("\"reviewDecision\": \"APPROVED\""));
+}
+
+#[test]
+fn prs_text_includes_review_status() {
+    let out = run_cmd(&["-f", "text", "prs", "foo"], "prs.json");
+    assert!(out.contains("[approved]"));
 }
 
 #[test]

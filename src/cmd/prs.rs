@@ -32,6 +32,7 @@ nestruct::nest! {
                 url: String,
                 created_at: String,
                 merge_state_status: crate::cmd::prs::MergeStateStatus,
+                review_decision: Option<crate::cmd::prs::ReviewDecision>,
                 review_requests: {
                     nodes: [{
                         requested_reviewer: Option<crate::cmd::prs::RequestedReviewer>,
@@ -76,12 +77,23 @@ impl Display for repository::pull_requests::nodes::Nodes {
             .next()
             .unwrap_or(&self.created_at)
             .to_string();
+        let review = match &self.review_decision {
+            Some(rd) => {
+                let label = rd.to_label();
+                let bracketed = format!("[{}]", label);
+                rd.colorize(&bracketed)
+            }
+            None => String::default(),
+        };
+        let review_sep = if review.is_empty() { "" } else { " " };
         let s = format!(
-            "{:>6} {} {} {} {}",
+            "{:>6} {} {} {}{}{} {}",
             format!("#{}", self.number).bold(),
             self.merge_state_status.to_emoji(),
             self.url,
             self.title.bold(),
+            review_sep,
+            review,
             format!("({})", created_date).bright_black()
         );
         write!(f, "{}", self.merge_state_status.colorize(&s))
@@ -127,6 +139,34 @@ impl MergeStateStatus {
             Self::HasHooks => s.yellow(),
             Self::Unknown => s.magenta(),
             Self::Unstable => s.yellow(),
+        }
+        .to_string()
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum ReviewDecision {
+    Approved,
+    ChangesRequested,
+    ReviewRequired,
+}
+
+impl ReviewDecision {
+    fn to_label(&self) -> &'static str {
+        match self {
+            Self::Approved => "approved",
+            Self::ChangesRequested => "changes requested",
+            Self::ReviewRequired => "review required",
+        }
+    }
+
+    fn colorize(&self, s: &str) -> String {
+        use colored::Colorize as _;
+        match self {
+            Self::Approved => s.green(),
+            Self::ChangesRequested => s.red(),
+            Self::ReviewRequired => s.yellow(),
         }
         .to_string()
     }

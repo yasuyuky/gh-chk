@@ -14,6 +14,7 @@
                   "url": "http://example.com/pr1",
                   "createdAt": "2024-08-01T12:34:56Z",
                   "mergeStateStatus": "CLEAN",
+                  "reviewDecision": "APPROVED",
                   "reviewRequests": {
                     "nodes": []
                   }

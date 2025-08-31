@@ -11,6 +11,7 @@ query ($login: String!) {
             url
             createdAt
             mergeStateStatus
+            reviewDecision
             reviewRequests(first: 10) {
               nodes {
                 requestedReviewer {

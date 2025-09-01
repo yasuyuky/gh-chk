@@ -18,6 +18,7 @@ use serde::Deserialize;
 use serde_json::json;
 use std::collections::HashMap;
 use std::io;
+use std::time::{Duration, Instant};
 
 // Type alias for GraphQL PR node for brevity (reuse prs module types)
 type PrNode = crate::cmd::prs::repository::pull_requests::nodes::Nodes;
@@ -192,6 +193,7 @@ struct App {
     list_state: ListState,
     should_quit: bool,
     status_message: Option<String>,
+    status_clear_at: Option<Instant>,
     specs: Vec<SlugSpec>,
     preview_open: bool,
     preview_cache: HashMap<String, String>,
@@ -215,6 +217,7 @@ impl App {
             list_state,
             should_quit: false,
             status_message: None,
+            status_clear_at: None,
             specs,
             preview_open: false,
             preview_cache: HashMap::new(),
@@ -264,12 +267,13 @@ impl App {
         if let Some(selected_index) = self.list_state.selected() {
             if let Some(pr) = self.prs.get(selected_index).cloned() {
                 if pr.merge_state_status == MergeStateStatus::Clean {
-                    self.status_message =
-                        Some(format!("Merging PR #{} in {}...", pr.number, pr.slug));
+                    self.set_status_persistent(format!(
+                        "Merging PR #{} in {}...",
+                        pr.number, pr.slug
+                    ));
                     match crate::cmd::prs::merge_pr(&pr.id).await {
                         Ok(_) => {
-                            self.status_message =
-                                Some(format!("✅ Merged PR #{} in {}", pr.number, pr.slug));
+                            self.set_status(format!("✅ Merged PR #{} in {}", pr.number, pr.slug));
                             self.prs.remove(selected_index);
                             if self.prs.is_empty() {
                                 self.list_state.select(None);
@@ -278,14 +282,14 @@ impl App {
                             }
                         }
                         Err(e) => {
-                            self.status_message = Some(format!(
+                            self.set_status(format!(
                                 "❌ Failed to merge PR #{} in {}: {}",
                                 pr.number, pr.slug, e
                             ));
                         }
                     }
                 } else {
-                    self.status_message = Some(format!(
+                    self.set_status(format!(
                         "Cannot merge PR #{} in {}: not in clean state",
                         pr.number, pr.slug
                     ));
@@ -296,15 +300,16 @@ impl App {
     async fn approve_selected(&mut self) {
         if let Some(selected_index) = self.list_state.selected() {
             if let Some(pr) = self.prs.get(selected_index).cloned() {
-                self.status_message =
-                    Some(format!("Approving PR #{} in {}...", pr.number, pr.slug));
+                self.set_status_persistent(format!(
+                    "Approving PR #{} in {}...",
+                    pr.number, pr.slug
+                ));
                 match approve_pr(&pr.id).await {
                     Ok(_) => {
-                        self.status_message =
-                            Some(format!("✅ Approved PR #{} in {}", pr.number, pr.slug));
+                        self.set_status(format!("✅ Approved PR #{} in {}", pr.number, pr.slug));
                     }
                     Err(e) => {
-                        self.status_message = Some(format!(
+                        self.set_status(format!(
                             "❌ Failed to approve PR #{} in {}: {}",
                             pr.number, pr.slug, e
                         ));
@@ -345,19 +350,19 @@ impl App {
     }
 
     async fn load_preview_for(&mut self, pr: &PrData) -> surf::Result<()> {
-        self.status_message = Some(format!("🔎 Loading preview for #{}...", pr.number));
+        self.set_status_persistent(format!("🔎 Loading preview for #{}...", pr.number));
         let (owner, name) = match split_slug(&pr.slug) {
             Some(x) => x,
             None => return Ok(()),
         };
         let body = fetch_pr_body(&owner, &name, pr.number).await?;
         self.preview_cache.insert(pr.id.clone(), body);
-        self.status_message = Some(format!("✅ Loaded preview for #{}", pr.number));
+        self.set_status(format!("✅ Loaded preview for #{}", pr.number));
         Ok(())
     }
 
     async fn load_diff_for(&mut self, pr: &PrData) -> surf::Result<()> {
-        self.status_message = Some(format!("🔎 Loading diff for #{}...", pr.number));
+        self.set_status_persistent(format!("🔎 Loading diff for #{}...", pr.number));
         let (owner, name) = match split_slug(&pr.slug) {
             Some(x) => x,
             None => return Ok(()),
@@ -384,7 +389,7 @@ impl App {
             out = "No file changes found.".to_string();
         }
         self.diff_cache.insert(pr.id.clone(), out);
-        self.status_message = Some(format!("✅ Loaded diff for #{}", pr.number));
+        self.set_status(format!("✅ Loaded diff for #{}", pr.number));
         Ok(())
     }
 
@@ -422,7 +427,7 @@ impl App {
     }
 
     async fn reload(&mut self) {
-        self.status_message = Some("🔄 Reloading...".to_string());
+        self.set_status_persistent("🔄 Reloading...".to_string());
         let mut new_list: Vec<PrData> = Vec::new();
         let mut any_err: Option<String> = None;
         for spec in self.specs.clone() {
@@ -438,7 +443,7 @@ impl App {
             }
         }
         if let Some(err) = any_err {
-            self.status_message = Some(format!("❌ Reload error: {}", err));
+            self.set_status(format!("❌ Reload error: {}", err));
         } else {
             let sel = self.list_state.selected().unwrap_or(0);
             self.prs = new_list;
@@ -448,10 +453,10 @@ impl App {
                 let new_sel = sel.min(self.prs.len().saturating_sub(1));
                 self.list_state.select(Some(new_sel));
             }
-            self.status_message = Some(format!("✅ Reloaded. {} PRs.", self.prs.len()));
+            self.set_status(format!("✅ Reloaded. {} PRs.", self.prs.len()));
         }
         if let Err(e) = self.load_contributions().await {
-            self.status_message = Some(format!("❌ Contrib load error: {}", e));
+            self.set_status(format!("❌ Contrib load error: {}", e));
         }
     }
 
@@ -685,6 +690,20 @@ fn ui(f: &mut Frame, app: &mut App) {
     f.render_widget(help, outer[2]);
 }
 
+impl App {
+    // Set a status message that clears automatically after a short delay.
+    fn set_status<T: Into<String>>(&mut self, msg: T) {
+        self.status_message = Some(msg.into());
+        self.status_clear_at = Some(Instant::now() + Duration::from_millis(3000));
+    }
+
+    // Set a status message that stays until explicitly replaced or cleared.
+    fn set_status_persistent<T: Into<String>>(&mut self, msg: T) {
+        self.status_message = Some(msg.into());
+        self.status_clear_at = None;
+    }
+}
+
 async fn fetch_pr_body(owner: &str, name: &str, number: usize) -> surf::Result<String> {
     let vars = json!({ "owner": owner, "name": name, "number": number as i64 });
     let q = json!({ "query": include_str!("../query/pr.body.graphql"), "variables": vars });
@@ -782,6 +801,7 @@ async fn handle_key(app: &mut App, code: KeyCode) {
         }
         KeyCode::Char('?') => {
             app.status_message = None;
+            app.status_clear_at = None;
         }
         KeyCode::Right => {
             // Right: closed -> Body, Body -> Diff
@@ -824,6 +844,14 @@ async fn run_app(
                 Event::Key(key) => handle_key(app, key.code).await,
                 Event::Mouse(m) => handle_mouse(app, m.kind),
                 _ => {}
+            }
+        }
+
+        // Auto-clear status messages when their timer expires.
+        if let Some(clear_at) = app.status_clear_at {
+            if Instant::now() >= clear_at {
+                app.status_message = None;
+                app.status_clear_at = None;
             }
         }
 

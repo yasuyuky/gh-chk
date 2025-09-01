@@ -273,10 +273,7 @@ impl App {
                     ));
                     match crate::cmd::prs::merge_pr(&pr.id).await {
                         Ok(_) => {
-                            self.set_status(format!(
-                                "✅ Merged PR #{} in {}",
-                                pr.number, pr.slug
-                            ));
+                            self.set_status(format!("✅ Merged PR #{} in {}", pr.number, pr.slug));
                             self.prs.remove(selected_index);
                             if self.prs.is_empty() {
                                 self.list_state.select(None);
@@ -309,10 +306,7 @@ impl App {
                 ));
                 match approve_pr(&pr.id).await {
                     Ok(_) => {
-                        self.set_status(format!(
-                            "✅ Approved PR #{} in {}",
-                            pr.number, pr.slug
-                        ));
+                        self.set_status(format!("✅ Approved PR #{} in {}", pr.number, pr.slug));
                     }
                     Err(e) => {
                         self.set_status(format!(

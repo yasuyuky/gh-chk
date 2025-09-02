@@ -779,93 +779,111 @@ fn run_tui(prs: Vec<PrData>, specs: Vec<SlugSpec>) -> Result<(), Box<dyn std::er
 
 async fn handle_key(app: &mut App, code: KeyCode) {
     match code {
-        KeyCode::Char('q') => {
-            app.should_quit = true;
-        }
-        KeyCode::Down | KeyCode::Char('j') => {
-            if app.preview_open {
-                app.scroll_preview_down(1);
-            } else {
-                app.next();
-                app.maybe_prefetch_on_move().await;
-            }
-        }
-        KeyCode::Up | KeyCode::Char('k') => {
-            if app.preview_open {
-                app.scroll_preview_up(1);
-            } else {
-                app.previous();
-                app.maybe_prefetch_on_move().await;
-            }
-        }
-        KeyCode::Enter | KeyCode::Char('o') => {
-            app.open_url();
-        }
-        KeyCode::Char('m') => {
-            if let Some(pr) = app.get_selected_pr() {
-                app.set_status_persistent(format!("Merging PR #{} in {}...", pr.number, pr.slug));
-                app.pending_task = Some(PendingTask::MergeSelected);
-            }
-        }
-        KeyCode::Char('a') => {
-            if let Some(pr) = app.get_selected_pr() {
-                app.set_status_persistent(format!("Approving PR #{} in {}...", pr.number, pr.slug));
-                app.pending_task = Some(PendingTask::ApproveSelected);
-            }
-        }
-        KeyCode::Char('r') => {
-            app.set_status_persistent("🔄 Reloading...".to_string());
-            app.pending_task = Some(PendingTask::Reload);
-        }
-        KeyCode::Char('?') => {
-            app.status_message = None;
-            app.status_clear_at = None;
-        }
-        KeyCode::Right => {
-            // Right: closed -> Body, Body -> Diff
-            if !app.preview_open {
-                app.preview_open = true;
-                app.preview_mode = PreviewMode::Body;
-                if let Some(pr) = app.get_selected_pr().cloned() {
-                    if !app.preview_cache.contains_key(&pr.id) {
-                        app.set_status_persistent(format!(
-                            "🔎 Loading preview for #{}...",
-                            pr.number
-                        ));
-                        app.pending_task = Some(PendingTask::LoadPreviewForSelected);
-                    }
-                }
-            } else if app.preview_mode == PreviewMode::Body {
-                app.preview_mode = PreviewMode::Diff;
-                if let Some(pr) = app.get_selected_pr().cloned() {
-                    if !app.diff_cache.contains_key(&pr.id) {
-                        app.set_status_persistent(format!("🔎 Loading diff for #{}...", pr.number));
-                        app.pending_task = Some(PendingTask::LoadDiffForSelected);
-                    }
-                }
-            }
-        }
-        KeyCode::Left => {
-            // Left: Diff -> Body -> Close
-            if app.preview_open {
-                match app.preview_mode {
-                    PreviewMode::Diff => {
-                        app.preview_mode = PreviewMode::Body;
-                        if let Some(pr) = app.get_selected_pr().cloned() {
-                            if !app.preview_cache.contains_key(&pr.id) {
-                                app.set_status_persistent(format!(
-                                    "🔎 Loading preview for #{}...",
-                                    pr.number
-                                ));
-                                app.pending_task = Some(PendingTask::LoadPreviewForSelected);
-                            }
-                        }
-                    }
-                    PreviewMode::Body => app.preview_open = false,
-                }
-            }
-        }
+        KeyCode::Char('q') => on_quit(app),
+        KeyCode::Down | KeyCode::Char('j') => on_down(app).await,
+        KeyCode::Up | KeyCode::Char('k') => on_up(app).await,
+        KeyCode::Enter | KeyCode::Char('o') => on_open(app),
+        KeyCode::Char('m') => on_merge_key(app),
+        KeyCode::Char('a') => on_approve_key(app),
+        KeyCode::Char('r') => on_reload_key(app),
+        KeyCode::Char('?') => on_clear_help(app),
+        KeyCode::Right => on_right(app),
+        KeyCode::Left => on_left(app),
         _ => {}
+    }
+}
+
+fn on_quit(app: &mut App) {
+    app.should_quit = true;
+}
+
+async fn on_down(app: &mut App) {
+    if app.preview_open {
+        app.scroll_preview_down(1);
+    } else {
+        app.next();
+        app.maybe_prefetch_on_move().await;
+    }
+}
+
+async fn on_up(app: &mut App) {
+    if app.preview_open {
+        app.scroll_preview_up(1);
+    } else {
+        app.previous();
+        app.maybe_prefetch_on_move().await;
+    }
+}
+
+fn on_open(app: &mut App) {
+    app.open_url();
+}
+
+fn on_merge_key(app: &mut App) {
+    if let Some(pr) = app.get_selected_pr() {
+        app.set_status_persistent(format!("Merging PR #{} in {}...", pr.number, pr.slug));
+        app.pending_task = Some(PendingTask::MergeSelected);
+    }
+}
+
+fn on_approve_key(app: &mut App) {
+    if let Some(pr) = app.get_selected_pr() {
+        app.set_status_persistent(format!("Approving PR #{} in {}...", pr.number, pr.slug));
+        app.pending_task = Some(PendingTask::ApproveSelected);
+    }
+}
+
+fn on_reload_key(app: &mut App) {
+    app.set_status_persistent("🔄 Reloading...".to_string());
+    app.pending_task = Some(PendingTask::Reload);
+}
+
+fn on_clear_help(app: &mut App) {
+    app.status_message = None;
+    app.status_clear_at = None;
+}
+
+fn queue_preview_if_needed(app: &mut App) {
+    if let Some(pr) = app.get_selected_pr().cloned() {
+        if !app.preview_cache.contains_key(&pr.id) {
+            app.set_status_persistent(format!("🔎 Loading preview for #{}...", pr.number));
+            app.pending_task = Some(PendingTask::LoadPreviewForSelected);
+        }
+    }
+}
+
+fn queue_diff_if_needed(app: &mut App) {
+    if let Some(pr) = app.get_selected_pr().cloned() {
+        if !app.diff_cache.contains_key(&pr.id) {
+            app.set_status_persistent(format!("🔎 Loading diff for #{}...", pr.number));
+            app.pending_task = Some(PendingTask::LoadDiffForSelected);
+        }
+    }
+}
+
+fn on_right(app: &mut App) {
+    // Right: closed -> Body, Body -> Diff
+    if !app.preview_open {
+        app.preview_open = true;
+        app.preview_mode = PreviewMode::Body;
+        queue_preview_if_needed(app);
+    } else if app.preview_mode == PreviewMode::Body {
+        app.preview_mode = PreviewMode::Diff;
+        queue_diff_if_needed(app);
+    }
+}
+
+fn on_left(app: &mut App) {
+    // Left: Diff -> Body -> Close
+    if !app.preview_open {
+        return;
+    }
+    match app.preview_mode {
+        PreviewMode::Diff => {
+            app.preview_mode = PreviewMode::Body;
+            queue_preview_if_needed(app);
+        }
+        PreviewMode::Body => app.preview_open = false,
     }
 }
 

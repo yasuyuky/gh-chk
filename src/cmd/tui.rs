@@ -828,7 +828,10 @@ async fn handle_key(app: &mut App, code: KeyCode) {
                 app.preview_mode = PreviewMode::Body;
                 if let Some(pr) = app.get_selected_pr().cloned() {
                     if !app.preview_cache.contains_key(&pr.id) {
-                        app.set_status_persistent(format!("🔎 Loading preview for #{}...", pr.number));
+                        app.set_status_persistent(format!(
+                            "🔎 Loading preview for #{}...",
+                            pr.number
+                        ));
                         app.pending_task = Some(PendingTask::LoadPreviewForSelected);
                     }
                 }
@@ -897,7 +900,9 @@ async fn run_app(
             if let Some(task) = task {
                 match task {
                     PendingTask::MergeSelected => async_std::task::block_on(app.merge_selected()),
-                    PendingTask::ApproveSelected => async_std::task::block_on(app.approve_selected()),
+                    PendingTask::ApproveSelected => {
+                        async_std::task::block_on(app.approve_selected())
+                    }
                     PendingTask::Reload => async_std::task::block_on(app.reload()),
                     PendingTask::LoadPreviewForSelected => async_std::task::block_on(async {
                         if let Some(pr) = app.get_selected_pr().cloned() {

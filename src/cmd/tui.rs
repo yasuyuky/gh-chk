@@ -188,6 +188,15 @@ enum PreviewMode {
     Diff,
 }
 
+#[derive(Debug, Clone, Copy)]
+enum PendingTask {
+    MergeSelected,
+    ApproveSelected,
+    Reload,
+    LoadPreviewForSelected,
+    LoadDiffForSelected,
+}
+
 struct App {
     prs: Vec<PrData>,
     list_state: ListState,
@@ -204,6 +213,7 @@ struct App {
     contrib_lines: Option<Vec<Line<'static>>>,
     contrib_height: u16,
     contrib_title: String,
+    pending_task: Option<PendingTask>,
 }
 
 impl App {
@@ -228,6 +238,7 @@ impl App {
             contrib_lines: None,
             contrib_height: 9,
             contrib_title: "Contributions".to_string(),
+            pending_task: None,
         }
     }
 
@@ -791,13 +802,20 @@ async fn handle_key(app: &mut App, code: KeyCode) {
             app.open_url();
         }
         KeyCode::Char('m') => {
-            app.merge_selected().await;
+            if let Some(pr) = app.get_selected_pr() {
+                app.set_status_persistent(format!("Merging PR #{} in {}...", pr.number, pr.slug));
+                app.pending_task = Some(PendingTask::MergeSelected);
+            }
         }
         KeyCode::Char('a') => {
-            app.approve_selected().await;
+            if let Some(pr) = app.get_selected_pr() {
+                app.set_status_persistent(format!("Approving PR #{} in {}...", pr.number, pr.slug));
+                app.pending_task = Some(PendingTask::ApproveSelected);
+            }
         }
         KeyCode::Char('r') => {
-            app.reload().await;
+            app.set_status_persistent("🔄 Reloading...".to_string());
+            app.pending_task = Some(PendingTask::Reload);
         }
         KeyCode::Char('?') => {
             app.status_message = None;
@@ -806,17 +824,41 @@ async fn handle_key(app: &mut App, code: KeyCode) {
         KeyCode::Right => {
             // Right: closed -> Body, Body -> Diff
             if !app.preview_open {
-                app.switch_preview_mode(PreviewMode::Body).await;
+                app.preview_open = true;
+                app.preview_mode = PreviewMode::Body;
+                if let Some(pr) = app.get_selected_pr().cloned() {
+                    if !app.preview_cache.contains_key(&pr.id) {
+                        app.set_status_persistent(format!("🔎 Loading preview for #{}...", pr.number));
+                        app.pending_task = Some(PendingTask::LoadPreviewForSelected);
+                    }
+                }
             } else if app.preview_mode == PreviewMode::Body {
-                app.switch_preview_mode(PreviewMode::Diff).await;
+                app.preview_mode = PreviewMode::Diff;
+                if let Some(pr) = app.get_selected_pr().cloned() {
+                    if !app.diff_cache.contains_key(&pr.id) {
+                        app.set_status_persistent(format!("🔎 Loading diff for #{}...", pr.number));
+                        app.pending_task = Some(PendingTask::LoadDiffForSelected);
+                    }
+                }
             }
         }
         KeyCode::Left => {
             // Left: Diff -> Body -> Close
             if app.preview_open {
                 match app.preview_mode {
-                    PreviewMode::Diff => app.switch_preview_mode(PreviewMode::Body).await,
-                    PreviewMode::Body => app.toggle_preview().await,
+                    PreviewMode::Diff => {
+                        app.preview_mode = PreviewMode::Body;
+                        if let Some(pr) = app.get_selected_pr().cloned() {
+                            if !app.preview_cache.contains_key(&pr.id) {
+                                app.set_status_persistent(format!(
+                                    "🔎 Loading preview for #{}...",
+                                    pr.number
+                                ));
+                                app.pending_task = Some(PendingTask::LoadPreviewForSelected);
+                            }
+                        }
+                    }
+                    PreviewMode::Body => app.preview_open = false,
                 }
             }
         }
@@ -844,6 +886,30 @@ async fn run_app(
                 Event::Key(key) => handle_key(app, key.code).await,
                 Event::Mouse(m) => handle_mouse(app, m.kind),
                 _ => {}
+            }
+        }
+
+        // If a long-running task is queued, redraw once to show the status
+        // immediately, then execute the task.
+        if app.pending_task.is_some() {
+            terminal.draw(|f| ui(f, app))?;
+            let task = app.pending_task.take();
+            if let Some(task) = task {
+                match task {
+                    PendingTask::MergeSelected => async_std::task::block_on(app.merge_selected()),
+                    PendingTask::ApproveSelected => async_std::task::block_on(app.approve_selected()),
+                    PendingTask::Reload => async_std::task::block_on(app.reload()),
+                    PendingTask::LoadPreviewForSelected => async_std::task::block_on(async {
+                        if let Some(pr) = app.get_selected_pr().cloned() {
+                            let _ = app.load_preview_for(&pr).await;
+                        }
+                    }),
+                    PendingTask::LoadDiffForSelected => async_std::task::block_on(async {
+                        if let Some(pr) = app.get_selected_pr().cloned() {
+                            let _ = app.load_diff_for(&pr).await;
+                        }
+                    }),
+                }
             }
         }
 

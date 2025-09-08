@@ -338,14 +338,6 @@ impl App {
         }
     }
 
-    async fn toggle_preview(&mut self) {
-        self.preview_open = !self.preview_open;
-        if self.preview_open {
-            self.preview_scroll = 0;
-            self.maybe_prefetch_on_move().await;
-        }
-    }
-
     async fn maybe_prefetch_on_move(&mut self) {
         if !self.preview_open {
             return;

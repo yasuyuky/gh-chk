@@ -396,28 +396,6 @@ impl App {
         Ok(())
     }
 
-    async fn switch_preview_mode(&mut self, mode: PreviewMode) {
-        self.preview_mode = mode;
-        if !self.preview_open {
-            self.preview_open = true;
-        }
-        self.preview_scroll = 0;
-        if let Some(pr) = self.get_selected_pr().cloned() {
-            match mode {
-                PreviewMode::Body => {
-                    if !self.preview_cache.contains_key(&pr.id) {
-                        let _ = self.load_preview_for(&pr).await;
-                    }
-                }
-                PreviewMode::Diff => {
-                    if !self.diff_cache.contains_key(&pr.id) {
-                        let _ = self.load_diff_for(&pr).await;
-                    }
-                }
-            }
-        }
-    }
-
     fn scroll_preview_down(&mut self, n: u16) {
         if self.preview_open {
             self.preview_scroll = self.preview_scroll.saturating_add(n);

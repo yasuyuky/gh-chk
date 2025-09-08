@@ -338,14 +338,6 @@ impl App {
         }
     }
 
-    async fn toggle_preview(&mut self) {
-        self.preview_open = !self.preview_open;
-        if self.preview_open {
-            self.preview_scroll = 0;
-            self.maybe_prefetch_on_move().await;
-        }
-    }
-
     async fn maybe_prefetch_on_move(&mut self) {
         if !self.preview_open {
             return;
@@ -402,28 +394,6 @@ impl App {
         self.diff_cache.insert(pr.id.clone(), out);
         self.set_status(format!("✅ Loaded diff for #{}", pr.number));
         Ok(())
-    }
-
-    async fn switch_preview_mode(&mut self, mode: PreviewMode) {
-        self.preview_mode = mode;
-        if !self.preview_open {
-            self.preview_open = true;
-        }
-        self.preview_scroll = 0;
-        if let Some(pr) = self.get_selected_pr().cloned() {
-            match mode {
-                PreviewMode::Body => {
-                    if !self.preview_cache.contains_key(&pr.id) {
-                        let _ = self.load_preview_for(&pr).await;
-                    }
-                }
-                PreviewMode::Diff => {
-                    if !self.diff_cache.contains_key(&pr.id) {
-                        let _ = self.load_diff_for(&pr).await;
-                    }
-                }
-            }
-        }
     }
 
     fn scroll_preview_down(&mut self, n: u16) {

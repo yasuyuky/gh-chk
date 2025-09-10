@@ -434,6 +434,18 @@ impl App {
                 let new_sel = sel.min(self.prs.len().saturating_sub(1));
                 self.list_state.select(Some(new_sel));
             }
+            if self.preview_open {
+                if let Some(pr) = self.get_selected_pr().cloned() {
+                    match self.preview_mode {
+                        PreviewMode::Body => {
+                            let _ = self.load_preview_for(&pr).await;
+                        }
+                        PreviewMode::Diff => {
+                            let _ = self.load_diff_for(&pr).await;
+                        }
+                    }
+                }
+            }
             self.set_status(format!("✅ Reloaded. {} PRs.", self.prs.len()));
         }
         if let Err(e) = self.load_contributions().await {

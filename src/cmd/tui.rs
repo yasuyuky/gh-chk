@@ -549,9 +549,10 @@ fn ellipsize(s: &str, max: usize) -> String {
     if s.chars().count() <= max {
         return s.to_string();
     }
-    let mut out = String::new();
+    let mut out = String::default();
     for (i, ch) in s.chars().enumerate() {
-        if i >= max.saturating_sub(1) { // leave room for '…'
+        if i >= max.saturating_sub(1) {
+            // leave room for '…'
             break;
         }
         out.push(ch);
@@ -562,7 +563,10 @@ fn ellipsize(s: &str, max: usize) -> String {
 
 fn make_preview_block_title(app: &App, area_width: u16, total_lines: u16) -> String {
     if let Some(pr) = app.get_selected_pr() {
-        let mode = match app.preview_mode { PreviewMode::Body => "Body", PreviewMode::Diff => "Diff" };
+        let mode = match app.preview_mode {
+            PreviewMode::Body => "Body",
+            PreviewMode::Diff => "Diff",
+        };
         // Reserve a bit for borders/padding
         let w = area_width.saturating_sub(4) as usize;
         // Base info
@@ -604,10 +608,14 @@ fn prettify_pr_preview(title: &str, url: &str, body: &str) -> Text<'static> {
             let (url_part, tail) = link_start.split_at(end);
             out.push(Span::styled(
                 url_part.to_string(),
-                Style::default().fg(Color::Blue).add_modifier(Modifier::UNDERLINED),
+                Style::default()
+                    .fg(Color::Blue)
+                    .add_modifier(Modifier::UNDERLINED),
             ));
             rest = tail;
-            if rest.is_empty() { break; }
+            if rest.is_empty() {
+                break;
+            }
         }
         if !rest.is_empty() {
             out.push(Span::raw(rest.to_string()));
@@ -618,7 +626,7 @@ fn prettify_pr_preview(title: &str, url: &str, body: &str) -> Text<'static> {
     fn style_inline_code_and_links(s: &str) -> Line<'static> {
         let mut spans: Vec<Span> = Vec::new();
         let mut in_code = false;
-        let mut buf = String::new();
+        let mut buf = String::default();
         for ch in s.chars() {
             if ch == '`' {
                 if !buf.is_empty() {
@@ -695,37 +703,49 @@ fn prettify_pr_preview(title: &str, url: &str, body: &str) -> Text<'static> {
         if let Some(rest) = trimmed.strip_prefix("###### ") {
             text.lines.push(Line::from(Span::styled(
                 rest.to_string(),
-                Style::default().fg(Color::Gray).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(Color::Gray)
+                    .add_modifier(Modifier::BOLD),
             )));
             continue;
         } else if let Some(rest) = trimmed.strip_prefix("##### ") {
             text.lines.push(Line::from(Span::styled(
                 rest.to_string(),
-                Style::default().fg(Color::Gray).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(Color::Gray)
+                    .add_modifier(Modifier::BOLD),
             )));
             continue;
         } else if let Some(rest) = trimmed.strip_prefix("#### ") {
             text.lines.push(Line::from(Span::styled(
                 rest.to_string(),
-                Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(Color::Blue)
+                    .add_modifier(Modifier::BOLD),
             )));
             continue;
         } else if let Some(rest) = trimmed.strip_prefix("### ") {
             text.lines.push(Line::from(Span::styled(
                 rest.to_string(),
-                Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
             )));
             continue;
         } else if let Some(rest) = trimmed.strip_prefix("## ") {
             text.lines.push(Line::from(Span::styled(
                 rest.to_string(),
-                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
             )));
             continue;
         } else if let Some(rest) = trimmed.strip_prefix("# ") {
             text.lines.push(Line::from(Span::styled(
                 rest.to_string(),
-                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
             )));
             continue;
         }
@@ -820,7 +840,15 @@ fn ui(f: &mut Frame, app: &mut App) {
             Text::from("No selection")
         };
 
-        let title = make_preview_block_title(app, if main_chunks.len() > 1 { main_chunks[1].width } else { outer[0].width }, preview_text.lines.len() as u16);
+        let title = make_preview_block_title(
+            app,
+            if main_chunks.len() > 1 {
+                main_chunks[1].width
+            } else {
+                outer[0].width
+            },
+            preview_text.lines.len() as u16,
+        );
         let preview = Paragraph::new(preview_text)
             .block(Block::default().borders(Borders::ALL).title(title))
             .wrap(Wrap { trim: false })

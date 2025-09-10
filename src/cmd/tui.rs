@@ -545,6 +545,46 @@ fn make_diff_text(diff: &str) -> Text<'_> {
     text
 }
 
+fn ellipsize(s: &str, max: usize) -> String {
+    if s.chars().count() <= max {
+        return s.to_string();
+    }
+    let mut out = String::new();
+    for (i, ch) in s.chars().enumerate() {
+        if i >= max.saturating_sub(1) { // leave room for '…'
+            break;
+        }
+        out.push(ch);
+    }
+    out.push('…');
+    out
+}
+
+fn make_preview_block_title(app: &App, area_width: u16, total_lines: u16) -> String {
+    if let Some(pr) = app.get_selected_pr() {
+        let mode = match app.preview_mode { PreviewMode::Body => "Body", PreviewMode::Diff => "Diff" };
+        // Reserve a bit for borders/padding
+        let w = area_width.saturating_sub(4) as usize;
+        // Base info
+        let base = format!("#{} {} • {}", pr.number, pr.slug, mode);
+        // Try to include a shortened PR title if space allows
+        let mut title = base.clone();
+        if w > base.len() + 3 {
+            let remain = w - base.len() - 3;
+            let short = ellipsize(&pr.title, remain);
+            title = format!("{} • {}", base, short);
+        }
+
+        // Append simple scroll indicator if content overflows
+        let visible = area_width.saturating_sub(2); // rough, columns vs lines differ, keep minimal
+        let _ = visible; // keep calculation simple, omit lines/cols mismatch
+        let _ = total_lines; // placeholder for future detailed indicators
+        title
+    } else {
+        "Preview".to_string()
+    }
+}
+
 fn prettify_pr_preview(title: &str, url: &str, body: &str) -> Text<'static> {
     fn style_linkish(s: &str) -> Vec<Span<'static>> {
         let mut out: Vec<Span> = Vec::new();
@@ -780,8 +820,9 @@ fn ui(f: &mut Frame, app: &mut App) {
             Text::from("No selection")
         };
 
+        let title = make_preview_block_title(app, if main_chunks.len() > 1 { main_chunks[1].width } else { outer[0].width }, preview_text.lines.len() as u16);
         let preview = Paragraph::new(preview_text)
-            .block(Block::default().borders(Borders::ALL).title("Preview"))
+            .block(Block::default().borders(Borders::ALL).title(title))
             .wrap(Wrap { trim: false })
             .scroll((app.preview_scroll, 0));
         let area = if main_chunks.len() > 1 {

@@ -545,6 +545,173 @@ fn make_diff_text(diff: &str) -> Text<'_> {
     text
 }
 
+fn prettify_pr_preview(title: &str, url: &str, body: &str) -> Text<'static> {
+    fn style_linkish(s: &str) -> Vec<Span<'static>> {
+        let mut out: Vec<Span> = Vec::new();
+        let mut rest = s;
+        while let Some(idx) = rest.find("http://").or_else(|| rest.find("https://")) {
+            let (pre, link_start) = rest.split_at(idx);
+            if !pre.is_empty() {
+                out.push(Span::raw(pre.to_string()));
+            }
+            let mut end = link_start.len();
+            for (i, ch) in link_start.char_indices() {
+                if ch.is_whitespace() {
+                    end = i;
+                    break;
+                }
+            }
+            let (url_part, tail) = link_start.split_at(end);
+            out.push(Span::styled(
+                url_part.to_string(),
+                Style::default().fg(Color::Blue).add_modifier(Modifier::UNDERLINED),
+            ));
+            rest = tail;
+            if rest.is_empty() { break; }
+        }
+        if !rest.is_empty() {
+            out.push(Span::raw(rest.to_string()));
+        }
+        out
+    }
+
+    fn style_inline_code_and_links(s: &str) -> Line<'static> {
+        let mut spans: Vec<Span> = Vec::new();
+        let mut in_code = false;
+        let mut buf = String::new();
+        for ch in s.chars() {
+            if ch == '`' {
+                if !buf.is_empty() {
+                    if in_code {
+                        spans.push(Span::styled(
+                            buf.clone(),
+                            Style::default()
+                                .bg(Color::Rgb(40, 40, 40))
+                                .fg(Color::Yellow),
+                        ));
+                    } else {
+                        // process links in normal text
+                        spans.extend(style_linkish(&buf));
+                    }
+                    buf.clear();
+                }
+                in_code = !in_code;
+            } else {
+                buf.push(ch);
+            }
+        }
+        if !buf.is_empty() {
+            if in_code {
+                spans.push(Span::styled(
+                    buf,
+                    Style::default()
+                        .bg(Color::Rgb(40, 40, 40))
+                        .fg(Color::Yellow),
+                ));
+            } else {
+                spans.extend(style_linkish(&buf));
+            }
+        }
+        Line::from(spans)
+    }
+
+    let mut text = Text::default();
+
+    // Title
+    text.lines.push(Line::from(Span::styled(
+        title.to_string(),
+        Style::default()
+            .fg(Color::Magenta)
+            .add_modifier(Modifier::BOLD),
+    )));
+    // URL
+    text.lines.push(Line::from(Span::styled(
+        url.to_string(),
+        Style::default()
+            .fg(Color::Blue)
+            .add_modifier(Modifier::UNDERLINED),
+    )));
+    text.lines.push(Line::from(""));
+
+    // Body
+    let mut in_fenced_code = false;
+    for raw_line in body.lines() {
+        let line = raw_line.trim_end_matches('\r');
+        let trimmed = line.trim_start();
+        // Toggle fenced code blocks
+        if trimmed.starts_with("```") {
+            in_fenced_code = !in_fenced_code;
+            continue;
+        }
+        if in_fenced_code {
+            text.lines.push(Line::from(Span::styled(
+                line.to_string(),
+                Style::default().bg(Color::Rgb(35, 35, 35)).fg(Color::White),
+            )));
+            continue;
+        }
+
+        // Headings
+        if let Some(rest) = trimmed.strip_prefix("###### ") {
+            text.lines.push(Line::from(Span::styled(
+                rest.to_string(),
+                Style::default().fg(Color::Gray).add_modifier(Modifier::BOLD),
+            )));
+            continue;
+        } else if let Some(rest) = trimmed.strip_prefix("##### ") {
+            text.lines.push(Line::from(Span::styled(
+                rest.to_string(),
+                Style::default().fg(Color::Gray).add_modifier(Modifier::BOLD),
+            )));
+            continue;
+        } else if let Some(rest) = trimmed.strip_prefix("#### ") {
+            text.lines.push(Line::from(Span::styled(
+                rest.to_string(),
+                Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD),
+            )));
+            continue;
+        } else if let Some(rest) = trimmed.strip_prefix("### ") {
+            text.lines.push(Line::from(Span::styled(
+                rest.to_string(),
+                Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+            )));
+            continue;
+        } else if let Some(rest) = trimmed.strip_prefix("## ") {
+            text.lines.push(Line::from(Span::styled(
+                rest.to_string(),
+                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+            )));
+            continue;
+        } else if let Some(rest) = trimmed.strip_prefix("# ") {
+            text.lines.push(Line::from(Span::styled(
+                rest.to_string(),
+                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+            )));
+            continue;
+        }
+
+        // Unordered lists
+        if let Some(rest) = trimmed.strip_prefix("- ") {
+            text.lines.push(Line::from(vec![
+                Span::styled("• ", Style::default().fg(Color::Green)),
+                Span::raw(rest.to_string()),
+            ]));
+            continue;
+        } else if let Some(rest) = trimmed.strip_prefix("* ") {
+            text.lines.push(Line::from(vec![
+                Span::styled("• ", Style::default().fg(Color::Green)),
+                Span::raw(rest.to_string()),
+            ]));
+            continue;
+        }
+
+        // Normal line with inline code and links
+        text.lines.push(style_inline_code_and_links(line));
+    }
+
+    text
+}
+
 fn ui(f: &mut Frame, app: &mut App) {
     let outer = Layout::default()
         .direction(Direction::Vertical)
@@ -594,7 +761,7 @@ fn ui(f: &mut Frame, app: &mut App) {
         let preview_text: Text = if let Some(pr) = app.get_selected_pr() {
             match app.preview_mode {
                 PreviewMode::Body => match app.preview_cache.get(&pr.id) {
-                    Some(body) => Text::from(format!("{}\n{}\n\n{}", pr.title, pr.url, body)),
+                    Some(body) => prettify_pr_preview(&pr.title, &pr.url, body),
                     None => Text::from("Loading preview..."),
                 },
                 PreviewMode::Diff => match app.diff_cache.get(&pr.id) {

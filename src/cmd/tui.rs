@@ -797,14 +797,14 @@ fn layout_outer(area: Rect, contrib_height: u16) -> Rc<[Rect]> {
         .split(area)
 }
 
-fn layout_main_chunks(area: Rect, preview_open: bool) -> Vec<Rect> {
+fn layout_main_chunks(area: Rect, preview_open: bool) -> Rc<[Rect]> {
     if preview_open {
         Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Percentage(50), Constraint::Percentage(50)].as_ref())
             .split(area)
     } else {
-        vec![area]
+        vec![area].into()
     }
 }
 

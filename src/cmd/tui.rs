@@ -14,6 +14,7 @@ use ratatui::{
     text::{Line, Span, Text},
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap},
 };
+use std::rc::Rc;
 use serde::Deserialize;
 use serde_json::json;
 use std::collections::HashMap;

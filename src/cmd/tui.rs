@@ -409,47 +409,67 @@ impl App {
 
     async fn reload(&mut self) {
         self.set_status_persistent("🔄 Reloading...".to_string());
+        let (new_list, any_err) = self.fetch_all_prs().await;
+        if let Some(err) = any_err {
+            self.set_status(format!("❌ Reload error: {}", err));
+            return;
+        }
+
+        self.apply_pr_list_and_restore_selection(new_list);
+        self.refresh_preview_if_open().await;
+        self.set_status(format!("✅ Reloaded. {} PRs.", self.prs.len()));
+
+        if let Err(e) = self.load_contributions().await {
+            self.set_status(format!("❌ Contrib load error: {}", e));
+        }
+    }
+
+    async fn fetch_all_prs(&self) -> (Vec<PrData>, Option<String>) {
         let mut new_list: Vec<PrData> = Vec::new();
         let mut any_err: Option<String> = None;
         for spec in self.specs.clone() {
             match spec {
                 SlugSpec::Owner(owner) => match fetch_owner_prs(&owner).await {
                     Ok(mut prs) => new_list.append(&mut prs),
-                    Err(e) => any_err = Some(format!("Failed to fetch {}: {}", owner, e)),
+                    Err(e) => {
+                        any_err = Some(format!("Failed to fetch {}: {}", owner, e));
+                        break;
+                    }
                 },
                 SlugSpec::Repo { owner, name } => match fetch_repo_prs(&owner, &name).await {
                     Ok(mut prs) => new_list.append(&mut prs),
-                    Err(e) => any_err = Some(format!("Failed to fetch {}/{}: {}", owner, name, e)),
+                    Err(e) => {
+                        any_err = Some(format!("Failed to fetch {}/{}: {}", owner, name, e));
+                        break;
+                    }
                 },
             }
         }
-        if let Some(err) = any_err {
-            self.set_status(format!("❌ Reload error: {}", err));
+        (new_list, any_err)
+    }
+
+    fn apply_pr_list_and_restore_selection(&mut self, new_list: Vec<PrData>) {
+        let sel = self.list_state.selected().unwrap_or(0);
+        self.prs = new_list;
+        if self.prs.is_empty() {
+            self.list_state.select(None);
         } else {
-            let sel = self.list_state.selected().unwrap_or(0);
-            self.prs = new_list;
-            if self.prs.is_empty() {
-                self.list_state.select(None);
-            } else {
-                let new_sel = sel.min(self.prs.len().saturating_sub(1));
-                self.list_state.select(Some(new_sel));
-            }
-            if self.preview_open {
-                if let Some(pr) = self.get_selected_pr().cloned() {
-                    match self.preview_mode {
-                        PreviewMode::Body => {
-                            let _ = self.load_preview_for(&pr).await;
-                        }
-                        PreviewMode::Diff => {
-                            let _ = self.load_diff_for(&pr).await;
-                        }
-                    }
+            let new_sel = sel.min(self.prs.len().saturating_sub(1));
+            self.list_state.select(Some(new_sel));
+        }
+    }
+
+    async fn refresh_preview_if_open(&mut self) {
+        if !self.preview_open { return; }
+        if let Some(pr) = self.get_selected_pr().cloned() {
+            match self.preview_mode {
+                PreviewMode::Body => {
+                    let _ = self.load_preview_for(&pr).await;
+                }
+                PreviewMode::Diff => {
+                    let _ = self.load_diff_for(&pr).await;
                 }
             }
-            self.set_status(format!("✅ Reloaded. {} PRs.", self.prs.len()));
-        }
-        if let Err(e) = self.load_contributions().await {
-            self.set_status(format!("❌ Contrib load error: {}", e));
         }
     }
 

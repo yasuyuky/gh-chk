@@ -787,7 +787,7 @@ fn prettify_pr_preview(title: &str, url: &str, body: &str) -> Text<'static> {
     text
 }
 
-fn layout_outer(area: Rect, contrib_height: u16) -> Vec<Rect> {
+fn layout_outer(area: Rect, contrib_height: u16) -> Rc<[Rect]> {
     Layout::default()
         .direction(Direction::Vertical)
         .constraints(

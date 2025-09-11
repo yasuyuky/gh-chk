@@ -276,8 +276,9 @@ impl App {
     }
 
     async fn merge_selected(&mut self) {
-        if let Some(selected_index) = self.list_state.selected() {
-            if let Some(pr) = self.prs.get(selected_index).cloned() {
+        if let Some(selected_index) = self.list_state.selected()
+            && let Some(pr) = self.prs.get(selected_index).cloned()
+        {
                 if pr.merge_state_status == MergeStateStatus::Clean {
                     self.set_status_persistent(format!(
                         "Merging PR #{} in {}...",
@@ -307,11 +308,11 @@ impl App {
                     ));
                 }
             }
-        }
     }
     async fn approve_selected(&mut self) {
-        if let Some(selected_index) = self.list_state.selected() {
-            if let Some(pr) = self.prs.get(selected_index).cloned() {
+        if let Some(selected_index) = self.list_state.selected()
+            && let Some(pr) = self.prs.get(selected_index).cloned()
+        {
                 self.set_status_persistent(format!(
                     "Approving PR #{} in {}...",
                     pr.number, pr.slug
@@ -328,7 +329,6 @@ impl App {
                     }
                 }
             }
-        }
     }
 
     fn open_url(&self) {

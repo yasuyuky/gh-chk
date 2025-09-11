@@ -105,8 +105,8 @@ impl PrData {
             .unwrap_or(&self.created_at)
             .to_string();
         format!(
-            "{} {} {} {}{}{} ({})",
-            format!("#{}", self.number),
+            "#{} {} {} {}{}{} ({})",
+            self.number,
             self.merge_state_status.to_emoji(),
             self.slug,
             self.title,

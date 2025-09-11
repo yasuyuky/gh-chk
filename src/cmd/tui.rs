@@ -531,7 +531,7 @@ fn contrast_fg(r: u8, g: u8, b: u8) -> Color {
     }
 }
 
-fn make_diff_text(diff: &str) -> Text<'_> {
+fn make_diff_text(diff: &str) -> Text<'static> {
     let mut text = Text::default();
     for line in diff.lines() {
         let styled = if line.starts_with("===") {

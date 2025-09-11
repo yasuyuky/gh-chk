@@ -332,10 +332,8 @@ impl App {
     }
 
     fn open_url(&self) {
-        if let Some(pr) = self.get_selected_pr() {
-            if let Err(e) = open::that(&pr.url) {
-                eprintln!("Failed to open URL: {}", e);
-            }
+        if let Some(pr) = self.get_selected_pr() && let Err(e) = open::that(&pr.url) {
+            eprintln!("Failed to open URL: {}", e);
         }
     }
 

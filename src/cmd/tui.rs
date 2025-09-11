@@ -9,7 +9,7 @@ use open;
 use ratatui::{
     Frame, Terminal,
     backend::CrosstermBackend,
-    layout::{Constraint, Direction, Layout},
+    layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span, Text},
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap},
@@ -18,6 +18,7 @@ use serde::Deserialize;
 use serde_json::json;
 use std::collections::HashMap;
 use std::io;
+use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 // Type alias for GraphQL PR node for brevity (reuse prs module types)
@@ -104,8 +105,8 @@ impl PrData {
             .unwrap_or(&self.created_at)
             .to_string();
         format!(
-            "{} {} {} {}{}{} ({})",
-            format!("#{}", self.number),
+            "#{} {} {} {}{}{} ({})",
+            self.number,
             self.merge_state_status.to_emoji(),
             self.slug,
             self.title,
@@ -275,66 +276,60 @@ impl App {
     }
 
     async fn merge_selected(&mut self) {
-        if let Some(selected_index) = self.list_state.selected() {
-            if let Some(pr) = self.prs.get(selected_index).cloned() {
-                if pr.merge_state_status == MergeStateStatus::Clean {
-                    self.set_status_persistent(format!(
-                        "Merging PR #{} in {}...",
-                        pr.number, pr.slug
-                    ));
-                    match crate::cmd::prs::merge_pr(&pr.id).await {
-                        Ok(_) => {
-                            self.set_status(format!("✅ Merged PR #{} in {}", pr.number, pr.slug));
-                            self.prs.remove(selected_index);
-                            if self.prs.is_empty() {
-                                self.list_state.select(None);
-                            } else if selected_index >= self.prs.len() {
-                                self.list_state.select(Some(self.prs.len() - 1));
-                            }
-                        }
-                        Err(e) => {
-                            self.set_status(format!(
-                                "❌ Failed to merge PR #{} in {}: {}",
-                                pr.number, pr.slug, e
-                            ));
+        if let Some(selected_index) = self.list_state.selected()
+            && let Some(pr) = self.prs.get(selected_index).cloned()
+        {
+            if pr.merge_state_status == MergeStateStatus::Clean {
+                self.set_status_persistent(format!("Merging PR #{} in {}...", pr.number, pr.slug));
+                match crate::cmd::prs::merge_pr(&pr.id).await {
+                    Ok(_) => {
+                        self.set_status(format!("✅ Merged PR #{} in {}", pr.number, pr.slug));
+                        self.prs.remove(selected_index);
+                        if self.prs.is_empty() {
+                            self.list_state.select(None);
+                        } else if selected_index >= self.prs.len() {
+                            self.list_state.select(Some(self.prs.len() - 1));
                         }
                     }
-                } else {
-                    self.set_status(format!(
-                        "Cannot merge PR #{} in {}: not in clean state",
-                        pr.number, pr.slug
-                    ));
+                    Err(e) => {
+                        self.set_status(format!(
+                            "❌ Failed to merge PR #{} in {}: {}",
+                            pr.number, pr.slug, e
+                        ));
+                    }
                 }
+            } else {
+                self.set_status(format!(
+                    "Cannot merge PR #{} in {}: not in clean state",
+                    pr.number, pr.slug
+                ));
             }
         }
     }
     async fn approve_selected(&mut self) {
-        if let Some(selected_index) = self.list_state.selected() {
-            if let Some(pr) = self.prs.get(selected_index).cloned() {
-                self.set_status_persistent(format!(
-                    "Approving PR #{} in {}...",
-                    pr.number, pr.slug
-                ));
-                match approve_pr(&pr.id).await {
-                    Ok(_) => {
-                        self.set_status(format!("✅ Approved PR #{} in {}", pr.number, pr.slug));
-                    }
-                    Err(e) => {
-                        self.set_status(format!(
-                            "❌ Failed to approve PR #{} in {}: {}",
-                            pr.number, pr.slug, e
-                        ));
-                    }
+        if let Some(selected_index) = self.list_state.selected()
+            && let Some(pr) = self.prs.get(selected_index).cloned()
+        {
+            self.set_status_persistent(format!("Approving PR #{} in {}...", pr.number, pr.slug));
+            match approve_pr(&pr.id).await {
+                Ok(_) => {
+                    self.set_status(format!("✅ Approved PR #{} in {}", pr.number, pr.slug));
+                }
+                Err(e) => {
+                    self.set_status(format!(
+                        "❌ Failed to approve PR #{} in {}: {}",
+                        pr.number, pr.slug, e
+                    ));
                 }
             }
         }
     }
 
     fn open_url(&self) {
-        if let Some(pr) = self.get_selected_pr() {
-            if let Err(e) = open::that(&pr.url) {
-                eprintln!("Failed to open URL: {}", e);
-            }
+        if let Some(pr) = self.get_selected_pr()
+            && let Err(e) = open::that(&pr.url)
+        {
+            eprintln!("Failed to open URL: {}", e);
         }
     }
 
@@ -409,47 +404,69 @@ impl App {
 
     async fn reload(&mut self) {
         self.set_status_persistent("🔄 Reloading...".to_string());
+        let (new_list, any_err) = self.fetch_all_prs().await;
+        if let Some(err) = any_err {
+            self.set_status(format!("❌ Reload error: {}", err));
+            return;
+        }
+
+        self.apply_pr_list_and_restore_selection(new_list);
+        self.refresh_preview_if_open().await;
+        self.set_status(format!("✅ Reloaded. {} PRs.", self.prs.len()));
+
+        if let Err(e) = self.load_contributions().await {
+            self.set_status(format!("❌ Contrib load error: {}", e));
+        }
+    }
+
+    async fn fetch_all_prs(&self) -> (Vec<PrData>, Option<String>) {
         let mut new_list: Vec<PrData> = Vec::new();
         let mut any_err: Option<String> = None;
         for spec in self.specs.clone() {
             match spec {
                 SlugSpec::Owner(owner) => match fetch_owner_prs(&owner).await {
                     Ok(mut prs) => new_list.append(&mut prs),
-                    Err(e) => any_err = Some(format!("Failed to fetch {}: {}", owner, e)),
+                    Err(e) => {
+                        any_err = Some(format!("Failed to fetch {}: {}", owner, e));
+                        break;
+                    }
                 },
                 SlugSpec::Repo { owner, name } => match fetch_repo_prs(&owner, &name).await {
                     Ok(mut prs) => new_list.append(&mut prs),
-                    Err(e) => any_err = Some(format!("Failed to fetch {}/{}: {}", owner, name, e)),
+                    Err(e) => {
+                        any_err = Some(format!("Failed to fetch {}/{}: {}", owner, name, e));
+                        break;
+                    }
                 },
             }
         }
-        if let Some(err) = any_err {
-            self.set_status(format!("❌ Reload error: {}", err));
+        (new_list, any_err)
+    }
+
+    fn apply_pr_list_and_restore_selection(&mut self, new_list: Vec<PrData>) {
+        let sel = self.list_state.selected().unwrap_or(0);
+        self.prs = new_list;
+        if self.prs.is_empty() {
+            self.list_state.select(None);
         } else {
-            let sel = self.list_state.selected().unwrap_or(0);
-            self.prs = new_list;
-            if self.prs.is_empty() {
-                self.list_state.select(None);
-            } else {
-                let new_sel = sel.min(self.prs.len().saturating_sub(1));
-                self.list_state.select(Some(new_sel));
-            }
-            if self.preview_open {
-                if let Some(pr) = self.get_selected_pr().cloned() {
-                    match self.preview_mode {
-                        PreviewMode::Body => {
-                            let _ = self.load_preview_for(&pr).await;
-                        }
-                        PreviewMode::Diff => {
-                            let _ = self.load_diff_for(&pr).await;
-                        }
-                    }
+            let new_sel = sel.min(self.prs.len().saturating_sub(1));
+            self.list_state.select(Some(new_sel));
+        }
+    }
+
+    async fn refresh_preview_if_open(&mut self) {
+        if !self.preview_open {
+            return;
+        }
+        if let Some(pr) = self.get_selected_pr().cloned() {
+            match self.preview_mode {
+                PreviewMode::Body => {
+                    let _ = self.load_preview_for(&pr).await;
+                }
+                PreviewMode::Diff => {
+                    let _ = self.load_diff_for(&pr).await;
                 }
             }
-            self.set_status(format!("✅ Reloaded. {} PRs.", self.prs.len()));
-        }
-        if let Err(e) = self.load_contributions().await {
-            self.set_status(format!("❌ Contrib load error: {}", e));
         }
     }
 
@@ -510,7 +527,7 @@ fn contrast_fg(r: u8, g: u8, b: u8) -> Color {
     }
 }
 
-fn make_diff_text(diff: &str) -> Text<'_> {
+fn make_diff_text(diff: &str) -> Text<'static> {
     let mut text = Text::default();
     for line in diff.lines() {
         let styled = if line.starts_with("===") {
@@ -589,80 +606,80 @@ fn make_preview_block_title(app: &App, area_width: u16, total_lines: u16) -> Str
     }
 }
 
-fn prettify_pr_preview(title: &str, url: &str, body: &str) -> Text<'static> {
-    fn style_linkish(s: &str) -> Vec<Span<'static>> {
-        let mut out: Vec<Span> = Vec::new();
-        let mut rest = s;
-        while let Some(idx) = rest.find("http://").or_else(|| rest.find("https://")) {
-            let (pre, link_start) = rest.split_at(idx);
-            if !pre.is_empty() {
-                out.push(Span::raw(pre.to_string()));
-            }
-            let mut end = link_start.len();
-            for (i, ch) in link_start.char_indices() {
-                if ch.is_whitespace() {
-                    end = i;
-                    break;
-                }
-            }
-            let (url_part, tail) = link_start.split_at(end);
-            out.push(Span::styled(
-                url_part.to_string(),
-                Style::default()
-                    .fg(Color::Blue)
-                    .add_modifier(Modifier::UNDERLINED),
-            ));
-            rest = tail;
-            if rest.is_empty() {
+fn style_linkish(s: &str) -> Vec<Span<'static>> {
+    let mut out: Vec<Span> = Vec::new();
+    let mut rest = s;
+    while let Some(idx) = rest.find("http://").or_else(|| rest.find("https://")) {
+        let (pre, link_start) = rest.split_at(idx);
+        if !pre.is_empty() {
+            out.push(Span::raw(pre.to_string()));
+        }
+        let mut end = link_start.len();
+        for (i, ch) in link_start.char_indices() {
+            if ch.is_whitespace() {
+                end = i;
                 break;
             }
         }
-        if !rest.is_empty() {
-            out.push(Span::raw(rest.to_string()));
+        let (url_part, tail) = link_start.split_at(end);
+        out.push(Span::styled(
+            url_part.to_string(),
+            Style::default()
+                .fg(Color::Blue)
+                .add_modifier(Modifier::UNDERLINED),
+        ));
+        rest = tail;
+        if rest.is_empty() {
+            break;
         }
-        out
     }
+    if !rest.is_empty() {
+        out.push(Span::raw(rest.to_string()));
+    }
+    out
+}
 
-    fn style_inline_code_and_links(s: &str) -> Line<'static> {
-        let mut spans: Vec<Span> = Vec::new();
-        let mut in_code = false;
-        let mut buf = String::default();
-        for ch in s.chars() {
-            if ch == '`' {
-                if !buf.is_empty() {
-                    if in_code {
-                        spans.push(Span::styled(
-                            buf.clone(),
-                            Style::default()
-                                .bg(Color::Rgb(40, 40, 40))
-                                .fg(Color::Yellow),
-                        ));
-                    } else {
-                        // process links in normal text
-                        spans.extend(style_linkish(&buf));
-                    }
-                    buf.clear();
+fn style_inline_code_and_links(s: &str) -> Line<'static> {
+    let mut spans: Vec<Span> = Vec::new();
+    let mut in_code = false;
+    let mut buf = String::default();
+    for ch in s.chars() {
+        if ch == '`' {
+            if !buf.is_empty() {
+                if in_code {
+                    spans.push(Span::styled(
+                        buf.clone(),
+                        Style::default()
+                            .bg(Color::Rgb(40, 40, 40))
+                            .fg(Color::Yellow),
+                    ));
+                } else {
+                    // process links in normal text
+                    spans.extend(style_linkish(&buf));
                 }
-                in_code = !in_code;
-            } else {
-                buf.push(ch);
+                buf.clear();
             }
+            in_code = !in_code;
+        } else {
+            buf.push(ch);
         }
-        if !buf.is_empty() {
-            if in_code {
-                spans.push(Span::styled(
-                    buf,
-                    Style::default()
-                        .bg(Color::Rgb(40, 40, 40))
-                        .fg(Color::Yellow),
-                ));
-            } else {
-                spans.extend(style_linkish(&buf));
-            }
-        }
-        Line::from(spans)
     }
+    if !buf.is_empty() {
+        if in_code {
+            spans.push(Span::styled(
+                buf,
+                Style::default()
+                    .bg(Color::Rgb(40, 40, 40))
+                    .fg(Color::Yellow),
+            ));
+        } else {
+            spans.extend(style_linkish(&buf));
+        }
+    }
+    Line::from(spans)
+}
 
+fn prettify_pr_preview(title: &str, url: &str, body: &str) -> Text<'static> {
     let mut text = Text::default();
 
     // Title
@@ -772,28 +789,32 @@ fn prettify_pr_preview(title: &str, url: &str, body: &str) -> Text<'static> {
     text
 }
 
-fn ui(f: &mut Frame, app: &mut App) {
-    let outer = Layout::default()
+fn layout_outer(area: Rect, contrib_height: u16) -> Rc<[Rect]> {
+    Layout::default()
         .direction(Direction::Vertical)
         .constraints(
             [
                 Constraint::Min(0),
-                Constraint::Length(app.contrib_height),
+                Constraint::Length(contrib_height),
                 Constraint::Length(3),
             ]
             .as_ref(),
         )
-        .split(f.area());
+        .split(area)
+}
 
-    let main_chunks = if app.preview_open {
+fn layout_main_chunks(area: Rect, preview_open: bool) -> Rc<[Rect]> {
+    if preview_open {
         Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Percentage(50), Constraint::Percentage(50)].as_ref())
-            .split(outer[0])
+            .split(area)
     } else {
-        vec![outer[0]].into()
-    };
+        vec![area].into()
+    }
+}
 
+fn build_pr_list(app: &App) -> List<'static> {
     let items: Vec<ListItem> = app
         .prs
         .iter()
@@ -806,71 +827,62 @@ fn ui(f: &mut Frame, app: &mut App) {
         })
         .collect();
 
-    let items = List::new(items)
+    List::new(items)
         .block(
             Block::default()
                 .borders(Borders::ALL)
                 .title("Pull Requests"),
         )
         .highlight_style(Style::default().add_modifier(Modifier::BOLD))
-        .highlight_symbol(">> ");
+        .highlight_symbol(">> ")
+}
 
-    f.render_stateful_widget(items, main_chunks[0], &mut app.list_state);
-
-    if app.preview_open {
-        let preview_text: Text = if let Some(pr) = app.get_selected_pr() {
-            match app.preview_mode {
-                PreviewMode::Body => match app.preview_cache.get(&pr.id) {
-                    Some(body) => prettify_pr_preview(&pr.title, &pr.url, body),
-                    None => Text::from("Loading preview..."),
-                },
-                PreviewMode::Diff => match app.diff_cache.get(&pr.id) {
-                    Some(diff) => {
-                        let header = format!("Diff for #{} {}", pr.number, pr.slug);
-                        let mut text = Text::from(header);
-                        text.lines.push(Line::from(""));
-                        let mut colored = make_diff_text(diff);
-                        text.lines.append(&mut colored.lines);
-                        text
-                    }
-                    None => Text::from("Loading diff..."),
-                },
-            }
-        } else {
-            Text::from("No selection")
-        };
-
-        let title = make_preview_block_title(
-            app,
-            if main_chunks.len() > 1 {
-                main_chunks[1].width
-            } else {
-                outer[0].width
+fn build_preview_text(app: &App) -> Text<'static> {
+    if let Some(pr) = app.get_selected_pr() {
+        match app.preview_mode {
+            PreviewMode::Body => match app.preview_cache.get(&pr.id) {
+                Some(body) => prettify_pr_preview(&pr.title, &pr.url, body),
+                None => Text::from("Loading preview..."),
             },
-            preview_text.lines.len() as u16,
-        );
-        let preview = Paragraph::new(preview_text)
-            .block(Block::default().borders(Borders::ALL).title(title))
-            .wrap(Wrap { trim: false })
-            .scroll((app.preview_scroll, 0));
-        let area = if main_chunks.len() > 1 {
-            main_chunks[1]
-        } else {
-            outer[0]
-        };
-        app.preview_area_height = area.height;
-        f.render_widget(preview, area);
+            PreviewMode::Diff => match app.diff_cache.get(&pr.id) {
+                Some(diff) => {
+                    let header = format!("Diff for #{} {}", pr.number, pr.slug);
+                    let mut text = Text::from(header);
+                    text.lines.push(Line::from(""));
+                    let mut colored = make_diff_text(diff);
+                    text.lines.append(&mut colored.lines);
+                    text
+                }
+                None => Text::from("Loading diff..."),
+            },
+        }
+    } else {
+        Text::from("No selection")
     }
+}
 
-    // Contributions pane across full width in the middle row
+fn render_pr_list(f: &mut Frame, app: &mut App, area: Rect) {
+    let list = build_pr_list(app);
+    f.render_stateful_widget(list, area, &mut app.list_state);
+}
+
+fn render_preview(f: &mut Frame, app: &mut App, area: Rect) {
+    let preview_text = build_preview_text(app);
+    let title = make_preview_block_title(app, area.width, preview_text.lines.len() as u16);
+    let preview = Paragraph::new(preview_text)
+        .block(Block::default().borders(Borders::ALL).title(title))
+        .wrap(Wrap { trim: false })
+        .scroll((app.preview_scroll, 0));
+    app.preview_area_height = area.height;
+    f.render_widget(preview, area);
+}
+
+fn render_contributions(f: &mut Frame, app: &mut App, area: Rect) {
     let contrib_block = Block::default()
         .borders(Borders::ALL)
         .title(app.contrib_title.clone());
     if let Some(lines) = &app.contrib_lines {
-        // Fit contribution graph to the available inner width.
-        // Each week cell occupies 2 columns (either "++" or right-padded 2-digit number or spaces).
-        let area = outer[1];
-        let inner_width = area.width.saturating_sub(2); // account for block borders
+        let inner_width = area.width.saturating_sub(2);
         let visible_weeks = (inner_width / 2) as usize;
         let mut trimmed: Vec<Line> = Vec::with_capacity(lines.len());
         for line in lines.iter() {
@@ -883,15 +895,17 @@ fn ui(f: &mut Frame, app: &mut App) {
         let contrib = Paragraph::new(trimmed)
             .block(contrib_block)
             .wrap(Wrap { trim: false });
-        f.render_widget(contrib, outer[1]);
+        f.render_widget(contrib, area);
     } else {
         let contrib = Paragraph::new("Loading contributions...")
             .block(contrib_block)
             .wrap(Wrap { trim: true });
-        f.render_widget(contrib, outer[1]);
+        f.render_widget(contrib, area);
     }
+}
 
-    let help_text = if let Some(ref msg) = app.status_message {
+fn build_help_text(app: &App) -> String {
+    if let Some(ref msg) = app.status_message {
         msg.clone()
     } else {
         let base =
@@ -910,13 +924,32 @@ fn ui(f: &mut Frame, app: &mut App) {
         } else {
             format!("{} • {}", base, nav)
         }
-    };
+    }
+}
 
+fn render_help(f: &mut Frame, app: &App, area: Rect) {
+    let help_text = build_help_text(app);
     let help = Paragraph::new(help_text)
         .block(Block::default().borders(Borders::ALL).title("Help"))
         .wrap(Wrap { trim: true });
+    f.render_widget(help, area);
+}
 
-    f.render_widget(help, outer[2]);
+fn ui(f: &mut Frame, app: &mut App) {
+    let outer = layout_outer(f.area(), app.contrib_height);
+    let main_chunks = layout_main_chunks(outer[0], app.preview_open);
+
+    render_pr_list(f, app, main_chunks[0]);
+    if app.preview_open {
+        let area = if main_chunks.len() > 1 {
+            main_chunks[1]
+        } else {
+            outer[0]
+        };
+        render_preview(f, app, area);
+    }
+    render_contributions(f, app, outer[1]);
+    render_help(f, app, outer[2]);
 }
 
 impl App {

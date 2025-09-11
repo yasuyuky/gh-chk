@@ -14,11 +14,11 @@ use ratatui::{
     text::{Line, Span, Text},
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap},
 };
-use std::rc::Rc;
 use serde::Deserialize;
 use serde_json::json;
 use std::collections::HashMap;
 use std::io;
+use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 // Type alias for GraphQL PR node for brevity (reuse prs module types)
@@ -279,60 +279,56 @@ impl App {
         if let Some(selected_index) = self.list_state.selected()
             && let Some(pr) = self.prs.get(selected_index).cloned()
         {
-                if pr.merge_state_status == MergeStateStatus::Clean {
-                    self.set_status_persistent(format!(
-                        "Merging PR #{} in {}...",
-                        pr.number, pr.slug
-                    ));
-                    match crate::cmd::prs::merge_pr(&pr.id).await {
-                        Ok(_) => {
-                            self.set_status(format!("✅ Merged PR #{} in {}", pr.number, pr.slug));
-                            self.prs.remove(selected_index);
-                            if self.prs.is_empty() {
-                                self.list_state.select(None);
-                            } else if selected_index >= self.prs.len() {
-                                self.list_state.select(Some(self.prs.len() - 1));
-                            }
-                        }
-                        Err(e) => {
-                            self.set_status(format!(
-                                "❌ Failed to merge PR #{} in {}: {}",
-                                pr.number, pr.slug, e
-                            ));
+            if pr.merge_state_status == MergeStateStatus::Clean {
+                self.set_status_persistent(format!("Merging PR #{} in {}...", pr.number, pr.slug));
+                match crate::cmd::prs::merge_pr(&pr.id).await {
+                    Ok(_) => {
+                        self.set_status(format!("✅ Merged PR #{} in {}", pr.number, pr.slug));
+                        self.prs.remove(selected_index);
+                        if self.prs.is_empty() {
+                            self.list_state.select(None);
+                        } else if selected_index >= self.prs.len() {
+                            self.list_state.select(Some(self.prs.len() - 1));
                         }
                     }
-                } else {
-                    self.set_status(format!(
-                        "Cannot merge PR #{} in {}: not in clean state",
-                        pr.number, pr.slug
-                    ));
+                    Err(e) => {
+                        self.set_status(format!(
+                            "❌ Failed to merge PR #{} in {}: {}",
+                            pr.number, pr.slug, e
+                        ));
+                    }
                 }
+            } else {
+                self.set_status(format!(
+                    "Cannot merge PR #{} in {}: not in clean state",
+                    pr.number, pr.slug
+                ));
             }
+        }
     }
     async fn approve_selected(&mut self) {
         if let Some(selected_index) = self.list_state.selected()
             && let Some(pr) = self.prs.get(selected_index).cloned()
         {
-                self.set_status_persistent(format!(
-                    "Approving PR #{} in {}...",
-                    pr.number, pr.slug
-                ));
-                match approve_pr(&pr.id).await {
-                    Ok(_) => {
-                        self.set_status(format!("✅ Approved PR #{} in {}", pr.number, pr.slug));
-                    }
-                    Err(e) => {
-                        self.set_status(format!(
-                            "❌ Failed to approve PR #{} in {}: {}",
-                            pr.number, pr.slug, e
-                        ));
-                    }
+            self.set_status_persistent(format!("Approving PR #{} in {}...", pr.number, pr.slug));
+            match approve_pr(&pr.id).await {
+                Ok(_) => {
+                    self.set_status(format!("✅ Approved PR #{} in {}", pr.number, pr.slug));
+                }
+                Err(e) => {
+                    self.set_status(format!(
+                        "❌ Failed to approve PR #{} in {}: {}",
+                        pr.number, pr.slug, e
+                    ));
                 }
             }
+        }
     }
 
     fn open_url(&self) {
-        if let Some(pr) = self.get_selected_pr() && let Err(e) = open::that(&pr.url) {
+        if let Some(pr) = self.get_selected_pr()
+            && let Err(e) = open::that(&pr.url)
+        {
             eprintln!("Failed to open URL: {}", e);
         }
     }
@@ -459,7 +455,9 @@ impl App {
     }
 
     async fn refresh_preview_if_open(&mut self) {
-        if !self.preview_open { return; }
+        if !self.preview_open {
+            return;
+        }
         if let Some(pr) = self.get_selected_pr().cloned() {
             match self.preview_mode {
                 PreviewMode::Body => {
@@ -626,7 +624,9 @@ fn style_linkish(s: &str) -> Vec<Span<'static>> {
         let (url_part, tail) = link_start.split_at(end);
         out.push(Span::styled(
             url_part.to_string(),
-            Style::default().fg(Color::Blue).add_modifier(Modifier::UNDERLINED),
+            Style::default()
+                .fg(Color::Blue)
+                .add_modifier(Modifier::UNDERLINED),
         ));
         rest = tail;
         if rest.is_empty() {
@@ -649,7 +649,9 @@ fn style_inline_code_and_links(s: &str) -> Line<'static> {
                 if in_code {
                     spans.push(Span::styled(
                         buf.clone(),
-                        Style::default().bg(Color::Rgb(40, 40, 40)).fg(Color::Yellow),
+                        Style::default()
+                            .bg(Color::Rgb(40, 40, 40))
+                            .fg(Color::Yellow),
                     ));
                 } else {
                     // process links in normal text
@@ -666,7 +668,9 @@ fn style_inline_code_and_links(s: &str) -> Line<'static> {
         if in_code {
             spans.push(Span::styled(
                 buf,
-                Style::default().bg(Color::Rgb(40, 40, 40)).fg(Color::Yellow),
+                Style::default()
+                    .bg(Color::Rgb(40, 40, 40))
+                    .fg(Color::Yellow),
             ));
         } else {
             spans.extend(style_linkish(&buf));
@@ -789,8 +793,12 @@ fn layout_outer(area: Rect, contrib_height: u16) -> Rc<[Rect]> {
     Layout::default()
         .direction(Direction::Vertical)
         .constraints(
-            [Constraint::Min(0), Constraint::Length(contrib_height), Constraint::Length(3)]
-                .as_ref(),
+            [
+                Constraint::Min(0),
+                Constraint::Length(contrib_height),
+                Constraint::Length(3),
+            ]
+            .as_ref(),
         )
         .split(area)
 }
@@ -820,7 +828,11 @@ fn build_pr_list(app: &App) -> List<'static> {
         .collect();
 
     List::new(items)
-        .block(Block::default().borders(Borders::ALL).title("Pull Requests"))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Pull Requests"),
+        )
         .highlight_style(Style::default().add_modifier(Modifier::BOLD))
         .highlight_symbol(">> ")
 }
@@ -929,7 +941,11 @@ fn ui(f: &mut Frame, app: &mut App) {
 
     render_pr_list(f, app, main_chunks[0]);
     if app.preview_open {
-        let area = if main_chunks.len() > 1 { main_chunks[1] } else { outer[0] };
+        let area = if main_chunks.len() > 1 {
+            main_chunks[1]
+        } else {
+            outer[0]
+        };
         render_preview(f, app, area);
     }
     render_contributions(f, app, outer[1]);

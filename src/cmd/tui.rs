@@ -1188,7 +1188,9 @@ async fn run_app(
         }
 
         // Auto-clear status messages when their timer expires.
-        if let Some(clear_at) = app.status_clear_at && Instant::now() >= clear_at {
+        if let Some(clear_at) = app.status_clear_at
+            && Instant::now() >= clear_at
+        {
             app.status_message = None;
             app.status_clear_at = None;
         }

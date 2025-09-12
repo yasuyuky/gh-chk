@@ -1095,20 +1095,20 @@ fn on_clear_help(app: &mut App) {
 }
 
 fn queue_preview_if_needed(app: &mut App) {
-    if let Some(pr) = app.get_selected_pr().cloned() {
-        if !app.preview_cache.contains_key(&pr.id) {
-            app.set_status_persistent(format!("🔎 Loading preview for #{}...", pr.number));
-            app.pending_task = Some(PendingTask::LoadPreviewForSelected);
-        }
+    if let Some(pr) = app.get_selected_pr().cloned()
+        && !app.preview_cache.contains_key(&pr.id)
+    {
+        app.set_status_persistent(format!("🔎 Loading preview for #{}...", pr.number));
+        app.pending_task = Some(PendingTask::LoadPreviewForSelected);
     }
 }
 
 fn queue_diff_if_needed(app: &mut App) {
-    if let Some(pr) = app.get_selected_pr().cloned() {
-        if !app.diff_cache.contains_key(&pr.id) {
-            app.set_status_persistent(format!("🔎 Loading diff for #{}...", pr.number));
-            app.pending_task = Some(PendingTask::LoadDiffForSelected);
-        }
+    if let Some(pr) = app.get_selected_pr().cloned()
+        && !app.diff_cache.contains_key(&pr.id)
+    {
+        app.set_status_persistent(format!("🔎 Loading diff for #{}...", pr.number));
+        app.pending_task = Some(PendingTask::LoadDiffForSelected);
     }
 }
 
@@ -1188,11 +1188,11 @@ async fn run_app(
         }
 
         // Auto-clear status messages when their timer expires.
-        if let Some(clear_at) = app.status_clear_at {
-            if Instant::now() >= clear_at {
-                app.status_message = None;
-                app.status_clear_at = None;
-            }
+        if let Some(clear_at) = app.status_clear_at
+            && Instant::now() >= clear_at
+        {
+            app.status_message = None;
+            app.status_clear_at = None;
         }
 
         if app.should_quit {

@@ -1095,11 +1095,11 @@ fn on_clear_help(app: &mut App) {
 }
 
 fn queue_preview_if_needed(app: &mut App) {
-    if let Some(pr) = app.get_selected_pr().cloned() {
-        if !app.preview_cache.contains_key(&pr.id) {
+    if let Some(pr) = app.get_selected_pr().cloned()
+        && !app.preview_cache.contains_key(&pr.id)
+    {
             app.set_status_persistent(format!("🔎 Loading preview for #{}...", pr.number));
             app.pending_task = Some(PendingTask::LoadPreviewForSelected);
-        }
     }
 }
 

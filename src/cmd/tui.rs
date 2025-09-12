@@ -1098,17 +1098,17 @@ fn queue_preview_if_needed(app: &mut App) {
     if let Some(pr) = app.get_selected_pr().cloned()
         && !app.preview_cache.contains_key(&pr.id)
     {
-            app.set_status_persistent(format!("🔎 Loading preview for #{}...", pr.number));
-            app.pending_task = Some(PendingTask::LoadPreviewForSelected);
+        app.set_status_persistent(format!("🔎 Loading preview for #{}...", pr.number));
+        app.pending_task = Some(PendingTask::LoadPreviewForSelected);
     }
 }
 
 fn queue_diff_if_needed(app: &mut App) {
-    if let Some(pr) = app.get_selected_pr().cloned() {
-        if !app.diff_cache.contains_key(&pr.id) {
-            app.set_status_persistent(format!("🔎 Loading diff for #{}...", pr.number));
-            app.pending_task = Some(PendingTask::LoadDiffForSelected);
-        }
+    if let Some(pr) = app.get_selected_pr().cloned()
+        && !app.diff_cache.contains_key(&pr.id)
+    {
+        app.set_status_persistent(format!("🔎 Loading diff for #{}...", pr.number));
+        app.pending_task = Some(PendingTask::LoadDiffForSelected);
     }
 }
 

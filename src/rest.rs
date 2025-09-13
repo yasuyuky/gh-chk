@@ -7,10 +7,7 @@ pub type QueryMap = HashMap<String, String>;
 
 #[allow(dead_code)]
 fn parse_next(res: &surf::Response) -> Option<String> {
-    let link = match res.header("Link") {
-        Some(vs) => vs,
-        None => return None,
-    };
+    let link = res.header("Link")?;
     for l in link.as_str().split(',') {
         if l.contains("next") {
             return Some(l[(l.find('<').unwrap() + 1)..l.find('>').unwrap()].to_owned());

@@ -290,6 +290,10 @@ impl App {
                         } else if selected_index >= self.prs.len() {
                             self.list_state.select(Some(self.prs.len() - 1));
                         }
+                        // Reload contributions to reflect the newly merged PR
+                        if let Err(e) = self.load_contributions().await {
+                            self.set_status(format!("❌ Contrib load error: {}", e));
+                        }
                     }
                     Err(e) => {
                         self.set_status(format!(

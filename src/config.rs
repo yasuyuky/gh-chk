@@ -102,8 +102,10 @@ mod tests {
     fn config_paths_resolve_without_home() {
         let orig_home = std::env::var_os("HOME");
         let orig_xdg = std::env::var_os("XDG_CONFIG_HOME");
-        std::env::remove_var("HOME");
-        std::env::remove_var("XDG_CONFIG_HOME");
+        unsafe {
+            std::env::remove_var("HOME");
+            std::env::remove_var("XDG_CONFIG_HOME");
+        }
 
         let conf = CONFIG_PATH.clone();
         let gh_conf = GH_CONFIG_PATH.clone();
@@ -111,11 +113,13 @@ mod tests {
         assert!(conf.ends_with("gh-chk/config.toml"));
         assert!(gh_conf.ends_with("gh/hosts.yml"));
 
-        if let Some(val) = orig_home {
-            std::env::set_var("HOME", val);
-        }
-        if let Some(val) = orig_xdg {
-            std::env::set_var("XDG_CONFIG_HOME", val);
+        unsafe {
+            if let Some(val) = orig_home {
+                std::env::set_var("HOME", val);
+            }
+            if let Some(val) = orig_xdg {
+                std::env::set_var("XDG_CONFIG_HOME", val);
+            }
         }
     }
 }

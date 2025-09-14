@@ -53,7 +53,7 @@ fn login() -> Result<(), std::io::Error> {
         .get();
     let conf = config::Config { token: Some(token) };
     let s = toml::to_string(&conf)
-        .map_err(|e| std::io::Error::other(e))?;
+        .map_err(std::io::Error::other)?;
     let path = config::CONFIG_PATH.clone();
     let dir = match path.parent() {
         Some(d) => d,

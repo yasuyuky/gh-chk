@@ -1,3 +1,4 @@
+use crate::env_keys::{ENV_GITHUB_TOKEN, ENV_HOME, ENV_XDG_CONFIG_HOME};
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -5,9 +6,6 @@ use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
-use crate::env_keys::{
-    ENV_GITHUB_TOKEN, ENV_HOME, ENV_XDG_CONFIG_HOME,
-};
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct Config {

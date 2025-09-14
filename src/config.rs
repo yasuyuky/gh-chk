@@ -5,6 +5,9 @@ use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
+use crate::env_keys::{
+    ENV_GITHUB_TOKEN, ENV_HOME, ENV_XDG_CONFIG_HOME,
+};
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct Config {
@@ -61,9 +64,9 @@ impl GHConfig {
 }
 
 pub static CONFIG_PATH: Lazy<PathBuf> = Lazy::new(|| {
-    let mut path = std::env::var("XDG_CONFIG_HOME")
+    let mut path = std::env::var(ENV_XDG_CONFIG_HOME)
         .map(PathBuf::from)
-        .or_else(|_| std::env::var("HOME").map(|home| PathBuf::from(home).join(".config")))
+        .or_else(|_| std::env::var(ENV_HOME).map(|home| PathBuf::from(home).join(".config")))
         .unwrap_or_else(|_| PathBuf::from(".config"));
     path.push("gh-chk");
     path.push("config.toml");
@@ -73,9 +76,9 @@ pub static CONFIG_PATH: Lazy<PathBuf> = Lazy::new(|| {
 pub static CONFIG: Lazy<Config> = Lazy::new(|| Config::from_path(&CONFIG_PATH));
 
 pub static GH_CONFIG_PATH: Lazy<PathBuf> = Lazy::new(|| {
-    let mut path = std::env::var("XDG_CONFIG_HOME")
+    let mut path = std::env::var(ENV_XDG_CONFIG_HOME)
         .map(PathBuf::from)
-        .or_else(|_| std::env::var("HOME").map(|home| PathBuf::from(home).join(".config")))
+        .or_else(|_| std::env::var(ENV_HOME).map(|home| PathBuf::from(home).join(".config")))
         .unwrap_or_else(|_| PathBuf::from(".config"));
     path.push("gh");
     path.push("hosts.yml");
@@ -88,7 +91,7 @@ pub static TOKEN: Lazy<String> = Lazy::new(|| match GH_CONFIG.entries.get("githu
     Some(tok_conf) => tok_conf.oauth_token.clone(),
     None => match CONFIG.token.clone() {
         Some(tok) => tok,
-        None => std::env::var("GITHUB_TOKEN").unwrap_or_default(),
+        None => std::env::var(ENV_GITHUB_TOKEN).unwrap_or_default(),
     },
 });
 
@@ -100,11 +103,11 @@ mod tests {
 
     #[test]
     fn config_paths_resolve_without_home() {
-        let orig_home = std::env::var_os("HOME");
-        let orig_xdg = std::env::var_os("XDG_CONFIG_HOME");
+        let orig_home = std::env::var_os(ENV_HOME);
+        let orig_xdg = std::env::var_os(ENV_XDG_CONFIG_HOME);
         unsafe {
-            std::env::remove_var("HOME");
-            std::env::remove_var("XDG_CONFIG_HOME");
+            std::env::remove_var(ENV_HOME);
+            std::env::remove_var(ENV_XDG_CONFIG_HOME);
         }
 
         let conf = CONFIG_PATH.clone();
@@ -115,10 +118,10 @@ mod tests {
 
         unsafe {
             if let Some(val) = orig_home {
-                std::env::set_var("HOME", val);
+                std::env::set_var(ENV_HOME, val);
             }
             if let Some(val) = orig_xdg {
-                std::env::set_var("XDG_CONFIG_HOME", val);
+                std::env::set_var(ENV_XDG_CONFIG_HOME, val);
             }
         }
     }

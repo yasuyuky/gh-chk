@@ -4,6 +4,7 @@ use read_input::prelude::*;
 
 mod cmd;
 mod config;
+mod env_keys;
 mod graphql;
 mod rest;
 

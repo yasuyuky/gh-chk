@@ -52,9 +52,18 @@ fn login() -> Result<(), std::io::Error> {
         .msg("Input your GitHub Personal Access Token: ")
         .get();
     let conf = config::Config { token: Some(token) };
-    let s = toml::to_string(&conf).unwrap();
+    let s = toml::to_string(&conf)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
     let path = config::CONFIG_PATH.clone();
-    let dir = path.parent().unwrap();
+    let dir = match path.parent() {
+        Some(d) => d,
+        None => {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "invalid config path: no parent directory",
+            ))
+        }
+    };
     if !dir.exists() {
         std::fs::create_dir_all(dir)?;
     }

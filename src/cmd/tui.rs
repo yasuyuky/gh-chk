@@ -317,7 +317,11 @@ impl App {
             self.set_status_persistent(format!("Approving PR #{} in {}...", pr.number, pr.slug));
             match approve_pr(&pr.id).await {
                 Ok(_) => {
-                    self.set_status(format!("✅ Approved PR #{} in {}", pr.number, pr.slug));
+                    self.set_status_persistent(format!(
+                        "✅ Approved PR #{} in {}. Reloading...",
+                        pr.number, pr.slug
+                    ));
+                    self.pending_task = Some(PendingTask::Reload);
                 }
                 Err(e) => {
                     self.set_status(format!(

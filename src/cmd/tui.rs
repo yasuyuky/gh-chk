@@ -183,7 +183,7 @@ async fn approve_pr(pr_id: &str) -> surf::Result<()> {
     Ok(())
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum PreviewMode {
     Body,
     Diff,
@@ -218,9 +218,7 @@ struct App {
     status_message: Option<String>,
     status_clear_at: Option<Instant>,
     specs: Vec<SlugSpec>,
-    preview_cache: HashMap<String, String>,
-    diff_cache: HashMap<String, String>,
-    commit_cache: HashMap<String, Vec<CommitGraphEntry>>,
+    cache: HashMap<(PreviewMode, String), Text<'static>>, // (mode, pr_id) -> content
     preview_mode: Option<PreviewMode>,
     preview_scroll: u16,
     preview_area_height: u16,
@@ -243,9 +241,7 @@ impl App {
             status_message: None,
             status_clear_at: None,
             specs,
-            preview_cache: HashMap::new(),
-            diff_cache: HashMap::new(),
-            commit_cache: HashMap::new(),
+            cache: HashMap::new(),
             preview_mode: None,
             preview_scroll: 0,
             preview_area_height: 0,
@@ -359,16 +355,18 @@ impl App {
             return;
         }
         if let Some(pr) = self.get_selected_pr().cloned() {
-            if !self.preview_cache.contains_key(&pr.id) {
+            if !self.cache.contains_key(&(PreviewMode::Body, pr.id.clone())) {
                 let _ = self.load_preview_for(&pr).await;
             }
             if matches!(self.preview_mode, Some(PreviewMode::Diff))
-                && !self.diff_cache.contains_key(&pr.id)
+                && !self.cache.contains_key(&(PreviewMode::Diff, pr.id.clone()))
             {
                 let _ = self.load_diff_for(&pr).await;
             }
             if matches!(self.preview_mode, Some(PreviewMode::Commits))
-                && !self.commit_cache.contains_key(&pr.id)
+                && !self
+                    .cache
+                    .contains_key(&(PreviewMode::Commits, pr.id.clone()))
             {
                 let _ = self.load_commits_for(&pr).await;
             }
@@ -382,7 +380,8 @@ impl App {
             None => return Ok(()),
         };
         let body = fetch_pr_body(&owner, &name, pr.number).await?;
-        self.preview_cache.insert(pr.id.clone(), body);
+        let text = prettify_pr_preview(&pr.title, &pr.url, &body);
+        self.cache.insert((PreviewMode::Body, pr.id.clone()), text);
         self.set_status(format!("✅ Loaded preview for #{}", pr.number));
         Ok(())
     }
@@ -414,7 +413,8 @@ impl App {
         if out.is_empty() {
             out = "No file changes found.".to_string();
         }
-        self.diff_cache.insert(pr.id.clone(), out);
+        let text = make_diff_text(&out);
+        self.cache.insert((PreviewMode::Diff, pr.id.clone()), text);
         self.set_status(format!("✅ Loaded diff for #{}", pr.number));
         Ok(())
     }
@@ -427,7 +427,9 @@ impl App {
         };
         let commits = fetch_pr_commits(&owner, &name, pr.number).await?;
         let entries = build_commit_graph_entries(&commits);
-        self.commit_cache.insert(pr.id.clone(), entries);
+        let text = make_commit_graph_text(&entries); // pre-render to check for emptiness
+        self.cache
+            .insert((PreviewMode::Commits, pr.id.clone()), text);
         self.set_status(format!("✅ Loaded commits for #{}", pr.number));
         Ok(())
     }
@@ -919,31 +921,9 @@ fn build_pr_list(app: &App) -> List<'static> {
 fn build_preview_text(app: &App) -> Text<'static> {
     if let Some(pr) = app.get_selected_pr() {
         match app.preview_mode {
-            Some(PreviewMode::Body) => match app.preview_cache.get(&pr.id) {
-                Some(body) => prettify_pr_preview(&pr.title, &pr.url, body),
-                None => Text::from("Loading preview..."),
-            },
-            Some(PreviewMode::Diff) => match app.diff_cache.get(&pr.id) {
-                Some(diff) => {
-                    let header = format!("Diff for #{} {}", pr.number, pr.slug);
-                    let mut text = Text::from(header);
-                    text.lines.push(Line::from(""));
-                    let mut colored = make_diff_text(diff);
-                    text.lines.append(&mut colored.lines);
-                    text
-                }
-                None => Text::from("Loading diff..."),
-            },
-            Some(PreviewMode::Commits) => match app.commit_cache.get(&pr.id) {
-                Some(entries) => {
-                    let header = format!("Commits for #{} {}", pr.number, pr.slug);
-                    let mut text = Text::from(header);
-                    text.lines.push(Line::from(""));
-                    let mut graph = make_commit_graph_text(entries);
-                    text.lines.append(&mut graph.lines);
-                    text
-                }
-                None => Text::from("Loading commits..."),
+            Some(mode) => match app.cache.get(&(mode, pr.id.clone())) {
+                Some(cached) => cached.clone(),
+                None => Text::from(format!("Loading...{}", mode)),
             },
             None => Text::from("Preview closed"),
         }
@@ -1306,19 +1286,11 @@ impl App {
 
     fn queue_mode_if_needed(&mut self, mode: PreviewMode) {
         if let Some(pr) = self.get_selected_pr().cloned() {
-            let (needs_load, pending) = match mode {
-                PreviewMode::Body => (
-                    !self.preview_cache.contains_key(&pr.id),
-                    PendingTask::LoadPreviewForSelected,
-                ),
-                PreviewMode::Diff => (
-                    !self.diff_cache.contains_key(&pr.id),
-                    PendingTask::LoadDiffForSelected,
-                ),
-                PreviewMode::Commits => (
-                    !self.commit_cache.contains_key(&pr.id),
-                    PendingTask::LoadCommitsForSelected,
-                ),
+            let needs_load = self.cache.get(&(mode, pr.id.clone())).is_none();
+            let pending = match mode {
+                PreviewMode::Body => PendingTask::LoadPreviewForSelected,
+                PreviewMode::Diff => PendingTask::LoadDiffForSelected,
+                PreviewMode::Commits => PendingTask::LoadCommitsForSelected,
             };
             if needs_load {
                 self.set_status_persistent(format!("🔎 Loading {} for #{}...", mode, pr.number));

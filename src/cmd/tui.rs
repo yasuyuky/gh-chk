@@ -1097,6 +1097,14 @@ async fn fetch_pr_files(owner: &str, name: &str, number: usize) -> surf::Result<
         .collect())
 }
 
+async fn fetch_pr_commits(owner: &str, name: &str, number: usize) -> surf::Result<Vec<PrCommit>> {
+    let path = format!("repos/{}/{}/pulls/{}/commits", owner, name, number);
+    let q: rest::QueryMap = rest::QueryMap::default();
+    let res: Vec<PrCommitRes> = rest::get(&path, 1, &q).await?;
+    Ok(res.into_iter().map(PrCommit::from).collect())
+}
+
+
 fn run_tui(prs: Vec<PrData>, specs: Vec<SlugSpec>) -> Result<(), Box<dyn std::error::Error>> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();

@@ -190,6 +190,17 @@ enum PreviewMode {
     Commits,
 }
 
+impl std::fmt::Display for PreviewMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let as_str = match self {
+            Self::Body => "Body",
+            Self::Diff => "Diff",
+            Self::Commits => "Commits",
+        };
+        f.write_str(as_str)
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 enum PendingTask {
     MergeSelected,
@@ -652,15 +663,10 @@ fn ellipsize(s: &str, max: usize) -> String {
 
 fn make_preview_block_title(app: &App, area_width: u16, total_lines: u16) -> String {
     if let (Some(pr), Some(mode)) = (app.get_selected_pr(), app.preview_mode) {
-        let mode_label = match mode {
-            PreviewMode::Body => "Body",
-            PreviewMode::Diff => "Diff",
-            PreviewMode::Commits => "Commits",
-        };
         // Reserve a bit for borders/padding
         let w = area_width.saturating_sub(4) as usize;
         // Base info
-        let base = format!("#{} {} • {}", pr.number, pr.slug, mode_label);
+        let base = format!("#{} {} • {}", pr.number, pr.slug, mode);
         // Try to include a shortened PR title if space allows
         let mut title = base.clone();
         if w > base.len() + 3 {
@@ -1000,14 +1006,7 @@ fn build_help_text(app: &App) -> String {
             "↑/↓:navigate"
         };
         app.preview_mode
-            .map(|mode| {
-                let mode_label = match mode {
-                    PreviewMode::Body => "Body",
-                    PreviewMode::Diff => "Diff",
-                    PreviewMode::Commits => "Commits",
-                };
-                format!("{} • {} • mode:{}", base, nav, mode_label)
-            })
+            .map(|mode| format!("{} • {} • mode:{}", base, nav, mode))
             .unwrap_or_else(|| format!("{} • {}", base, nav))
     }
 }

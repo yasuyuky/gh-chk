@@ -187,6 +187,7 @@ async fn approve_pr(pr_id: &str) -> surf::Result<()> {
 enum PreviewMode {
     Body,
     Diff,
+    Commits,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -196,6 +197,7 @@ enum PendingTask {
     Reload,
     LoadPreviewForSelected,
     LoadDiffForSelected,
+    LoadCommitsForSelected,
 }
 
 struct App {
@@ -208,6 +210,7 @@ struct App {
     preview_open: bool,
     preview_cache: HashMap<String, String>,
     diff_cache: HashMap<String, String>,
+    commit_cache: HashMap<String, Vec<CommitGraphEntry>>,
     preview_mode: PreviewMode,
     preview_scroll: u16,
     preview_area_height: u16,

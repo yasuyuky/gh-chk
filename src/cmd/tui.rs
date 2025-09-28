@@ -1104,6 +1104,46 @@ async fn fetch_pr_commits(owner: &str, name: &str, number: usize) -> surf::Resul
     Ok(res.into_iter().map(PrCommit::from).collect())
 }
 
+fn build_commit_graph_entries(commits: &[PrCommit]) -> Vec<CommitGraphEntry> {
+    let mut active: Vec<String> = Vec::new();
+    let mut lines: Vec<CommitGraphEntry> = Vec::new();
+
+    for commit in commits.iter().rev() {
+        // Ensure the current commit is the first active branch.
+        if let Some(pos) = active.iter().position(|sha| sha == &commit.sha) {
+            let sha = active.remove(pos);
+            active.insert(0, sha);
+        } else {
+            active.insert(0, commit.sha.clone());
+        }
+
+        let graph_prefix = build_graph_prefix(&active);
+        let short_sha = commit.sha.chars().take(7).collect::<String>();
+
+        lines.push(CommitGraphEntry {
+            graph: graph_prefix,
+            short_sha,
+            summary: commit.summary.clone(),
+            author: commit.author.clone(),
+            date: commit.date.clone(),
+        });
+
+        // Remove the commit itself and add parents to track branch lines.
+        active.remove(0);
+        for (idx, parent) in commit.parents.iter().enumerate() {
+            if let Some(existing) = active.iter().position(|sha| sha == parent) {
+                let sha = active.remove(existing);
+                active.insert(idx, sha);
+            } else {
+                active.insert(idx, parent.clone());
+            }
+        }
+        dedup_branches(&mut active);
+    }
+
+    lines
+}
+
 
 fn run_tui(prs: Vec<PrData>, specs: Vec<SlugSpec>) -> Result<(), Box<dyn std::error::Error>> {
     enable_raw_mode()?;

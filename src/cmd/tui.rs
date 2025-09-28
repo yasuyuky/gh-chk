@@ -1220,7 +1220,7 @@ fn build_commit_graph_entries(commits: &[PrCommit]) -> Vec<CommitGraphEntry> {
 }
 
 fn build_graph_prefix(active: &[String]) -> String {
-    let mut prefix = String::new();
+    let mut prefix = String::default();
     for (idx, _) in active.iter().enumerate() {
         if idx == 0 {
             prefix.push('*');

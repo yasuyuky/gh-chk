@@ -16,7 +16,7 @@ use ratatui::{
 };
 use serde::Deserialize;
 use serde_json::json;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
@@ -187,6 +187,7 @@ async fn approve_pr(pr_id: &str) -> surf::Result<()> {
 enum PreviewMode {
     Body,
     Diff,
+    Commits,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -196,6 +197,7 @@ enum PendingTask {
     Reload,
     LoadPreviewForSelected,
     LoadDiffForSelected,
+    LoadCommitsForSelected,
 }
 
 struct App {
@@ -208,6 +210,7 @@ struct App {
     preview_open: bool,
     preview_cache: HashMap<String, String>,
     diff_cache: HashMap<String, String>,
+    commit_cache: HashMap<String, Vec<CommitGraphEntry>>,
     preview_mode: PreviewMode,
     preview_scroll: u16,
     preview_area_height: u16,
@@ -233,6 +236,7 @@ impl App {
             preview_open: false,
             preview_cache: HashMap::new(),
             diff_cache: HashMap::new(),
+            commit_cache: HashMap::new(),
             preview_mode: PreviewMode::Body,
             preview_scroll: 0,
             preview_area_height: 0,
@@ -352,6 +356,10 @@ impl App {
             if self.preview_mode == PreviewMode::Diff && !self.diff_cache.contains_key(&pr.id) {
                 let _ = self.load_diff_for(&pr).await;
             }
+            if self.preview_mode == PreviewMode::Commits && !self.commit_cache.contains_key(&pr.id)
+            {
+                let _ = self.load_commits_for(&pr).await;
+            }
         }
     }
 
@@ -396,6 +404,19 @@ impl App {
         }
         self.diff_cache.insert(pr.id.clone(), out);
         self.set_status(format!("✅ Loaded diff for #{}", pr.number));
+        Ok(())
+    }
+
+    async fn load_commits_for(&mut self, pr: &PrData) -> surf::Result<()> {
+        self.set_status_persistent(format!("🔎 Loading commits for #{}...", pr.number));
+        let (owner, name) = match split_slug(&pr.slug) {
+            Some(x) => x,
+            None => return Ok(()),
+        };
+        let commits = fetch_pr_commits(&owner, &name, pr.number).await?;
+        let entries = build_commit_graph_entries(&commits);
+        self.commit_cache.insert(pr.id.clone(), entries);
+        self.set_status(format!("✅ Loaded commits for #{}", pr.number));
         Ok(())
     }
 
@@ -473,6 +494,9 @@ impl App {
                 }
                 PreviewMode::Diff => {
                     let _ = self.load_diff_for(&pr).await;
+                }
+                PreviewMode::Commits => {
+                    let _ = self.load_commits_for(&pr).await;
                 }
             }
         }
@@ -570,6 +594,45 @@ fn make_diff_text(diff: &str) -> Text<'static> {
     text
 }
 
+fn make_commit_graph_text(entries: &[CommitGraphEntry]) -> Text<'static> {
+    if entries.is_empty() {
+        return Text::from("No commits found.");
+    }
+
+    let mut text = Text::default();
+    for entry in entries {
+        let mut spans: Vec<Span> = Vec::new();
+        if !entry.graph.is_empty() {
+            spans.push(Span::styled(
+                entry.graph.clone(),
+                Style::default().fg(Color::DarkGray),
+            ));
+        }
+        spans.push(Span::styled(
+            entry.short_sha.clone(),
+            Style::default()
+                .fg(Color::Green)
+                .add_modifier(Modifier::BOLD),
+        ));
+        spans.push(Span::raw(" "));
+        spans.push(Span::raw(entry.summary.clone()));
+        if let Some(author) = &entry.author {
+            spans.push(Span::raw("  • "));
+            spans.push(Span::styled(
+                author.clone(),
+                Style::default().fg(Color::Cyan),
+            ));
+        }
+        if let Some(date) = &entry.date {
+            spans.push(Span::raw("  ("));
+            spans.push(Span::styled(date.clone(), Style::default().fg(Color::Gray)));
+            spans.push(Span::raw(")"));
+        }
+        text.lines.push(Line::from(spans));
+    }
+    text
+}
+
 fn ellipsize(s: &str, max: usize) -> String {
     if s.chars().count() <= max {
         return s.to_string();
@@ -591,6 +654,7 @@ fn make_preview_block_title(app: &App, area_width: u16, total_lines: u16) -> Str
         let mode = match app.preview_mode {
             PreviewMode::Body => "Body",
             PreviewMode::Diff => "Diff",
+            PreviewMode::Commits => "Commits",
         };
         // Reserve a bit for borders/padding
         let w = area_width.saturating_sub(4) as usize;
@@ -863,6 +927,17 @@ fn build_preview_text(app: &App) -> Text<'static> {
                 }
                 None => Text::from("Loading diff..."),
             },
+            PreviewMode::Commits => match app.commit_cache.get(&pr.id) {
+                Some(entries) => {
+                    let header = format!("Commits for #{} {}", pr.number, pr.slug);
+                    let mut text = Text::from(header);
+                    text.lines.push(Line::from(""));
+                    let mut graph = make_commit_graph_text(entries);
+                    text.lines.append(&mut graph.lines);
+                    text
+                }
+                None => Text::from("Loading commits..."),
+            },
         }
     } else {
         Text::from("No selection")
@@ -916,8 +991,7 @@ fn build_help_text(app: &App) -> String {
     if let Some(ref msg) = app.status_message {
         msg.clone()
     } else {
-        let base =
-            "q:quit • ?:help • Enter/o:open • m:merge • a:approve • r:reload • ←/→:list/body/diff";
+        let base = "q:quit • ?:help • Enter/o:open • m:merge • a:approve • r:reload • ←/→:list/body/diff/graph";
         let nav = if app.preview_open {
             "↑/↓/wheel:scroll"
         } else {
@@ -927,6 +1001,7 @@ fn build_help_text(app: &App) -> String {
             let mode = match app.preview_mode {
                 PreviewMode::Body => "Body",
                 PreviewMode::Diff => "Diff",
+                PreviewMode::Commits => "Commits",
             };
             format!("{} • {} • mode:{}", base, nav, mode)
         } else {
@@ -996,6 +1071,92 @@ struct PrFile {
     patch: Option<String>,
 }
 
+#[derive(Deserialize, Default)]
+struct CommitAuthor {
+    login: Option<String>,
+}
+
+#[derive(Deserialize, Default)]
+struct CommitPerson {
+    name: Option<String>,
+    date: Option<String>,
+}
+
+#[derive(Deserialize, Default)]
+struct CommitDetail {
+    message: String,
+    #[serde(default)]
+    author: Option<CommitPerson>,
+}
+
+#[derive(Deserialize, Default)]
+struct CommitParent {
+    sha: String,
+}
+
+#[derive(Deserialize, Default)]
+struct PrCommitRes {
+    sha: String,
+    commit: CommitDetail,
+    #[serde(default)]
+    parents: Vec<CommitParent>,
+    #[serde(default)]
+    author: Option<CommitAuthor>,
+}
+
+#[derive(Clone)]
+struct PrCommit {
+    sha: String,
+    summary: String,
+    author: Option<String>,
+    date: Option<String>,
+    parents: Vec<String>,
+}
+
+impl From<PrCommitRes> for PrCommit {
+    fn from(res: PrCommitRes) -> Self {
+        let PrCommitRes {
+            sha,
+            commit,
+            parents,
+            author: user_author,
+        } = res;
+        let CommitDetail {
+            message,
+            author: commit_author,
+        } = commit;
+        let mut summary = message.lines().next().unwrap_or("").trim().to_string();
+        if summary.len() > 80 {
+            summary.truncate(77);
+            summary.push_str("...");
+        }
+        let (commit_author_name, commit_author_date) = match commit_author {
+            Some(person) => (person.name, person.date),
+            None => (None, None),
+        };
+        let login = user_author.and_then(|a| a.login);
+        let display_author = login.or(commit_author_name);
+        let date = commit_author_date.and_then(|d| d.split('T').next().map(str::to_string));
+        let parents = parents.into_iter().map(|p| p.sha).collect();
+        PrCommit {
+            sha,
+            summary,
+            author: display_author,
+            date,
+            parents,
+        }
+    }
+}
+
+#[derive(Clone)]
+struct CommitGraphEntry {
+    graph: String,
+    short_sha: String,
+    summary: String,
+    author: Option<String>,
+    date: Option<String>,
+}
+
 async fn fetch_pr_files(owner: &str, name: &str, number: usize) -> surf::Result<Vec<PrFile>> {
     let path = format!("repos/{}/{}/pulls/{}/files", owner, name, number);
     let q: rest::QueryMap = rest::QueryMap::default();
@@ -1009,6 +1170,71 @@ async fn fetch_pr_files(owner: &str, name: &str, number: usize) -> surf::Result<
             patch: f.patch,
         })
         .collect())
+}
+
+async fn fetch_pr_commits(owner: &str, name: &str, number: usize) -> surf::Result<Vec<PrCommit>> {
+    let path = format!("repos/{}/{}/pulls/{}/commits", owner, name, number);
+    let q: rest::QueryMap = rest::QueryMap::default();
+    let res: Vec<PrCommitRes> = rest::get(&path, 1, &q).await?;
+    Ok(res.into_iter().map(PrCommit::from).collect())
+}
+
+fn build_commit_graph_entries(commits: &[PrCommit]) -> Vec<CommitGraphEntry> {
+    let mut active: Vec<String> = Vec::new();
+    let mut lines: Vec<CommitGraphEntry> = Vec::new();
+
+    for commit in commits.iter().rev() {
+        // Ensure the current commit is the first active branch.
+        if let Some(pos) = active.iter().position(|sha| sha == &commit.sha) {
+            let sha = active.remove(pos);
+            active.insert(0, sha);
+        } else {
+            active.insert(0, commit.sha.clone());
+        }
+
+        let graph_prefix = build_graph_prefix(&active);
+        let short_sha = commit.sha.chars().take(7).collect::<String>();
+
+        lines.push(CommitGraphEntry {
+            graph: graph_prefix,
+            short_sha,
+            summary: commit.summary.clone(),
+            author: commit.author.clone(),
+            date: commit.date.clone(),
+        });
+
+        // Remove the commit itself and add parents to track branch lines.
+        active.remove(0);
+        for (idx, parent) in commit.parents.iter().enumerate() {
+            if let Some(existing) = active.iter().position(|sha| sha == parent) {
+                let sha = active.remove(existing);
+                active.insert(idx, sha);
+            } else {
+                active.insert(idx, parent.clone());
+            }
+        }
+        dedup_branches(&mut active);
+    }
+
+    lines
+}
+
+fn build_graph_prefix(active: &[String]) -> String {
+    let mut prefix = String::default();
+    for (idx, _) in active.iter().enumerate() {
+        if idx == 0 {
+            prefix.push('*');
+        } else {
+            prefix.push('|');
+        }
+        prefix.push(' ');
+    }
+    prefix
+}
+
+fn dedup_branches(branches: &mut Vec<String>) {
+    let mut seen: HashSet<String> = HashSet::new();
+    branches.retain(|sha| seen.insert(sha.clone()));
 }
 
 fn run_tui(prs: Vec<PrData>, specs: Vec<SlugSpec>) -> Result<(), Box<dyn std::error::Error>> {
@@ -1120,26 +1346,53 @@ fn queue_diff_if_needed(app: &mut App) {
     }
 }
 
+fn queue_commits_if_needed(app: &mut App) {
+    if let Some(pr) = app.get_selected_pr().cloned()
+        && !app.commit_cache.contains_key(&pr.id)
+    {
+        app.set_status_persistent(format!("🔎 Loading commits for #{}...", pr.number));
+        app.pending_task = Some(PendingTask::LoadCommitsForSelected);
+    }
+}
+
 fn on_right(app: &mut App) {
-    // Right: closed -> Body, Body -> Diff
+    // Right: closed -> Body -> Diff -> Commits
     if !app.preview_open {
         app.preview_open = true;
         app.preview_mode = PreviewMode::Body;
+        app.preview_scroll = 0;
         queue_preview_if_needed(app);
-    } else if app.preview_mode == PreviewMode::Body {
-        app.preview_mode = PreviewMode::Diff;
-        queue_diff_if_needed(app);
+    } else {
+        match app.preview_mode {
+            PreviewMode::Body => {
+                app.preview_mode = PreviewMode::Diff;
+                app.preview_scroll = 0;
+                queue_diff_if_needed(app);
+            }
+            PreviewMode::Diff => {
+                app.preview_mode = PreviewMode::Commits;
+                app.preview_scroll = 0;
+                queue_commits_if_needed(app);
+            }
+            PreviewMode::Commits => {}
+        }
     }
 }
 
 fn on_left(app: &mut App) {
-    // Left: Diff -> Body -> Close
+    // Left: Commits -> Diff -> Body -> Close
     if !app.preview_open {
         return;
     }
     match app.preview_mode {
+        PreviewMode::Commits => {
+            app.preview_mode = PreviewMode::Diff;
+            app.preview_scroll = 0;
+            queue_diff_if_needed(app);
+        }
         PreviewMode::Diff => {
             app.preview_mode = PreviewMode::Body;
+            app.preview_scroll = 0;
             queue_preview_if_needed(app);
         }
         PreviewMode::Body => app.preview_open = false,
@@ -1189,6 +1442,11 @@ async fn run_app(
                     PendingTask::LoadDiffForSelected => async_std::task::block_on(async {
                         if let Some(pr) = app.get_selected_pr().cloned() {
                             let _ = app.load_diff_for(&pr).await;
+                        }
+                    }),
+                    PendingTask::LoadCommitsForSelected => async_std::task::block_on(async {
+                        if let Some(pr) = app.get_selected_pr().cloned() {
+                            let _ = app.load_commits_for(&pr).await;
                         }
                     }),
                 }

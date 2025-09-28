@@ -1057,13 +1057,6 @@ async fn fetch_pr_body(owner: &str, name: &str, number: usize) -> surf::Result<S
 }
 
 #[derive(Deserialize)]
-struct PrFileRes {
-    filename: String,
-    additions: i64,
-    deletions: i64,
-    patch: Option<String>,
-}
-
 struct PrFile {
     filename: String,
     additions: i64,
@@ -1094,8 +1087,8 @@ struct CommitParent {
     sha: String,
 }
 
-#[derive(Deserialize, Default)]
-struct PrCommitRes {
+#[derive(Deserialize)]
+struct PrCommit {
     sha: String,
     commit: CommitDetail,
     #[serde(default)]
@@ -1104,47 +1097,45 @@ struct PrCommitRes {
     author: Option<CommitAuthor>,
 }
 
-#[derive(Clone)]
-struct PrCommit {
-    sha: String,
-    summary: String,
-    author: Option<String>,
-    date: Option<String>,
-    parents: Vec<String>,
-}
-
-impl From<PrCommitRes> for PrCommit {
-    fn from(res: PrCommitRes) -> Self {
-        let PrCommitRes {
-            sha,
-            commit,
-            parents,
-            author: user_author,
-        } = res;
-        let CommitDetail {
-            message,
-            author: commit_author,
-        } = commit;
-        let mut summary = message.lines().next().unwrap_or("").trim().to_string();
+impl PrCommit {
+    fn summary(&self) -> String {
+        let mut summary = self
+            .commit
+            .message
+            .lines()
+            .next()
+            .unwrap_or("")
+            .trim()
+            .to_string();
         if summary.len() > 80 {
             summary.truncate(77);
             summary.push_str("...");
         }
-        let (commit_author_name, commit_author_date) = match commit_author {
-            Some(person) => (person.name, person.date),
-            None => (None, None),
-        };
-        let login = user_author.and_then(|a| a.login);
-        let display_author = login.or(commit_author_name);
-        let date = commit_author_date.and_then(|d| d.split('T').next().map(str::to_string));
-        let parents = parents.into_iter().map(|p| p.sha).collect();
-        PrCommit {
-            sha,
-            summary,
-            author: display_author,
-            date,
-            parents,
+        summary
+    }
+
+    fn display_author(&self) -> Option<String> {
+        if let Some(author) = self.author.as_ref() {
+            if let Some(login) = author.login.as_ref() {
+                return Some(login.clone());
+            }
         }
+        self.commit
+            .author
+            .as_ref()
+            .and_then(|person| person.name.clone())
+    }
+
+    fn display_date(&self) -> Option<String> {
+        self.commit
+            .author
+            .as_ref()
+            .and_then(|person| person.date.as_ref())
+            .and_then(|date| date.split('T').next().map(str::to_string))
+    }
+
+    fn parent_shas(&self) -> impl Iterator<Item = &str> {
+        self.parents.iter().map(|p| p.sha.as_str())
     }
 }
 
@@ -1160,23 +1151,13 @@ struct CommitGraphEntry {
 async fn fetch_pr_files(owner: &str, name: &str, number: usize) -> surf::Result<Vec<PrFile>> {
     let path = format!("repos/{}/{}/pulls/{}/files", owner, name, number);
     let q: rest::QueryMap = rest::QueryMap::default();
-    let res: Vec<PrFileRes> = rest::get(&path, 1, &q).await?;
-    Ok(res
-        .into_iter()
-        .map(|f| PrFile {
-            filename: f.filename,
-            additions: f.additions,
-            deletions: f.deletions,
-            patch: f.patch,
-        })
-        .collect())
+    rest::get(&path, 1, &q).await
 }
 
 async fn fetch_pr_commits(owner: &str, name: &str, number: usize) -> surf::Result<Vec<PrCommit>> {
     let path = format!("repos/{}/{}/pulls/{}/commits", owner, name, number);
     let q: rest::QueryMap = rest::QueryMap::default();
-    let res: Vec<PrCommitRes> = rest::get(&path, 1, &q).await?;
-    Ok(res.into_iter().map(PrCommit::from).collect())
+    rest::get(&path, 1, &q).await
 }
 
 fn build_commit_graph_entries(commits: &[PrCommit]) -> Vec<CommitGraphEntry> {
@@ -1194,23 +1175,26 @@ fn build_commit_graph_entries(commits: &[PrCommit]) -> Vec<CommitGraphEntry> {
 
         let graph_prefix = build_graph_prefix(&active);
         let short_sha = commit.sha.chars().take(7).collect::<String>();
+        let summary = commit.summary();
+        let author = commit.display_author();
+        let date = commit.display_date();
 
         lines.push(CommitGraphEntry {
             graph: graph_prefix,
             short_sha,
-            summary: commit.summary.clone(),
-            author: commit.author.clone(),
-            date: commit.date.clone(),
+            summary,
+            author,
+            date,
         });
 
         // Remove the commit itself and add parents to track branch lines.
         active.remove(0);
-        for (idx, parent) in commit.parents.iter().enumerate() {
+        for (idx, parent) in commit.parent_shas().enumerate() {
             if let Some(existing) = active.iter().position(|sha| sha == parent) {
                 let sha = active.remove(existing);
                 active.insert(idx, sha);
             } else {
-                active.insert(idx, parent.clone());
+                active.insert(idx, parent.to_string());
             }
         }
         dedup_branches(&mut active);

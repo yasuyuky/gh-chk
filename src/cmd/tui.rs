@@ -16,7 +16,7 @@ use ratatui::{
 };
 use serde::Deserialize;
 use serde_json::json;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
@@ -1157,6 +1157,10 @@ fn build_graph_prefix(active: &[String]) -> String {
     prefix
 }
 
+fn dedup_branches(branches: &mut Vec<String>) {
+    let mut seen: HashSet<String> = HashSet::new();
+    branches.retain(|sha| seen.insert(sha.clone()));
+}
 
 fn run_tui(prs: Vec<PrData>, specs: Vec<SlugSpec>) -> Result<(), Box<dyn std::error::Error>> {
     enable_raw_mode()?;

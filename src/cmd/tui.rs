@@ -1298,26 +1298,22 @@ fn on_clear_help(app: &mut App) {
 
 fn queue_mode_if_needed(app: &mut App, mode: PreviewMode) {
     if let Some(pr) = app.get_selected_pr().cloned() {
-        let (needs_load, message, pending) = match mode {
+        let (needs_load, pending) = match mode {
             PreviewMode::Body => (
                 !app.preview_cache.contains_key(&pr.id),
-                format!("🔎 Loading preview for #{}...", pr.number),
                 PendingTask::LoadPreviewForSelected,
             ),
             PreviewMode::Diff => (
                 !app.diff_cache.contains_key(&pr.id),
-                format!("🔎 Loading diff for #{}...", pr.number),
                 PendingTask::LoadDiffForSelected,
             ),
             PreviewMode::Commits => (
                 !app.commit_cache.contains_key(&pr.id),
-                format!("🔎 Loading commits for #{}...", pr.number),
                 PendingTask::LoadCommitsForSelected,
             ),
         };
-
         if needs_load {
-            app.set_status_persistent(message);
+            app.set_status_persistent(format!("🔎 Loading {} for #{}...", mode, pr.number));
             app.pending_task = Some(pending);
         }
     }

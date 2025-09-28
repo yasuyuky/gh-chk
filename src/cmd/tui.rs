@@ -1296,30 +1296,30 @@ fn on_clear_help(app: &mut App) {
     app.status_clear_at = None;
 }
 
-fn queue_preview_if_needed(app: &mut App) {
-    if let Some(pr) = app.get_selected_pr().cloned()
-        && !app.preview_cache.contains_key(&pr.id)
-    {
-        app.set_status_persistent(format!("🔎 Loading preview for #{}...", pr.number));
-        app.pending_task = Some(PendingTask::LoadPreviewForSelected);
-    }
-}
+fn queue_mode_if_needed(app: &mut App, mode: PreviewMode) {
+    if let Some(pr) = app.get_selected_pr().cloned() {
+        let (needs_load, message, pending) = match mode {
+            PreviewMode::Body => (
+                !app.preview_cache.contains_key(&pr.id),
+                format!("🔎 Loading preview for #{}...", pr.number),
+                PendingTask::LoadPreviewForSelected,
+            ),
+            PreviewMode::Diff => (
+                !app.diff_cache.contains_key(&pr.id),
+                format!("🔎 Loading diff for #{}...", pr.number),
+                PendingTask::LoadDiffForSelected,
+            ),
+            PreviewMode::Commits => (
+                !app.commit_cache.contains_key(&pr.id),
+                format!("🔎 Loading commits for #{}...", pr.number),
+                PendingTask::LoadCommitsForSelected,
+            ),
+        };
 
-fn queue_diff_if_needed(app: &mut App) {
-    if let Some(pr) = app.get_selected_pr().cloned()
-        && !app.diff_cache.contains_key(&pr.id)
-    {
-        app.set_status_persistent(format!("🔎 Loading diff for #{}...", pr.number));
-        app.pending_task = Some(PendingTask::LoadDiffForSelected);
-    }
-}
-
-fn queue_commits_if_needed(app: &mut App) {
-    if let Some(pr) = app.get_selected_pr().cloned()
-        && !app.commit_cache.contains_key(&pr.id)
-    {
-        app.set_status_persistent(format!("🔎 Loading commits for #{}...", pr.number));
-        app.pending_task = Some(PendingTask::LoadCommitsForSelected);
+        if needs_load {
+            app.set_status_persistent(message);
+            app.pending_task = Some(pending);
+        }
     }
 }
 
@@ -1328,18 +1328,17 @@ fn on_right(app: &mut App) {
     match app.preview_mode {
         None => {
             app.preview_mode = Some(PreviewMode::Body);
-            app.preview_scroll = 0;
-            queue_preview_if_needed(app);
+            queue_mode_if_needed(app, PreviewMode::Body);
         }
         Some(PreviewMode::Body) => {
             app.preview_mode = Some(PreviewMode::Diff);
             app.preview_scroll = 0;
-            queue_diff_if_needed(app);
+            queue_mode_if_needed(app, PreviewMode::Diff);
         }
         Some(PreviewMode::Diff) => {
             app.preview_mode = Some(PreviewMode::Commits);
             app.preview_scroll = 0;
-            queue_commits_if_needed(app);
+            queue_mode_if_needed(app, PreviewMode::Commits);
         }
         Some(PreviewMode::Commits) => {}
     }
@@ -1351,12 +1350,12 @@ fn on_left(app: &mut App) {
         Some(PreviewMode::Commits) => {
             app.preview_mode = Some(PreviewMode::Diff);
             app.preview_scroll = 0;
-            queue_diff_if_needed(app);
+            queue_mode_if_needed(app, PreviewMode::Diff);
         }
         Some(PreviewMode::Diff) => {
             app.preview_mode = Some(PreviewMode::Body);
             app.preview_scroll = 0;
-            queue_preview_if_needed(app);
+            queue_mode_if_needed(app, PreviewMode::Body);
         }
         Some(PreviewMode::Body) => app.preview_mode = None,
         None => {}

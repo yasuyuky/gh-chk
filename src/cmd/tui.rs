@@ -1064,38 +1064,27 @@ struct PrFile {
     patch: Option<String>,
 }
 
-#[derive(Deserialize, Default)]
-struct CommitAuthor {
-    login: Option<String>,
+nestruct::nest! {
+    #[derive(serde::Deserialize, Clone)]
+    PrCommit {
+        sha: String,
+        commit: {
+            message: String,
+            author: {
+                name: String?,
+                date: String?,
+            }?,
+        },
+        parents: [{
+            sha: String,
+        }],
+        author: {
+            login: String?,
+        }?,
+    }
 }
 
-#[derive(Deserialize, Default)]
-struct CommitPerson {
-    name: Option<String>,
-    date: Option<String>,
-}
-
-#[derive(Deserialize, Default)]
-struct CommitDetail {
-    message: String,
-    #[serde(default)]
-    author: Option<CommitPerson>,
-}
-
-#[derive(Deserialize, Default)]
-struct CommitParent {
-    sha: String,
-}
-
-#[derive(Deserialize)]
-struct PrCommit {
-    sha: String,
-    commit: CommitDetail,
-    #[serde(default)]
-    parents: Vec<CommitParent>,
-    #[serde(default)]
-    author: Option<CommitAuthor>,
-}
+use pr_commit::PrCommit;
 
 impl PrCommit {
     fn summary(&self) -> String {

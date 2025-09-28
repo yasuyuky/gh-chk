@@ -1038,6 +1038,40 @@ struct PrCommit {
     parents: Vec<String>,
 }
 
+impl From<PrCommitRes> for PrCommit {
+    fn from(res: PrCommitRes) -> Self {
+        let PrCommitRes {
+            sha,
+            commit,
+            parents,
+            author: user_author,
+        } = res;
+        let CommitDetail {
+            message,
+            author: commit_author,
+        } = commit;
+        let mut summary = message.lines().next().unwrap_or("").trim().to_string();
+        if summary.len() > 80 {
+            summary.truncate(77);
+            summary.push_str("...");
+        }
+        let (commit_author_name, commit_author_date) = match commit_author {
+            Some(person) => (person.name, person.date),
+            None => (None, None),
+        };
+        let login = user_author.and_then(|a| a.login);
+        let display_author = login.or(commit_author_name);
+        let date = commit_author_date.and_then(|d| d.split('T').next().map(str::to_string));
+        let parents = parents.into_iter().map(|p| p.sha).collect();
+        PrCommit {
+            sha,
+            summary,
+            author: display_author,
+            date,
+            parents,
+        }
+    }
+}
 
 #[derive(Clone)]
 struct CommitGraphEntry {

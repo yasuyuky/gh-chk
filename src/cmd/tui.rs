@@ -356,6 +356,10 @@ impl App {
             if self.preview_mode == PreviewMode::Diff && !self.diff_cache.contains_key(&pr.id) {
                 let _ = self.load_diff_for(&pr).await;
             }
+            if self.preview_mode == PreviewMode::Commits && !self.commit_cache.contains_key(&pr.id)
+            {
+                let _ = self.load_commits_for(&pr).await;
+            }
         }
     }
 
@@ -490,6 +494,9 @@ impl App {
                 }
                 PreviewMode::Diff => {
                     let _ = self.load_diff_for(&pr).await;
+                }
+                PreviewMode::Commits => {
+                    let _ = self.load_commits_for(&pr).await;
                 }
             }
         }
@@ -647,6 +654,7 @@ fn make_preview_block_title(app: &App, area_width: u16, total_lines: u16) -> Str
         let mode = match app.preview_mode {
             PreviewMode::Body => "Body",
             PreviewMode::Diff => "Diff",
+            PreviewMode::Commits => "Commits",
         };
         // Reserve a bit for borders/padding
         let w = area_width.saturating_sub(4) as usize;
@@ -919,6 +927,17 @@ fn build_preview_text(app: &App) -> Text<'static> {
                 }
                 None => Text::from("Loading diff..."),
             },
+            PreviewMode::Commits => match app.commit_cache.get(&pr.id) {
+                Some(entries) => {
+                    let header = format!("Commits for #{} {}", pr.number, pr.slug);
+                    let mut text = Text::from(header);
+                    text.lines.push(Line::from(""));
+                    let mut graph = make_commit_graph_text(entries);
+                    text.lines.append(&mut graph.lines);
+                    text
+                }
+                None => Text::from("Loading commits..."),
+            },
         }
     } else {
         Text::from("No selection")
@@ -972,8 +991,7 @@ fn build_help_text(app: &App) -> String {
     if let Some(ref msg) = app.status_message {
         msg.clone()
     } else {
-        let base =
-            "q:quit • ?:help • Enter/o:open • m:merge • a:approve • r:reload • ←/→:list/body/diff";
+        let base = "q:quit • ?:help • Enter/o:open • m:merge • a:approve • r:reload • ←/→:list/body/diff/graph";
         let nav = if app.preview_open {
             "↑/↓/wheel:scroll"
         } else {
@@ -983,6 +1001,7 @@ fn build_help_text(app: &App) -> String {
             let mode = match app.preview_mode {
                 PreviewMode::Body => "Body",
                 PreviewMode::Diff => "Diff",
+                PreviewMode::Commits => "Commits",
             };
             format!("{} • {} • mode:{}", base, nav, mode)
         } else {
@@ -1337,25 +1356,43 @@ fn queue_commits_if_needed(app: &mut App) {
 }
 
 fn on_right(app: &mut App) {
-    // Right: closed -> Body, Body -> Diff
+    // Right: closed -> Body -> Diff -> Commits
     if !app.preview_open {
         app.preview_open = true;
         app.preview_mode = PreviewMode::Body;
+        app.preview_scroll = 0;
         queue_preview_if_needed(app);
-    } else if app.preview_mode == PreviewMode::Body {
-        app.preview_mode = PreviewMode::Diff;
-        queue_diff_if_needed(app);
+    } else {
+        match app.preview_mode {
+            PreviewMode::Body => {
+                app.preview_mode = PreviewMode::Diff;
+                app.preview_scroll = 0;
+                queue_diff_if_needed(app);
+            }
+            PreviewMode::Diff => {
+                app.preview_mode = PreviewMode::Commits;
+                app.preview_scroll = 0;
+                queue_commits_if_needed(app);
+            }
+            PreviewMode::Commits => {}
+        }
     }
 }
 
 fn on_left(app: &mut App) {
-    // Left: Diff -> Body -> Close
+    // Left: Commits -> Diff -> Body -> Close
     if !app.preview_open {
         return;
     }
     match app.preview_mode {
+        PreviewMode::Commits => {
+            app.preview_mode = PreviewMode::Diff;
+            app.preview_scroll = 0;
+            queue_diff_if_needed(app);
+        }
         PreviewMode::Diff => {
             app.preview_mode = PreviewMode::Body;
+            app.preview_scroll = 0;
             queue_preview_if_needed(app);
         }
         PreviewMode::Body => app.preview_open = false,
@@ -1405,6 +1442,11 @@ async fn run_app(
                     PendingTask::LoadDiffForSelected => async_std::task::block_on(async {
                         if let Some(pr) = app.get_selected_pr().cloned() {
                             let _ = app.load_diff_for(&pr).await;
+                        }
+                    }),
+                    PendingTask::LoadCommitsForSelected => async_std::task::block_on(async {
+                        if let Some(pr) = app.get_selected_pr().cloned() {
+                            let _ = app.load_commits_for(&pr).await;
                         }
                     }),
                 }

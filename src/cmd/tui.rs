@@ -587,6 +587,45 @@ fn make_diff_text(diff: &str) -> Text<'static> {
     text
 }
 
+fn make_commit_graph_text(entries: &[CommitGraphEntry]) -> Text<'static> {
+    if entries.is_empty() {
+        return Text::from("No commits found.");
+    }
+
+    let mut text = Text::default();
+    for entry in entries {
+        let mut spans: Vec<Span> = Vec::new();
+        if !entry.graph.is_empty() {
+            spans.push(Span::styled(
+                entry.graph.clone(),
+                Style::default().fg(Color::DarkGray),
+            ));
+        }
+        spans.push(Span::styled(
+            entry.short_sha.clone(),
+            Style::default()
+                .fg(Color::Green)
+                .add_modifier(Modifier::BOLD),
+        ));
+        spans.push(Span::raw(" "));
+        spans.push(Span::raw(entry.summary.clone()));
+        if let Some(author) = &entry.author {
+            spans.push(Span::raw("  • "));
+            spans.push(Span::styled(
+                author.clone(),
+                Style::default().fg(Color::Cyan),
+            ));
+        }
+        if let Some(date) = &entry.date {
+            spans.push(Span::raw("  ("));
+            spans.push(Span::styled(date.clone(), Style::default().fg(Color::Gray)));
+            spans.push(Span::raw(")"));
+        }
+        text.lines.push(Line::from(spans));
+    }
+    text
+}
+
 fn ellipsize(s: &str, max: usize) -> String {
     if s.chars().count() <= max {
         return s.to_string();

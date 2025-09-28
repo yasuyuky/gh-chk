@@ -1271,6 +1271,15 @@ fn queue_diff_if_needed(app: &mut App) {
     }
 }
 
+fn queue_commits_if_needed(app: &mut App) {
+    if let Some(pr) = app.get_selected_pr().cloned()
+        && !app.commit_cache.contains_key(&pr.id)
+    {
+        app.set_status_persistent(format!("🔎 Loading commits for #{}...", pr.number));
+        app.pending_task = Some(PendingTask::LoadCommitsForSelected);
+    }
+}
+
 fn on_right(app: &mut App) {
     // Right: closed -> Body, Body -> Diff
     if !app.preview_open {

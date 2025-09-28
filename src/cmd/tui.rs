@@ -399,6 +399,19 @@ impl App {
         Ok(())
     }
 
+    async fn load_commits_for(&mut self, pr: &PrData) -> surf::Result<()> {
+        self.set_status_persistent(format!("🔎 Loading commits for #{}...", pr.number));
+        let (owner, name) = match split_slug(&pr.slug) {
+            Some(x) => x,
+            None => return Ok(()),
+        };
+        let commits = fetch_pr_commits(&owner, &name, pr.number).await?;
+        let entries = build_commit_graph_entries(&commits);
+        self.commit_cache.insert(pr.id.clone(), entries);
+        self.set_status(format!("✅ Loaded commits for #{}", pr.number));
+        Ok(())
+    }
+
     fn scroll_preview_down(&mut self, n: u16) {
         if self.preview_open {
             self.preview_scroll = self.preview_scroll.saturating_add(n);

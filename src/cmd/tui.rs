@@ -350,29 +350,6 @@ impl App {
         }
     }
 
-    async fn maybe_prefetch_on_move(&mut self) {
-        if self.preview_mode.is_none() {
-            return;
-        }
-        if let Some(pr) = self.get_selected_pr().cloned() {
-            if !self.cache.contains_key(&(PreviewMode::Body, pr.id.clone())) {
-                let _ = self.load_preview_for(&pr).await;
-            }
-            if matches!(self.preview_mode, Some(PreviewMode::Diff))
-                && !self.cache.contains_key(&(PreviewMode::Diff, pr.id.clone()))
-            {
-                let _ = self.load_diff_for(&pr).await;
-            }
-            if matches!(self.preview_mode, Some(PreviewMode::Commits))
-                && !self
-                    .cache
-                    .contains_key(&(PreviewMode::Commits, pr.id.clone()))
-            {
-                let _ = self.load_commits_for(&pr).await;
-            }
-        }
-    }
-
     async fn load_preview_for(&mut self, pr: &PrData) -> surf::Result<()> {
         self.set_status_persistent(format!("🔎 Loading preview for #{}...", pr.number));
         let (owner, name) = match split_slug(&pr.slug) {
@@ -1243,7 +1220,6 @@ impl App {
             self.scroll_preview_down(1);
         } else {
             self.next();
-            self.maybe_prefetch_on_move().await;
         }
     }
 
@@ -1252,7 +1228,6 @@ impl App {
             self.scroll_preview_up(1);
         } else {
             self.previous();
-            self.maybe_prefetch_on_move().await;
         }
     }
 

@@ -1230,19 +1230,29 @@ fn run_tui(prs: Vec<PrData>, specs: Vec<SlugSpec>) -> Result<(), Box<dyn std::er
     Ok(())
 }
 
-async fn handle_key(app: &mut App, code: KeyCode) {
-    match code {
-        KeyCode::Char('q') => on_quit(app),
-        KeyCode::Down | KeyCode::Char('j') => on_down(app).await,
-        KeyCode::Up | KeyCode::Char('k') => on_up(app).await,
-        KeyCode::Enter | KeyCode::Char('o') => on_open(app),
-        KeyCode::Char('m') => on_merge_key(app),
-        KeyCode::Char('a') => on_approve_key(app),
-        KeyCode::Char('r') => on_reload_key(app),
-        KeyCode::Char('?') => on_clear_help(app),
-        KeyCode::Right => on_right(app),
-        KeyCode::Left => on_left(app),
-        _ => {}
+impl App {
+    async fn handle_key(&mut self, code: KeyCode) {
+        match code {
+            KeyCode::Char('q') => on_quit(self),
+            KeyCode::Down | KeyCode::Char('j') => on_down(self).await,
+            KeyCode::Up | KeyCode::Char('k') => on_up(self).await,
+            KeyCode::Enter | KeyCode::Char('o') => on_open(self),
+            KeyCode::Char('m') => on_merge_key(self),
+            KeyCode::Char('a') => on_approve_key(self),
+            KeyCode::Char('r') => on_reload_key(self),
+            KeyCode::Char('?') => on_clear_help(self),
+            KeyCode::Right => on_right(self),
+            KeyCode::Left => on_left(self),
+            _ => {}
+        }
+    }
+
+    fn handle_mouse(&mut self, kind: MouseEventKind) {
+        match kind {
+            MouseEventKind::ScrollDown => self.scroll_preview_down(3),
+            MouseEventKind::ScrollUp => self.scroll_preview_up(3),
+            _ => {}
+        }
     }
 }
 
@@ -1356,14 +1366,6 @@ fn on_left(app: &mut App) {
     }
 }
 
-fn handle_mouse(app: &mut App, kind: MouseEventKind) {
-    match kind {
-        MouseEventKind::ScrollDown => app.scroll_preview_down(3),
-        MouseEventKind::ScrollUp => app.scroll_preview_up(3),
-        _ => {}
-    }
-}
-
 async fn run_app(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
     app: &mut App,
@@ -1373,8 +1375,8 @@ async fn run_app(
 
         if event::poll(std::time::Duration::from_millis(100))? {
             match event::read()? {
-                Event::Key(key) => handle_key(app, key.code).await,
-                Event::Mouse(m) => handle_mouse(app, m.kind),
+                Event::Key(key) => app.handle_key(key.code).await,
+                Event::Mouse(m) => app.handle_mouse(m.kind),
                 _ => {}
             }
         }

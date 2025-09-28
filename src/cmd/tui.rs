@@ -1173,18 +1173,12 @@ fn build_commit_graph_entries(commits: &[PrCommit]) -> Vec<CommitGraphEntry> {
             active.insert(0, commit.sha.clone());
         }
 
-        let graph_prefix = build_graph_prefix(&active);
-        let short_sha = commit.sha.chars().take(7).collect::<String>();
-        let summary = commit.summary();
-        let author = commit.display_author();
-        let date = commit.display_date();
-
         lines.push(CommitGraphEntry {
-            graph: graph_prefix,
-            short_sha,
-            summary,
-            author,
-            date,
+            graph: build_graph_prefix(&active),
+            short_sha: commit.sha.chars().take(7).collect::<String>(),
+            summary: commit.summary(),
+            author: commit.display_author(),
+            date: commit.display_date(),
         });
 
         // Remove the commit itself and add parents to track branch lines.

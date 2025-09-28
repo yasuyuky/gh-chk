@@ -1233,16 +1233,16 @@ fn run_tui(prs: Vec<PrData>, specs: Vec<SlugSpec>) -> Result<(), Box<dyn std::er
 impl App {
     async fn handle_key(&mut self, code: KeyCode) {
         match code {
-            KeyCode::Char('q') => on_quit(self),
-            KeyCode::Down | KeyCode::Char('j') => on_down(self).await,
-            KeyCode::Up | KeyCode::Char('k') => on_up(self).await,
-            KeyCode::Enter | KeyCode::Char('o') => on_open(self),
-            KeyCode::Char('m') => on_merge_key(self),
-            KeyCode::Char('a') => on_approve_key(self),
-            KeyCode::Char('r') => on_reload_key(self),
-            KeyCode::Char('?') => on_clear_help(self),
-            KeyCode::Right => on_right(self),
-            KeyCode::Left => on_left(self),
+            KeyCode::Char('q') => self.on_quit(),
+            KeyCode::Down | KeyCode::Char('j') => self.on_down().await,
+            KeyCode::Up | KeyCode::Char('k') => self.on_up().await,
+            KeyCode::Enter | KeyCode::Char('o') => self.on_open(),
+            KeyCode::Char('m') => self.on_merge_key(),
+            KeyCode::Char('a') => self.on_approve_key(),
+            KeyCode::Char('r') => self.on_reload_key(),
+            KeyCode::Char('?') => self.on_clear_help(),
+            KeyCode::Right => self.on_right(),
+            KeyCode::Left => self.on_left(),
             _ => {}
         }
     }
@@ -1254,115 +1254,114 @@ impl App {
             _ => {}
         }
     }
-}
-
-fn on_quit(app: &mut App) {
-    app.should_quit = true;
-}
-
-async fn on_down(app: &mut App) {
-    if app.preview_mode.is_some() {
-        app.scroll_preview_down(1);
-    } else {
-        app.next();
-        app.maybe_prefetch_on_move().await;
+    fn on_quit(&mut self) {
+        self.should_quit = true;
     }
-}
 
-async fn on_up(app: &mut App) {
-    if app.preview_mode.is_some() {
-        app.scroll_preview_up(1);
-    } else {
-        app.previous();
-        app.maybe_prefetch_on_move().await;
-    }
-}
-
-fn on_open(app: &mut App) {
-    app.open_url();
-}
-
-fn on_merge_key(app: &mut App) {
-    if let Some(pr) = app.get_selected_pr() {
-        app.set_status_persistent(format!("Merging PR #{} in {}...", pr.number, pr.slug));
-        app.pending_task = Some(PendingTask::MergeSelected);
-    }
-}
-
-fn on_approve_key(app: &mut App) {
-    if let Some(pr) = app.get_selected_pr() {
-        app.set_status_persistent(format!("Approving PR #{} in {}...", pr.number, pr.slug));
-        app.pending_task = Some(PendingTask::ApproveSelected);
-    }
-}
-
-fn on_reload_key(app: &mut App) {
-    app.set_status_persistent("🔄 Reloading...".to_string());
-    app.pending_task = Some(PendingTask::Reload);
-}
-
-fn on_clear_help(app: &mut App) {
-    app.status_message = None;
-    app.status_clear_at = None;
-}
-
-fn queue_mode_if_needed(app: &mut App, mode: PreviewMode) {
-    if let Some(pr) = app.get_selected_pr().cloned() {
-        let (needs_load, pending) = match mode {
-            PreviewMode::Body => (
-                !app.preview_cache.contains_key(&pr.id),
-                PendingTask::LoadPreviewForSelected,
-            ),
-            PreviewMode::Diff => (
-                !app.diff_cache.contains_key(&pr.id),
-                PendingTask::LoadDiffForSelected,
-            ),
-            PreviewMode::Commits => (
-                !app.commit_cache.contains_key(&pr.id),
-                PendingTask::LoadCommitsForSelected,
-            ),
-        };
-        if needs_load {
-            app.set_status_persistent(format!("🔎 Loading {} for #{}...", mode, pr.number));
-            app.pending_task = Some(pending);
+    async fn on_down(&mut self) {
+        if self.preview_mode.is_some() {
+            self.scroll_preview_down(1);
+        } else {
+            self.next();
+            self.maybe_prefetch_on_move().await;
         }
     }
-}
 
-fn on_right(app: &mut App) {
-    // Right: closed -> Body -> Diff -> Commits
-    app.preview_scroll = 0;
-    match app.preview_mode {
-        None => {
-            app.preview_mode = Some(PreviewMode::Body);
-            queue_mode_if_needed(app, PreviewMode::Body);
+    async fn on_up(&mut self) {
+        if self.preview_mode.is_some() {
+            self.scroll_preview_up(1);
+        } else {
+            self.previous();
+            self.maybe_prefetch_on_move().await;
         }
-        Some(PreviewMode::Body) => {
-            app.preview_mode = Some(PreviewMode::Diff);
-            queue_mode_if_needed(app, PreviewMode::Diff);
-        }
-        Some(PreviewMode::Diff) => {
-            app.preview_mode = Some(PreviewMode::Commits);
-            queue_mode_if_needed(app, PreviewMode::Commits);
-        }
-        Some(PreviewMode::Commits) => {}
     }
-}
 
-fn on_left(app: &mut App) {
-    // Left: Commits -> Diff -> Body -> Close
-    app.preview_scroll = 0;
-    match app.preview_mode {
-        Some(PreviewMode::Commits) => {
-            app.preview_mode = Some(PreviewMode::Diff);
-            queue_mode_if_needed(app, PreviewMode::Diff);
+    fn on_open(&mut self) {
+        self.open_url();
+    }
+
+    fn on_merge_key(&mut self) {
+        if let Some(pr) = self.get_selected_pr() {
+            self.set_status_persistent(format!("Merging PR #{} in {}...", pr.number, pr.slug));
+            self.pending_task = Some(PendingTask::MergeSelected);
         }
-        Some(PreviewMode::Diff) => {
-            app.preview_mode = Some(PreviewMode::Body);
-            queue_mode_if_needed(app, PreviewMode::Body);
+    }
+
+    fn on_approve_key(&mut self) {
+        if let Some(pr) = self.get_selected_pr() {
+            self.set_status_persistent(format!("Approving PR #{} in {}...", pr.number, pr.slug));
+            self.pending_task = Some(PendingTask::ApproveSelected);
         }
-        Some(PreviewMode::Body) => app.preview_mode = None,
-        None => {}
+    }
+
+    fn on_reload_key(&mut self) {
+        self.set_status_persistent("🔄 Reloading...".to_string());
+        self.pending_task = Some(PendingTask::Reload);
+    }
+
+    fn on_clear_help(&mut self) {
+        self.status_message = None;
+        self.status_clear_at = None;
+    }
+
+    fn queue_mode_if_needed(&mut self, mode: PreviewMode) {
+        if let Some(pr) = self.get_selected_pr().cloned() {
+            let (needs_load, pending) = match mode {
+                PreviewMode::Body => (
+                    !self.preview_cache.contains_key(&pr.id),
+                    PendingTask::LoadPreviewForSelected,
+                ),
+                PreviewMode::Diff => (
+                    !self.diff_cache.contains_key(&pr.id),
+                    PendingTask::LoadDiffForSelected,
+                ),
+                PreviewMode::Commits => (
+                    !self.commit_cache.contains_key(&pr.id),
+                    PendingTask::LoadCommitsForSelected,
+                ),
+            };
+            if needs_load {
+                self.set_status_persistent(format!("🔎 Loading {} for #{}...", mode, pr.number));
+                self.pending_task = Some(pending);
+            }
+        }
+    }
+
+    fn on_right(&mut self) {
+        // Right: closed -> Body -> Diff -> Commits
+        self.preview_scroll = 0;
+        match self.preview_mode {
+            None => {
+                self.preview_mode = Some(PreviewMode::Body);
+                self.queue_mode_if_needed(PreviewMode::Body);
+            }
+            Some(PreviewMode::Body) => {
+                self.preview_mode = Some(PreviewMode::Diff);
+                self.queue_mode_if_needed(PreviewMode::Diff);
+            }
+            Some(PreviewMode::Diff) => {
+                self.preview_mode = Some(PreviewMode::Commits);
+                self.queue_mode_if_needed(PreviewMode::Commits);
+            }
+            Some(PreviewMode::Commits) => {}
+        }
+    }
+
+    fn on_left(&mut self) {
+        // Left: Commits -> Diff -> Body -> Close
+        self.preview_scroll = 0;
+        match self.preview_mode {
+            Some(PreviewMode::Commits) => {
+                self.preview_mode = Some(PreviewMode::Diff);
+                self.queue_mode_if_needed(PreviewMode::Diff);
+            }
+            Some(PreviewMode::Diff) => {
+                self.preview_mode = Some(PreviewMode::Body);
+                self.queue_mode_if_needed(PreviewMode::Body);
+            }
+            Some(PreviewMode::Body) => self.preview_mode = None,
+            None => {}
+        }
     }
 }
 

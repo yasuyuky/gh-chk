@@ -236,6 +236,7 @@ impl App {
             preview_open: false,
             preview_cache: HashMap::new(),
             diff_cache: HashMap::new(),
+            commit_cache: HashMap::new(),
             preview_mode: PreviewMode::Body,
             preview_scroll: 0,
             preview_area_height: 0,

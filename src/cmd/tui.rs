@@ -996,6 +996,58 @@ struct PrFile {
     patch: Option<String>,
 }
 
+#[derive(Deserialize, Default)]
+struct CommitAuthor {
+    login: Option<String>,
+}
+
+#[derive(Deserialize, Default)]
+struct CommitPerson {
+    name: Option<String>,
+    date: Option<String>,
+}
+
+#[derive(Deserialize, Default)]
+struct CommitDetail {
+    message: String,
+    #[serde(default)]
+    author: Option<CommitPerson>,
+}
+
+#[derive(Deserialize, Default)]
+struct CommitParent {
+    sha: String,
+}
+
+#[derive(Deserialize, Default)]
+struct PrCommitRes {
+    sha: String,
+    commit: CommitDetail,
+    #[serde(default)]
+    parents: Vec<CommitParent>,
+    #[serde(default)]
+    author: Option<CommitAuthor>,
+}
+
+#[derive(Clone)]
+struct PrCommit {
+    sha: String,
+    summary: String,
+    author: Option<String>,
+    date: Option<String>,
+    parents: Vec<String>,
+}
+
+
+#[derive(Clone)]
+struct CommitGraphEntry {
+    graph: String,
+    short_sha: String,
+    summary: String,
+    author: Option<String>,
+    date: Option<String>,
+}
+
 async fn fetch_pr_files(owner: &str, name: &str, number: usize) -> surf::Result<Vec<PrFile>> {
     let path = format!("repos/{}/{}/pulls/{}/files", owner, name, number);
     let q: rest::QueryMap = rest::QueryMap::default();

@@ -1144,6 +1144,19 @@ fn build_commit_graph_entries(commits: &[PrCommit]) -> Vec<CommitGraphEntry> {
     lines
 }
 
+fn build_graph_prefix(active: &[String]) -> String {
+    let mut prefix = String::new();
+    for (idx, _) in active.iter().enumerate() {
+        if idx == 0 {
+            prefix.push('*');
+        } else {
+            prefix.push('|');
+        }
+        prefix.push(' ');
+    }
+    prefix
+}
+
 
 fn run_tui(prs: Vec<PrData>, specs: Vec<SlugSpec>) -> Result<(), Box<dyn std::error::Error>> {
     enable_raw_mode()?;

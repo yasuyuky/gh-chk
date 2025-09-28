@@ -1321,6 +1321,7 @@ fn queue_mode_if_needed(app: &mut App, mode: PreviewMode) {
 
 fn on_right(app: &mut App) {
     // Right: closed -> Body -> Diff -> Commits
+    app.preview_scroll = 0;
     match app.preview_mode {
         None => {
             app.preview_mode = Some(PreviewMode::Body);
@@ -1328,12 +1329,10 @@ fn on_right(app: &mut App) {
         }
         Some(PreviewMode::Body) => {
             app.preview_mode = Some(PreviewMode::Diff);
-            app.preview_scroll = 0;
             queue_mode_if_needed(app, PreviewMode::Diff);
         }
         Some(PreviewMode::Diff) => {
             app.preview_mode = Some(PreviewMode::Commits);
-            app.preview_scroll = 0;
             queue_mode_if_needed(app, PreviewMode::Commits);
         }
         Some(PreviewMode::Commits) => {}
@@ -1342,15 +1341,14 @@ fn on_right(app: &mut App) {
 
 fn on_left(app: &mut App) {
     // Left: Commits -> Diff -> Body -> Close
+    app.preview_scroll = 0;
     match app.preview_mode {
         Some(PreviewMode::Commits) => {
             app.preview_mode = Some(PreviewMode::Diff);
-            app.preview_scroll = 0;
             queue_mode_if_needed(app, PreviewMode::Diff);
         }
         Some(PreviewMode::Diff) => {
             app.preview_mode = Some(PreviewMode::Body);
-            app.preview_scroll = 0;
             queue_mode_if_needed(app, PreviewMode::Body);
         }
         Some(PreviewMode::Body) => app.preview_mode = None,

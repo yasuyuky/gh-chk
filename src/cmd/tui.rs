@@ -183,11 +183,22 @@ async fn approve_pr(pr_id: &str) -> surf::Result<()> {
     Ok(())
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum PreviewMode {
     Body,
     Diff,
     Commits,
+}
+
+impl std::fmt::Display for PreviewMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let as_str = match self {
+            Self::Body => "Body",
+            Self::Diff => "Diff",
+            Self::Commits => "Commits",
+        };
+        f.write_str(as_str)
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -207,11 +218,8 @@ struct App {
     status_message: Option<String>,
     status_clear_at: Option<Instant>,
     specs: Vec<SlugSpec>,
-    preview_open: bool,
-    preview_cache: HashMap<String, String>,
-    diff_cache: HashMap<String, String>,
-    commit_cache: HashMap<String, Vec<CommitGraphEntry>>,
-    preview_mode: PreviewMode,
+    cache: HashMap<(PreviewMode, String), Text<'static>>, // (mode, pr_id) -> content
+    preview_mode: Option<PreviewMode>,
     preview_scroll: u16,
     preview_area_height: u16,
     contrib_lines: Option<Vec<Line<'static>>>,
@@ -233,11 +241,8 @@ impl App {
             status_message: None,
             status_clear_at: None,
             specs,
-            preview_open: false,
-            preview_cache: HashMap::new(),
-            diff_cache: HashMap::new(),
-            commit_cache: HashMap::new(),
-            preview_mode: PreviewMode::Body,
+            cache: HashMap::new(),
+            preview_mode: None,
             preview_scroll: 0,
             preview_area_height: 0,
             contrib_lines: None,
@@ -345,24 +350,6 @@ impl App {
         }
     }
 
-    async fn maybe_prefetch_on_move(&mut self) {
-        if !self.preview_open {
-            return;
-        }
-        if let Some(pr) = self.get_selected_pr().cloned() {
-            if !self.preview_cache.contains_key(&pr.id) {
-                let _ = self.load_preview_for(&pr).await;
-            }
-            if self.preview_mode == PreviewMode::Diff && !self.diff_cache.contains_key(&pr.id) {
-                let _ = self.load_diff_for(&pr).await;
-            }
-            if self.preview_mode == PreviewMode::Commits && !self.commit_cache.contains_key(&pr.id)
-            {
-                let _ = self.load_commits_for(&pr).await;
-            }
-        }
-    }
-
     async fn load_preview_for(&mut self, pr: &PrData) -> surf::Result<()> {
         self.set_status_persistent(format!("🔎 Loading preview for #{}...", pr.number));
         let (owner, name) = match split_slug(&pr.slug) {
@@ -370,7 +357,8 @@ impl App {
             None => return Ok(()),
         };
         let body = fetch_pr_body(&owner, &name, pr.number).await?;
-        self.preview_cache.insert(pr.id.clone(), body);
+        let text = prettify_pr_preview(&pr.title, &pr.url, &body);
+        self.cache.insert((PreviewMode::Body, pr.id.clone()), text);
         self.set_status(format!("✅ Loaded preview for #{}", pr.number));
         Ok(())
     }
@@ -402,7 +390,8 @@ impl App {
         if out.is_empty() {
             out = "No file changes found.".to_string();
         }
-        self.diff_cache.insert(pr.id.clone(), out);
+        let text = make_diff_text(&out);
+        self.cache.insert((PreviewMode::Diff, pr.id.clone()), text);
         self.set_status(format!("✅ Loaded diff for #{}", pr.number));
         Ok(())
     }
@@ -415,18 +404,20 @@ impl App {
         };
         let commits = fetch_pr_commits(&owner, &name, pr.number).await?;
         let entries = build_commit_graph_entries(&commits);
-        self.commit_cache.insert(pr.id.clone(), entries);
+        let text = make_commit_graph_text(&entries); // pre-render to check for emptiness
+        self.cache
+            .insert((PreviewMode::Commits, pr.id.clone()), text);
         self.set_status(format!("✅ Loaded commits for #{}", pr.number));
         Ok(())
     }
 
     fn scroll_preview_down(&mut self, n: u16) {
-        if self.preview_open {
+        if self.preview_mode.is_some() {
             self.preview_scroll = self.preview_scroll.saturating_add(n);
         }
     }
     fn scroll_preview_up(&mut self, n: u16) {
-        if self.preview_open {
+        if self.preview_mode.is_some() {
             self.preview_scroll = self.preview_scroll.saturating_sub(n);
         }
     }
@@ -440,7 +431,7 @@ impl App {
         }
 
         self.apply_pr_list_and_restore_selection(new_list);
-        self.refresh_preview_if_open().await;
+        self.refresh_preview_if_visible().await;
         self.set_status(format!("✅ Reloaded. {} PRs.", self.prs.len()));
 
         if let Err(e) = self.load_contributions().await {
@@ -483,12 +474,12 @@ impl App {
         }
     }
 
-    async fn refresh_preview_if_open(&mut self) {
-        if !self.preview_open {
+    async fn refresh_preview_if_visible(&mut self) {
+        let Some(mode) = self.preview_mode else {
             return;
-        }
+        };
         if let Some(pr) = self.get_selected_pr().cloned() {
-            match self.preview_mode {
+            match mode {
                 PreviewMode::Body => {
                     let _ = self.load_preview_for(&pr).await;
                 }
@@ -650,12 +641,7 @@ fn ellipsize(s: &str, max: usize) -> String {
 }
 
 fn make_preview_block_title(app: &App, area_width: u16, total_lines: u16) -> String {
-    if let Some(pr) = app.get_selected_pr() {
-        let mode = match app.preview_mode {
-            PreviewMode::Body => "Body",
-            PreviewMode::Diff => "Diff",
-            PreviewMode::Commits => "Commits",
-        };
+    if let (Some(pr), Some(mode)) = (app.get_selected_pr(), app.preview_mode) {
         // Reserve a bit for borders/padding
         let w = area_width.saturating_sub(4) as usize;
         // Base info
@@ -875,8 +861,8 @@ fn layout_outer(area: Rect, contrib_height: u16) -> Rc<[Rect]> {
         .split(area)
 }
 
-fn layout_main_chunks(area: Rect, preview_open: bool) -> Rc<[Rect]> {
-    if preview_open {
+fn layout_main_chunks(area: Rect, preview_mode: Option<PreviewMode>) -> Rc<[Rect]> {
+    if preview_mode.is_some() {
         Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Percentage(50), Constraint::Percentage(50)].as_ref())
@@ -912,32 +898,11 @@ fn build_pr_list(app: &App) -> List<'static> {
 fn build_preview_text(app: &App) -> Text<'static> {
     if let Some(pr) = app.get_selected_pr() {
         match app.preview_mode {
-            PreviewMode::Body => match app.preview_cache.get(&pr.id) {
-                Some(body) => prettify_pr_preview(&pr.title, &pr.url, body),
-                None => Text::from("Loading preview..."),
+            Some(mode) => match app.cache.get(&(mode, pr.id.clone())) {
+                Some(cached) => cached.clone(),
+                None => Text::from(format!("Loading...{}", mode)),
             },
-            PreviewMode::Diff => match app.diff_cache.get(&pr.id) {
-                Some(diff) => {
-                    let header = format!("Diff for #{} {}", pr.number, pr.slug);
-                    let mut text = Text::from(header);
-                    text.lines.push(Line::from(""));
-                    let mut colored = make_diff_text(diff);
-                    text.lines.append(&mut colored.lines);
-                    text
-                }
-                None => Text::from("Loading diff..."),
-            },
-            PreviewMode::Commits => match app.commit_cache.get(&pr.id) {
-                Some(entries) => {
-                    let header = format!("Commits for #{} {}", pr.number, pr.slug);
-                    let mut text = Text::from(header);
-                    text.lines.push(Line::from(""));
-                    let mut graph = make_commit_graph_text(entries);
-                    text.lines.append(&mut graph.lines);
-                    text
-                }
-                None => Text::from("Loading commits..."),
-            },
+            None => Text::from("Preview closed"),
         }
     } else {
         Text::from("No selection")
@@ -992,21 +957,15 @@ fn build_help_text(app: &App) -> String {
         msg.clone()
     } else {
         let base = "q:quit • ?:help • Enter/o:open • m:merge • a:approve • r:reload • ←/→:list/body/diff/graph";
-        let nav = if app.preview_open {
+        let nav = if app.preview_mode.is_some() {
             "↑/↓/wheel:scroll"
         } else {
             "↑/↓:navigate"
         };
-        if app.preview_open {
-            let mode = match app.preview_mode {
-                PreviewMode::Body => "Body",
-                PreviewMode::Diff => "Diff",
-                PreviewMode::Commits => "Commits",
-            };
-            format!("{} • {} • mode:{}", base, nav, mode)
-        } else {
-            format!("{} • {}", base, nav)
-        }
+        app.preview_mode.map_or_else(
+            || format!("{} • {}", base, nav),
+            |mode| format!("{} • {} • mode:{}", base, nav, mode),
+        )
     }
 }
 
@@ -1020,10 +979,10 @@ fn render_help(f: &mut Frame, app: &App, area: Rect) {
 
 fn ui(f: &mut Frame, app: &mut App) {
     let outer = layout_outer(f.area(), app.contrib_height);
-    let main_chunks = layout_main_chunks(outer[0], app.preview_open);
+    let main_chunks = layout_main_chunks(outer[0], app.preview_mode);
 
     render_pr_list(f, app, main_chunks[0]);
-    if app.preview_open {
+    if app.preview_mode.is_some() {
         let area = if main_chunks.len() > 1 {
             main_chunks[1]
         } else {
@@ -1057,13 +1016,6 @@ async fn fetch_pr_body(owner: &str, name: &str, number: usize) -> surf::Result<S
 }
 
 #[derive(Deserialize)]
-struct PrFileRes {
-    filename: String,
-    additions: i64,
-    deletions: i64,
-    patch: Option<String>,
-}
-
 struct PrFile {
     filename: String,
     additions: i64,
@@ -1071,80 +1023,67 @@ struct PrFile {
     patch: Option<String>,
 }
 
-#[derive(Deserialize, Default)]
-struct CommitAuthor {
-    login: Option<String>,
+nestruct::nest! {
+    #[derive(serde::Deserialize, Clone)]
+    PrCommit {
+        sha: String,
+        commit: {
+            message: String,
+            author: {
+                name: String?,
+                date: String?,
+            }?,
+        },
+        parents: [{
+            sha: String,
+        }],
+        author: {
+            login: String?,
+        }?,
+    }
 }
 
-#[derive(Deserialize, Default)]
-struct CommitPerson {
-    name: Option<String>,
-    date: Option<String>,
-}
+use pr_commit::PrCommit;
 
-#[derive(Deserialize, Default)]
-struct CommitDetail {
-    message: String,
-    #[serde(default)]
-    author: Option<CommitPerson>,
-}
-
-#[derive(Deserialize, Default)]
-struct CommitParent {
-    sha: String,
-}
-
-#[derive(Deserialize, Default)]
-struct PrCommitRes {
-    sha: String,
-    commit: CommitDetail,
-    #[serde(default)]
-    parents: Vec<CommitParent>,
-    #[serde(default)]
-    author: Option<CommitAuthor>,
-}
-
-#[derive(Clone)]
-struct PrCommit {
-    sha: String,
-    summary: String,
-    author: Option<String>,
-    date: Option<String>,
-    parents: Vec<String>,
-}
-
-impl From<PrCommitRes> for PrCommit {
-    fn from(res: PrCommitRes) -> Self {
-        let PrCommitRes {
-            sha,
-            commit,
-            parents,
-            author: user_author,
-        } = res;
-        let CommitDetail {
-            message,
-            author: commit_author,
-        } = commit;
-        let mut summary = message.lines().next().unwrap_or("").trim().to_string();
+impl PrCommit {
+    fn summary(&self) -> String {
+        let mut summary = self
+            .commit
+            .message
+            .lines()
+            .next()
+            .unwrap_or("")
+            .trim()
+            .to_string();
         if summary.len() > 80 {
             summary.truncate(77);
             summary.push_str("...");
         }
-        let (commit_author_name, commit_author_date) = match commit_author {
-            Some(person) => (person.name, person.date),
-            None => (None, None),
-        };
-        let login = user_author.and_then(|a| a.login);
-        let display_author = login.or(commit_author_name);
-        let date = commit_author_date.and_then(|d| d.split('T').next().map(str::to_string));
-        let parents = parents.into_iter().map(|p| p.sha).collect();
-        PrCommit {
-            sha,
-            summary,
-            author: display_author,
-            date,
-            parents,
+        summary
+    }
+
+    fn display_author(&self) -> Option<String> {
+        if let Some(author) = self.author.as_ref() {
+            if let Some(login) = author.login.as_ref() {
+                return Some(login.clone());
+            }
         }
+        self.commit
+            .author
+            .as_ref()
+            .and_then(|person| person.name.clone())
+    }
+
+    fn display_date(&self) -> Option<String> {
+        self.commit
+            .author
+            .as_ref()
+            .and_then(|person| person.date.as_ref())
+            .and_then(|date| date.split('T').next().map(str::to_string))
+    }
+
+    fn parent_shas(&self) -> impl Iterator<Item = &str> {
+        self.parents.iter().map(|p| p.sha.as_str())
     }
 }
 
@@ -1160,23 +1099,13 @@ struct CommitGraphEntry {
 async fn fetch_pr_files(owner: &str, name: &str, number: usize) -> surf::Result<Vec<PrFile>> {
     let path = format!("repos/{}/{}/pulls/{}/files", owner, name, number);
     let q: rest::QueryMap = rest::QueryMap::default();
-    let res: Vec<PrFileRes> = rest::get(&path, 1, &q).await?;
-    Ok(res
-        .into_iter()
-        .map(|f| PrFile {
-            filename: f.filename,
-            additions: f.additions,
-            deletions: f.deletions,
-            patch: f.patch,
-        })
-        .collect())
+    rest::get(&path, 1, &q).await
 }
 
 async fn fetch_pr_commits(owner: &str, name: &str, number: usize) -> surf::Result<Vec<PrCommit>> {
     let path = format!("repos/{}/{}/pulls/{}/commits", owner, name, number);
     let q: rest::QueryMap = rest::QueryMap::default();
-    let res: Vec<PrCommitRes> = rest::get(&path, 1, &q).await?;
-    Ok(res.into_iter().map(PrCommit::from).collect())
+    rest::get(&path, 1, &q).await
 }
 
 fn build_commit_graph_entries(commits: &[PrCommit]) -> Vec<CommitGraphEntry> {
@@ -1192,25 +1121,22 @@ fn build_commit_graph_entries(commits: &[PrCommit]) -> Vec<CommitGraphEntry> {
             active.insert(0, commit.sha.clone());
         }
 
-        let graph_prefix = build_graph_prefix(&active);
-        let short_sha = commit.sha.chars().take(7).collect::<String>();
-
         lines.push(CommitGraphEntry {
-            graph: graph_prefix,
-            short_sha,
-            summary: commit.summary.clone(),
-            author: commit.author.clone(),
-            date: commit.date.clone(),
+            graph: build_graph_prefix(&active),
+            short_sha: commit.sha.chars().take(7).collect::<String>(),
+            summary: commit.summary(),
+            author: commit.display_author(),
+            date: commit.display_date(),
         });
 
         // Remove the commit itself and add parents to track branch lines.
         active.remove(0);
-        for (idx, parent) in commit.parents.iter().enumerate() {
+        for (idx, parent) in commit.parent_shas().enumerate() {
             if let Some(existing) = active.iter().position(|sha| sha == parent) {
                 let sha = active.remove(existing);
                 active.insert(idx, sha);
             } else {
-                active.insert(idx, parent.clone());
+                active.insert(idx, parent.to_string());
             }
         }
         dedup_branches(&mut active);
@@ -1262,148 +1188,128 @@ fn run_tui(prs: Vec<PrData>, specs: Vec<SlugSpec>) -> Result<(), Box<dyn std::er
     Ok(())
 }
 
-async fn handle_key(app: &mut App, code: KeyCode) {
-    match code {
-        KeyCode::Char('q') => on_quit(app),
-        KeyCode::Down | KeyCode::Char('j') => on_down(app).await,
-        KeyCode::Up | KeyCode::Char('k') => on_up(app).await,
-        KeyCode::Enter | KeyCode::Char('o') => on_open(app),
-        KeyCode::Char('m') => on_merge_key(app),
-        KeyCode::Char('a') => on_approve_key(app),
-        KeyCode::Char('r') => on_reload_key(app),
-        KeyCode::Char('?') => on_clear_help(app),
-        KeyCode::Right => on_right(app),
-        KeyCode::Left => on_left(app),
-        _ => {}
+impl App {
+    async fn handle_key(&mut self, code: KeyCode) {
+        match code {
+            KeyCode::Char('q') => self.on_quit(),
+            KeyCode::Down | KeyCode::Char('j') => self.on_down().await,
+            KeyCode::Up | KeyCode::Char('k') => self.on_up().await,
+            KeyCode::Enter | KeyCode::Char('o') => self.on_open(),
+            KeyCode::Char('m') => self.on_merge_key(),
+            KeyCode::Char('a') => self.on_approve_key(),
+            KeyCode::Char('r') => self.on_reload_key(),
+            KeyCode::Char('?') => self.on_clear_help(),
+            KeyCode::Right => self.on_right(),
+            KeyCode::Left => self.on_left(),
+            _ => {}
+        }
     }
-}
 
-fn on_quit(app: &mut App) {
-    app.should_quit = true;
-}
-
-async fn on_down(app: &mut App) {
-    if app.preview_open {
-        app.scroll_preview_down(1);
-    } else {
-        app.next();
-        app.maybe_prefetch_on_move().await;
+    fn handle_mouse(&mut self, kind: MouseEventKind) {
+        match kind {
+            MouseEventKind::ScrollDown => self.scroll_preview_down(3),
+            MouseEventKind::ScrollUp => self.scroll_preview_up(3),
+            _ => {}
+        }
     }
-}
-
-async fn on_up(app: &mut App) {
-    if app.preview_open {
-        app.scroll_preview_up(1);
-    } else {
-        app.previous();
-        app.maybe_prefetch_on_move().await;
+    fn on_quit(&mut self) {
+        self.should_quit = true;
     }
-}
 
-fn on_open(app: &mut App) {
-    app.open_url();
-}
-
-fn on_merge_key(app: &mut App) {
-    if let Some(pr) = app.get_selected_pr() {
-        app.set_status_persistent(format!("Merging PR #{} in {}...", pr.number, pr.slug));
-        app.pending_task = Some(PendingTask::MergeSelected);
+    async fn on_down(&mut self) {
+        if self.preview_mode.is_some() {
+            self.scroll_preview_down(1);
+        } else {
+            self.next();
+        }
     }
-}
 
-fn on_approve_key(app: &mut App) {
-    if let Some(pr) = app.get_selected_pr() {
-        app.set_status_persistent(format!("Approving PR #{} in {}...", pr.number, pr.slug));
-        app.pending_task = Some(PendingTask::ApproveSelected);
+    async fn on_up(&mut self) {
+        if self.preview_mode.is_some() {
+            self.scroll_preview_up(1);
+        } else {
+            self.previous();
+        }
     }
-}
 
-fn on_reload_key(app: &mut App) {
-    app.set_status_persistent("🔄 Reloading...".to_string());
-    app.pending_task = Some(PendingTask::Reload);
-}
-
-fn on_clear_help(app: &mut App) {
-    app.status_message = None;
-    app.status_clear_at = None;
-}
-
-fn queue_preview_if_needed(app: &mut App) {
-    if let Some(pr) = app.get_selected_pr().cloned()
-        && !app.preview_cache.contains_key(&pr.id)
-    {
-        app.set_status_persistent(format!("🔎 Loading preview for #{}...", pr.number));
-        app.pending_task = Some(PendingTask::LoadPreviewForSelected);
+    fn on_open(&mut self) {
+        self.open_url();
     }
-}
 
-fn queue_diff_if_needed(app: &mut App) {
-    if let Some(pr) = app.get_selected_pr().cloned()
-        && !app.diff_cache.contains_key(&pr.id)
-    {
-        app.set_status_persistent(format!("🔎 Loading diff for #{}...", pr.number));
-        app.pending_task = Some(PendingTask::LoadDiffForSelected);
+    fn on_merge_key(&mut self) {
+        if let Some(pr) = self.get_selected_pr() {
+            self.set_status_persistent(format!("Merging PR #{} in {}...", pr.number, pr.slug));
+            self.pending_task = Some(PendingTask::MergeSelected);
+        }
     }
-}
 
-fn queue_commits_if_needed(app: &mut App) {
-    if let Some(pr) = app.get_selected_pr().cloned()
-        && !app.commit_cache.contains_key(&pr.id)
-    {
-        app.set_status_persistent(format!("🔎 Loading commits for #{}...", pr.number));
-        app.pending_task = Some(PendingTask::LoadCommitsForSelected);
+    fn on_approve_key(&mut self) {
+        if let Some(pr) = self.get_selected_pr() {
+            self.set_status_persistent(format!("Approving PR #{} in {}...", pr.number, pr.slug));
+            self.pending_task = Some(PendingTask::ApproveSelected);
+        }
     }
-}
 
-fn on_right(app: &mut App) {
-    // Right: closed -> Body -> Diff -> Commits
-    if !app.preview_open {
-        app.preview_open = true;
-        app.preview_mode = PreviewMode::Body;
-        app.preview_scroll = 0;
-        queue_preview_if_needed(app);
-    } else {
-        match app.preview_mode {
-            PreviewMode::Body => {
-                app.preview_mode = PreviewMode::Diff;
-                app.preview_scroll = 0;
-                queue_diff_if_needed(app);
+    fn on_reload_key(&mut self) {
+        self.set_status_persistent("🔄 Reloading...".to_string());
+        self.pending_task = Some(PendingTask::Reload);
+    }
+
+    fn on_clear_help(&mut self) {
+        self.status_message = None;
+        self.status_clear_at = None;
+    }
+
+    fn queue_mode_if_needed(&mut self, mode: PreviewMode) {
+        if let Some(pr) = self.get_selected_pr().cloned() {
+            let needs_load = self.cache.get(&(mode, pr.id.clone())).is_none();
+            let pending = match mode {
+                PreviewMode::Body => PendingTask::LoadPreviewForSelected,
+                PreviewMode::Diff => PendingTask::LoadDiffForSelected,
+                PreviewMode::Commits => PendingTask::LoadCommitsForSelected,
+            };
+            if needs_load {
+                self.set_status_persistent(format!("🔎 Loading {} for #{}...", mode, pr.number));
+                self.pending_task = Some(pending);
             }
-            PreviewMode::Diff => {
-                app.preview_mode = PreviewMode::Commits;
-                app.preview_scroll = 0;
-                queue_commits_if_needed(app);
+        }
+    }
+
+    fn on_right(&mut self) {
+        // Right: closed -> Body -> Diff -> Commits
+        self.preview_scroll = 0;
+        match self.preview_mode {
+            None => {
+                self.preview_mode = Some(PreviewMode::Body);
+                self.queue_mode_if_needed(PreviewMode::Body);
             }
-            PreviewMode::Commits => {}
+            Some(PreviewMode::Body) => {
+                self.preview_mode = Some(PreviewMode::Diff);
+                self.queue_mode_if_needed(PreviewMode::Diff);
+            }
+            Some(PreviewMode::Diff) => {
+                self.preview_mode = Some(PreviewMode::Commits);
+                self.queue_mode_if_needed(PreviewMode::Commits);
+            }
+            Some(PreviewMode::Commits) => {}
         }
     }
-}
 
-fn on_left(app: &mut App) {
-    // Left: Commits -> Diff -> Body -> Close
-    if !app.preview_open {
-        return;
-    }
-    match app.preview_mode {
-        PreviewMode::Commits => {
-            app.preview_mode = PreviewMode::Diff;
-            app.preview_scroll = 0;
-            queue_diff_if_needed(app);
+    fn on_left(&mut self) {
+        // Left: Commits -> Diff -> Body -> Close
+        self.preview_scroll = 0;
+        match self.preview_mode {
+            Some(PreviewMode::Commits) => {
+                self.preview_mode = Some(PreviewMode::Diff);
+                self.queue_mode_if_needed(PreviewMode::Diff);
+            }
+            Some(PreviewMode::Diff) => {
+                self.preview_mode = Some(PreviewMode::Body);
+                self.queue_mode_if_needed(PreviewMode::Body);
+            }
+            Some(PreviewMode::Body) => self.preview_mode = None,
+            None => {}
         }
-        PreviewMode::Diff => {
-            app.preview_mode = PreviewMode::Body;
-            app.preview_scroll = 0;
-            queue_preview_if_needed(app);
-        }
-        PreviewMode::Body => app.preview_open = false,
-    }
-}
-
-fn handle_mouse(app: &mut App, kind: MouseEventKind) {
-    match kind {
-        MouseEventKind::ScrollDown => app.scroll_preview_down(3),
-        MouseEventKind::ScrollUp => app.scroll_preview_up(3),
-        _ => {}
     }
 }
 
@@ -1416,8 +1322,8 @@ async fn run_app(
 
         if event::poll(std::time::Duration::from_millis(100))? {
             match event::read()? {
-                Event::Key(key) => handle_key(app, key.code).await,
-                Event::Mouse(m) => handle_mouse(app, m.kind),
+                Event::Key(key) => app.handle_key(key.code).await,
+                Event::Mouse(m) => app.handle_mouse(m.kind),
                 _ => {}
             }
         }

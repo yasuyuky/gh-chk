@@ -962,9 +962,10 @@ fn build_help_text(app: &App) -> String {
         } else {
             "↑/↓:navigate"
         };
-        app.preview_mode
-            .map(|mode| format!("{} • {} • mode:{}", base, nav, mode))
-            .unwrap_or_else(|| format!("{} • {}", base, nav))
+        app.preview_mode.map_or_else(
+            || format!("{} • {}", base, nav),
+            |mode| format!("{} • {} • mode:{}", base, nav, mode),
+        )
     }
 }
 

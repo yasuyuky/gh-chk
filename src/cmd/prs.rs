@@ -162,7 +162,7 @@ pub enum ReviewDecision {
 }
 
 impl ReviewDecision {
-    fn to_label(&self) -> &'static str {
+    pub fn to_label(&self) -> &'static str {
         match self {
             Self::Approved => "approved",
             Self::ChangesRequested => "changes requested",

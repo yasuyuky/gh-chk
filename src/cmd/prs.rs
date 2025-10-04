@@ -26,11 +26,18 @@ nestruct::nest! {
         name: String,
         pull_requests: {
             nodes: [{
+                repository: {
+                    name: String,
+                    owner: {
+                        login: String,
+                    }
+                },
                 id: String,
                 number: usize,
                 title: String,
                 url: String,
                 created_at: String,
+                body_text: String,
                 merge_state_status: crate::cmd::prs::MergeStateStatus,
                 review_decision: Option<crate::cmd::prs::ReviewDecision>,
                 review_requests: {

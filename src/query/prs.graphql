@@ -5,6 +5,7 @@ fragment Prs on PullRequestConnection {
     title
     url
     createdAt
+    bodyText
     mergeStateStatus
     reviewDecision
     reviewRequests(first: 10) {

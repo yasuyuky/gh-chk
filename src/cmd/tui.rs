@@ -110,108 +110,27 @@ enum SlugSpec {
     Repo { owner: String, name: String },
 }
 
-#[derive(Debug, Clone)]
-struct PrData {
-    pub id: String,
-    pub number: usize,
-    pub title: String,
-    pub url: String,
-    pub created_at: String,
-    pub slug: String,
-    pub merge_state_status: MergeStateStatus,
-    pub review_decision: Option<ReviewDecision>,
-    pub reviewers: Vec<String>,
-}
-
-impl PrData {
-    pub fn display_line(&self) -> String {
-        let review_str = match &self.review_decision {
-            Some(ReviewDecision::Approved) => " [approved]".to_string(),
-            Some(ReviewDecision::ChangesRequested) => " [changes requested]".to_string(),
-            Some(ReviewDecision::ReviewRequired) => " [review required]".to_string(),
-            None => String::default(),
-        };
-        let reviewers_str = if self.reviewers.is_empty() {
-            String::default()
-        } else {
-            format!(" 👥 {}", self.reviewers.join(", "))
-        };
-        let created_date = self
-            .created_at
-            .split('T')
-            .next()
-            .unwrap_or(&self.created_at)
-            .to_string();
-        format!(
-            "#{} {} {} {}{}{} ({})",
-            self.number,
-            self.merge_state_status.to_emoji(),
-            self.slug,
-            self.title,
-            review_str,
-            reviewers_str,
-            created_date
-        )
-    }
-
-    pub fn get_color(&self) -> Color {
-        self.merge_state_status.to_color()
-    }
-}
-
 fn split_slug(slug: &str) -> Option<(String, String)> {
     slug.split_once('/')
         .map(|(o, n)| (o.to_string(), n.to_string()))
 }
 
-fn make_pr_data(owner: &str, repo: &str, pr: &PrNode) -> PrData {
-    PrData {
-        id: pr.id.clone(),
-        number: pr.number,
-        title: pr.title.clone(),
-        url: pr.url.clone(),
-        created_at: pr.created_at.clone(),
-        slug: format!("{}/{}", owner, repo),
-        merge_state_status: pr.merge_state_status.clone(),
-        review_decision: pr.review_decision.clone(),
-        reviewers: extract_reviewer_names(&pr.review_requests),
-    }
-}
-
-async fn fetch_owner_prs(owner: &str) -> surf::Result<Vec<PrData>> {
+async fn fetch_owner_prs(owner: &str) -> surf::Result<Vec<PrNode>> {
     let v = json!({ "login": owner });
     let q = json!({ "query": include_str!("../query/prs.graphql"), "operationName": "GetOwnerPrs", "variables": v });
-    let res = graphql::query::<crate::cmd::prs::res::Res>(&q).await?;
-
-    let prs = res
-        .data
-        .repository_owner
-        .repositories
-        .nodes
-        .iter()
-        .flat_map(|repo| {
-            repo.pull_requests
-                .nodes
-                .iter()
-                .map(move |pr| make_pr_data(owner, &repo.name, pr))
-        })
-        .collect();
+    let res = graphql::query::<prs::res::Res>(&q).await?;
+    let mut prs = Vec::new();
+    for repo in res.data.repository_owner.repositories.nodes {
+        prs.extend(repo.pull_requests.nodes);
+    }
     Ok(prs)
 }
 
-async fn fetch_repo_prs(owner: &str, name: &str) -> surf::Result<Vec<PrData>> {
+async fn fetch_repo_prs(owner: &str, name: &str) -> surf::Result<Vec<PrNode>> {
     let v = json!({ "login": owner, "name": name });
     let q = json!({ "query": include_str!("../query/prs.graphql"), "operationName": "GetRepoPrs", "variables": v });
-    let res = graphql::query::<crate::cmd::prs::repo_res::RepoRes>(&q).await?;
-    Ok(res
-        .data
-        .repository_owner
-        .repository
-        .pull_requests
-        .nodes
-        .iter()
-        .map(|pr| make_pr_data(owner, name, pr))
-        .collect())
+    let res = graphql::query::<prs::repo_res::RepoRes>(&q).await?;
+    Ok(res.data.repository_owner.repository.pull_requests.nodes)
 }
 
 async fn approve_pr(pr_id: &str) -> surf::Result<()> {
@@ -250,7 +169,7 @@ enum PendingTask {
 }
 
 struct App {
-    prs: Vec<PrData>,
+    prs: Vec<PrNode>,
     list_state: ListState,
     should_quit: bool,
     status_message: Option<String>,
@@ -267,7 +186,7 @@ struct App {
 }
 
 impl App {
-    fn new(prs: Vec<PrData>, specs: Vec<SlugSpec>) -> App {
+    fn new(prs: Vec<PrNode>, specs: Vec<SlugSpec>) -> App {
         let mut list_state = ListState::default();
         if !prs.is_empty() {
             list_state.select(Some(0));
@@ -318,7 +237,7 @@ impl App {
         self.preview_scroll = 0;
     }
 
-    fn get_selected_pr(&self) -> Option<&PrData> {
+    fn get_selected_pr(&self) -> Option<&PrNode> {
         self.list_state.selected().and_then(|i| self.prs.get(i))
     }
 
@@ -327,10 +246,14 @@ impl App {
             && let Some(pr) = self.prs.get(selected_index).cloned()
         {
             if pr.merge_state_status == MergeStateStatus::Clean {
-                self.set_status_persistent(format!("Merging PR #{} in {}...", pr.number, pr.slug));
+                self.set_status_persistent(format!(
+                    "Merging PR #{} in {}...",
+                    pr.number,
+                    pr.slug()
+                ));
                 match crate::cmd::prs::merge_pr(&pr.id).await {
                     Ok(_) => {
-                        self.set_status(format!("✅ Merged PR #{} in {}", pr.number, pr.slug));
+                        self.set_status(format!("✅ Merged PR #{} in {}", pr.number, pr.slug()));
                         self.prs.remove(selected_index);
                         if self.prs.is_empty() {
                             self.list_state.select(None);
@@ -345,14 +268,17 @@ impl App {
                     Err(e) => {
                         self.set_status(format!(
                             "❌ Failed to merge PR #{} in {}: {}",
-                            pr.number, pr.slug, e
+                            pr.number,
+                            pr.slug(),
+                            e
                         ));
                     }
                 }
             } else {
                 self.set_status(format!(
                     "Cannot merge PR #{} in {}: not in clean state",
-                    pr.number, pr.slug
+                    pr.number,
+                    pr.slug()
                 ));
             }
         }
@@ -361,19 +287,22 @@ impl App {
         if let Some(selected_index) = self.list_state.selected()
             && let Some(pr) = self.prs.get(selected_index).cloned()
         {
-            self.set_status_persistent(format!("Approving PR #{} in {}...", pr.number, pr.slug));
+            self.set_status_persistent(format!("Approving PR #{} in {}...", pr.number, pr.slug()));
             match approve_pr(&pr.id).await {
                 Ok(_) => {
                     self.set_status_persistent(format!(
                         "✅ Approved PR #{} in {}. Reloading...",
-                        pr.number, pr.slug
+                        pr.number,
+                        pr.slug()
                     ));
                     self.pending_task = Some(PendingTask::Reload);
                 }
                 Err(e) => {
                     self.set_status(format!(
                         "❌ Failed to approve PR #{} in {}: {}",
-                        pr.number, pr.slug, e
+                        pr.number,
+                        pr.slug(),
+                        e
                     ));
                 }
             }
@@ -388,26 +317,19 @@ impl App {
         }
     }
 
-    async fn load_preview_for(&mut self, pr: &PrData) -> surf::Result<()> {
+    async fn load_preview_for(&mut self, pr: &PrNode) -> surf::Result<()> {
         self.set_status_persistent(format!("🔎 Loading preview for #{}...", pr.number));
-        let (owner, name) = match split_slug(&pr.slug) {
-            Some(x) => x,
-            None => return Ok(()),
-        };
-        let body = fetch_pr_body(&owner, &name, pr.number).await?;
+        let body = pr.body_text.clone();
         let text = prettify_pr_preview(&pr.title, &pr.url, &body);
         self.cache.insert((PreviewMode::Body, pr.id.clone()), text);
         self.set_status(format!("✅ Loaded preview for #{}", pr.number));
         Ok(())
     }
 
-    async fn load_diff_for(&mut self, pr: &PrData) -> surf::Result<()> {
+    async fn load_diff_for(&mut self, pr: &PrNode) -> surf::Result<()> {
         self.set_status_persistent(format!("🔎 Loading diff for #{}...", pr.number));
-        let (owner, name) = match split_slug(&pr.slug) {
-            Some(x) => x,
-            None => return Ok(()),
-        };
-        let files = fetch_pr_files(&owner, &name, pr.number).await?;
+        let files =
+            fetch_pr_files(&pr.repository.owner.login, &pr.repository.name, pr.number).await?;
         let mut out = String::default();
         for f in files {
             out.push_str(&format!(
@@ -434,13 +356,10 @@ impl App {
         Ok(())
     }
 
-    async fn load_commits_for(&mut self, pr: &PrData) -> surf::Result<()> {
+    async fn load_commits_for(&mut self, pr: &PrNode) -> surf::Result<()> {
         self.set_status_persistent(format!("🔎 Loading commits for #{}...", pr.number));
-        let (owner, name) = match split_slug(&pr.slug) {
-            Some(x) => x,
-            None => return Ok(()),
-        };
-        let commits = fetch_pr_commits(&owner, &name, pr.number).await?;
+        let commits =
+            fetch_pr_commits(&pr.repository.owner.login, &pr.repository.name, pr.number).await?;
         let entries = build_commit_graph_entries(&commits);
         let text = make_commit_graph_text(&entries); // pre-render to check for emptiness
         self.cache
@@ -477,20 +396,20 @@ impl App {
         }
     }
 
-    async fn fetch_all_prs(&self) -> (Vec<PrData>, Option<String>) {
-        let mut new_list: Vec<PrData> = Vec::new();
+    async fn fetch_all_prs(&self) -> (Vec<PrNode>, Option<String>) {
+        let mut new_list: Vec<PrNode> = Vec::new();
         let mut any_err: Option<String> = None;
         for spec in self.specs.clone() {
             match spec {
                 SlugSpec::Owner(owner) => match fetch_owner_prs(&owner).await {
-                    Ok(mut prs) => new_list.append(&mut prs),
+                    Ok(mut res) => new_list.append(&mut res),
                     Err(e) => {
                         any_err = Some(format!("Failed to fetch {}: {}", owner, e));
                         break;
                     }
                 },
                 SlugSpec::Repo { owner, name } => match fetch_repo_prs(&owner, &name).await {
-                    Ok(mut prs) => new_list.append(&mut prs),
+                    Ok(mut res) => new_list.append(&mut res),
                     Err(e) => {
                         any_err = Some(format!("Failed to fetch {}/{}: {}", owner, name, e));
                         break;
@@ -501,7 +420,7 @@ impl App {
         (new_list, any_err)
     }
 
-    fn apply_pr_list_and_restore_selection(&mut self, new_list: Vec<PrData>) {
+    fn apply_pr_list_and_restore_selection(&mut self, new_list: Vec<PrNode>) {
         let sel = self.list_state.selected().unwrap_or(0);
         self.prs = new_list;
         if self.prs.is_empty() {
@@ -683,7 +602,7 @@ fn make_preview_block_title(app: &App, area_width: u16, total_lines: u16) -> Str
         // Reserve a bit for borders/padding
         let w = area_width.saturating_sub(4) as usize;
         // Base info
-        let base = format!("#{} {} • {}", pr.number, pr.slug, mode);
+        let base = format!("#{} {} • {}", pr.number, pr.slug(), mode);
         // Try to include a shortened PR title if space allows
         let mut title = base.clone();
         if w > base.len() + 3 {
@@ -918,7 +837,7 @@ fn build_pr_list(app: &App) -> List<'static> {
             let line = pr.display_line();
             ListItem::new(Line::from(Span::styled(
                 line,
-                Style::default().fg(pr.get_color()),
+                Style::default().fg(pr.merge_state_status.to_color()),
             )))
         })
         .collect();
@@ -1201,7 +1120,7 @@ fn dedup_branches(branches: &mut Vec<String>) {
     branches.retain(|sha| seen.insert(sha.clone()));
 }
 
-fn run_tui(prs: Vec<PrData>, specs: Vec<SlugSpec>) -> Result<(), Box<dyn std::error::Error>> {
+fn run_tui(prs: Vec<PrNode>, specs: Vec<SlugSpec>) -> Result<(), Box<dyn std::error::Error>> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
@@ -1276,14 +1195,14 @@ impl App {
 
     fn on_merge_key(&mut self) {
         if let Some(pr) = self.get_selected_pr() {
-            self.set_status_persistent(format!("Merging PR #{} in {}...", pr.number, pr.slug));
+            self.set_status_persistent(format!("Merging PR #{} in {}...", pr.number, pr.slug()));
             self.pending_task = Some(PendingTask::MergeSelected);
         }
     }
 
     fn on_approve_key(&mut self) {
         if let Some(pr) = self.get_selected_pr() {
-            self.set_status_persistent(format!("Approving PR #{} in {}...", pr.number, pr.slug));
+            self.set_status_persistent(format!("Approving PR #{} in {}...", pr.number, pr.slug()));
             self.pending_task = Some(PendingTask::ApproveSelected);
         }
     }

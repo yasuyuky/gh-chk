@@ -110,11 +110,6 @@ enum SlugSpec {
     Repo { owner: String, name: String },
 }
 
-fn split_slug(slug: &str) -> Option<(String, String)> {
-    slug.split_once('/')
-        .map(|(o, n)| (o.to_string(), n.to_string()))
-}
-
 async fn fetch_owner_prs(owner: &str) -> surf::Result<Vec<PrNode>> {
     let v = json!({ "login": owner });
     let q = json!({ "query": include_str!("../query/prs.graphql"), "operationName": "GetOwnerPrs", "variables": v });

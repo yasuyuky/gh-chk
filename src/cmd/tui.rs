@@ -28,6 +28,9 @@ impl PrNode {
     fn slug(&self) -> String {
         format!("{}/{}", self.repository.owner.login, self.repository.name)
     }
+    fn numslug(&self) -> String {
+        format!("#{} in {}", self.number, self.slug())
+    }
     fn display_line(&self) -> String {
         let review_str = match &self.review_decision {
             Some(ReviewDecision::Approved) => " [approved]".to_string(),
@@ -241,14 +244,10 @@ impl App {
             && let Some(pr) = self.prs.get(selected_index).cloned()
         {
             if pr.merge_state_status == MergeStateStatus::Clean {
-                self.set_status_persistent(format!(
-                    "Merging PR #{} in {}...",
-                    pr.number,
-                    pr.slug()
-                ));
+                self.set_status_persistent(format!("Merging PR {}...", pr.numslug()));
                 match crate::cmd::prs::merge_pr(&pr.id).await {
                     Ok(_) => {
-                        self.set_status(format!("✅ Merged PR #{} in {}", pr.number, pr.slug()));
+                        self.set_status(format!("✅ Merged PR {}.", pr.numslug()));
                         self.prs.remove(selected_index);
                         if self.prs.is_empty() {
                             self.list_state.select(None);
@@ -261,19 +260,13 @@ impl App {
                         }
                     }
                     Err(e) => {
-                        self.set_status(format!(
-                            "❌ Failed to merge PR #{} in {}: {}",
-                            pr.number,
-                            pr.slug(),
-                            e
-                        ));
+                        self.set_status(format!("❌ Failed to merge PR {}: {}", pr.numslug(), e));
                     }
                 }
             } else {
                 self.set_status(format!(
-                    "Cannot merge PR #{} in {}: not in clean state",
-                    pr.number,
-                    pr.slug()
+                    "Cannot merge PR {}: not in clean state",
+                    pr.numslug()
                 ));
             }
         }
@@ -282,23 +275,17 @@ impl App {
         if let Some(selected_index) = self.list_state.selected()
             && let Some(pr) = self.prs.get(selected_index).cloned()
         {
-            self.set_status_persistent(format!("Approving PR #{} in {}...", pr.number, pr.slug()));
+            self.set_status_persistent(format!("Approving PR {}...", pr.numslug()));
             match approve_pr(&pr.id).await {
                 Ok(_) => {
                     self.set_status_persistent(format!(
-                        "✅ Approved PR #{} in {}. Reloading...",
-                        pr.number,
-                        pr.slug()
+                        "✅ Approved PR {}. Reloading...",
+                        pr.numslug()
                     ));
                     self.pending_task = Some(PendingTask::Reload);
                 }
                 Err(e) => {
-                    self.set_status(format!(
-                        "❌ Failed to approve PR #{} in {}: {}",
-                        pr.number,
-                        pr.slug(),
-                        e
-                    ));
+                    self.set_status(format!("❌ Failed to approve PR {}: {}", pr.numslug(), e));
                 }
             }
         }
@@ -1183,14 +1170,14 @@ impl App {
 
     fn on_merge_key(&mut self) {
         if let Some(pr) = self.get_selected_pr() {
-            self.set_status_persistent(format!("Merging PR #{} in {}...", pr.number, pr.slug()));
+            self.set_status_persistent(format!("Merging PR {}...", pr.numslug()));
             self.pending_task = Some(PendingTask::MergeSelected);
         }
     }
 
     fn on_approve_key(&mut self) {
         if let Some(pr) = self.get_selected_pr() {
-            self.set_status_persistent(format!("Approving PR #{} in {}...", pr.number, pr.slug()));
+            self.set_status_persistent(format!("Approving PR {}...", pr.numslug()));
             self.pending_task = Some(PendingTask::ApproveSelected);
         }
     }

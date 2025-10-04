@@ -20,7 +20,7 @@ impl std::fmt::Display for RequestedReviewer {
 }
 
 nestruct::nest! {
-    #[derive(serde::Serialize, serde::Deserialize, Debug)]
+    #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
     #[serde(rename_all = "camelCase")]
     Repository {
         name: String,

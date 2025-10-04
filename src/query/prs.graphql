@@ -1,32 +1,48 @@
-query ($login: String!) {
+fragment Prs on PullRequestConnection {
+  nodes {
+    id
+    number
+    title
+    url
+    createdAt
+    mergeStateStatus
+    reviewDecision
+    reviewRequests(first: 10) {
+      nodes {
+        requestedReviewer {
+          ... on User {
+            login
+          }
+          ... on Team {
+            name
+          }
+        }
+      }
+    }
+  }
+}
+
+query GetOwnerPrs($login: String!) {
   repositoryOwner(login: $login) {
     login
     repositories(first: 100, affiliations: OWNER) {
       nodes {
         name
         pullRequests(first: 100, states: OPEN) {
-          nodes {
-            id
-            number
-            title
-            url
-            createdAt
-            mergeStateStatus
-            reviewDecision
-            reviewRequests(first: 10) {
-              nodes {
-                requestedReviewer {
-                  ... on User {
-                    login
-                  }
-                  ... on Team {
-                    name
-                  }
-                }
-              }
-            }
-          }
+          ...Prs
         }
+      }
+    }
+  }
+}
+
+query GetRepoPrs($login: String!, $name: String!) {
+  repositoryOwner(login: $login) {
+    login
+    repository(name: $name) {
+      name
+      pullRequests(first: 100, states: OPEN) {
+        ...Prs
       }
     }
   }

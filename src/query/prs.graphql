@@ -1,5 +1,11 @@
 fragment Prs on PullRequestConnection {
   nodes {
+    repository {
+      name
+      owner {
+        login
+      }
+    }
     id
     number
     title

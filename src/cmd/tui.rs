@@ -960,13 +960,6 @@ impl App {
     }
 }
 
-async fn fetch_pr_body(owner: &str, name: &str, number: usize) -> surf::Result<String> {
-    let vars = json!({ "owner": owner, "name": name, "number": number as i64 });
-    let q = json!({ "query": include_str!("../query/pr.body.graphql"), "variables": vars });
-    let res = graphql::query::<pr_body_res::PrBodyRes>(&q).await?;
-    Ok(res.data.repository.pull_request.body_text)
-}
-
 #[derive(Deserialize)]
 struct PrFile {
     filename: String,

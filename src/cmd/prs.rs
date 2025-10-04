@@ -202,7 +202,7 @@ pub async fn check(slugs: Vec<String>, merge: bool) -> surf::Result<()> {
 
 async fn check_owner(owner: &str, merge: bool) -> surf::Result<()> {
     let v = json!({ "login": owner });
-    let q = json!({ "query": include_str!("../query/prs.graphql"), "variables": v });
+    let q = json!({ "query": include_str!("../query/prs.graphql"), "operationName": "GetOwnerPrs", "variables": v });
     let res = crate::graphql::query::<res::Res>(&q).await?;
     match crate::config::FORMAT.get() {
         Some(&crate::config::Format::Json) => println!("{}", serde_json::to_string_pretty(&res)?),
@@ -234,7 +234,7 @@ async fn print_owner_text(res: &res::Res, merge: bool) -> surf::Result<()> {
 
 async fn check_repo(owner: &str, name: &str, merge: bool) -> surf::Result<()> {
     let v = json!({ "login": owner, "name": name });
-    let q = json!({ "query": include_str!("../query/prs.repo.graphql"), "variables": v });
+    let q = json!({ "query": include_str!("../query/prs.graphql"), "operationName": "GetRepoPrs", "variables": v });
     let res = crate::graphql::query::<repo_res::RepoRes>(&q).await?;
     match crate::config::FORMAT.get() {
         Some(&crate::config::Format::Json) => println!("{}", serde_json::to_string_pretty(&res)?),

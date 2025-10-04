@@ -142,7 +142,7 @@ fn make_pr_data(owner: &str, repo: &str, pr: &PrNode) -> PrData {
 
 async fn fetch_owner_prs(owner: &str) -> surf::Result<Vec<PrData>> {
     let v = json!({ "login": owner });
-    let q = json!({ "query": include_str!("../query/prs.graphql"), "variables": v });
+    let q = json!({ "query": include_str!("../query/prs.graphql"), "operationName": "GetOwnerPrs", "variables": v });
     let res = graphql::query::<crate::cmd::prs::res::Res>(&q).await?;
 
     let prs = res
@@ -163,7 +163,7 @@ async fn fetch_owner_prs(owner: &str) -> surf::Result<Vec<PrData>> {
 
 async fn fetch_repo_prs(owner: &str, name: &str) -> surf::Result<Vec<PrData>> {
     let v = json!({ "login": owner, "name": name });
-    let q = json!({ "query": include_str!("../query/prs.repo.graphql"), "variables": v });
+    let q = json!({ "query": include_str!("../query/prs.graphql"), "operationName": "GetRepoPrs", "variables": v });
     let res = graphql::query::<crate::cmd::prs::repo_res::RepoRes>(&q).await?;
     Ok(res
         .data

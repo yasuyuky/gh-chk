@@ -49,6 +49,7 @@ nestruct::nest! {
     Res {
         data: {
             repository_owner: {
+                login: String,
                 repositories: {
                     nodes: [ crate::cmd::prs::repository::Repository ]
                 }
@@ -63,6 +64,7 @@ nestruct::nest! {
     RepoRes {
         data: {
             repository_owner: {
+                login: String,
                 repository: crate::cmd::prs::repository::Repository
             }
         }

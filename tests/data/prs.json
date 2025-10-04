@@ -1,6 +1,7 @@
 {
   "data": {
     "repositoryOwner": {
+      "login": "owner1",
       "repositories": {
         "nodes": [
           {

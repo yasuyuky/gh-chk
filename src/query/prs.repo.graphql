@@ -1,5 +1,6 @@
 query ($login: String!, $name: String!) {
   repositoryOwner(login: $login) {
+    login
     repository(name: $name) {
       name
       pullRequests(first: 100, states: OPEN) {

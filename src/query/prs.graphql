@@ -1,5 +1,6 @@
 query ($login: String!) {
   repositoryOwner(login: $login) {
+    login
     repositories(first: 100, affiliations: OWNER) {
       nodes {
         name

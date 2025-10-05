@@ -425,10 +425,9 @@ impl App {
     }
 
     async fn refresh_preview_if_visible(&mut self) {
-        let Some(mode) = self.preview.mode else {
-            return;
-        };
-        if let Some(pr) = self.get_selected_pr().cloned() {
+        if let Some(mode) = self.preview.mode
+            && let Some(pr) = self.get_selected_pr().cloned()
+        {
             match mode {
                 PreviewMode::Body => {
                     let _ = self.load_preview_for(&pr).await;

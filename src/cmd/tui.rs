@@ -129,6 +129,18 @@ impl From<&str> for SlugSpec {
     }
 }
 
+async fn fetch_prs(specs: &Vec<SlugSpec>) -> surf::Result<Vec<PrNode>> {
+    let mut all_prs: Vec<PrNode> = Vec::new();
+    for spec in specs {
+        match spec {
+            SlugSpec::Owner(owner) => all_prs.append(&mut fetch_owner_prs(&owner).await?),
+            SlugSpec::Repo { owner, name } => {
+                all_prs.append(&mut fetch_repo_prs(&owner, &name).await?)
+            }
+        }
+    }
+    Ok(all_prs)
+}
 
 async fn fetch_owner_prs(owner: &str) -> surf::Result<Vec<PrNode>> {
     let v = json!({ "login": owner });

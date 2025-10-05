@@ -393,11 +393,13 @@ impl App {
 
     async fn reload(&mut self) {
         self.set_status_persistent("🔄 Reloading...".to_string());
-        let (new_list, any_err) = self.fetch_all_prs().await;
-        if let Some(err) = any_err {
-            self.set_status(format!("❌ Reload error: {}", err));
-            return;
-        }
+        let new_list = match fetch_prs(&self.specs).await {
+            Ok(prs) => prs,
+            Err(e) => {
+                self.set_status(format!("❌ Reload error: {}", e));
+                return;
+            }
+        };
 
         self.apply_pr_list_and_restore_selection(new_list);
         self.refresh_preview_if_visible().await;
@@ -406,30 +408,6 @@ impl App {
         if let Err(e) = self.load_contributions().await {
             self.set_status(format!("❌ Contrib load error: {}", e));
         }
-    }
-
-    async fn fetch_all_prs(&self) -> (Vec<PrNode>, Option<String>) {
-        let mut new_list: Vec<PrNode> = Vec::new();
-        let mut any_err: Option<String> = None;
-        for spec in self.specs.clone() {
-            match spec {
-                SlugSpec::Owner(owner) => match fetch_owner_prs(&owner).await {
-                    Ok(mut res) => new_list.append(&mut res),
-                    Err(e) => {
-                        any_err = Some(format!("Failed to fetch {}: {}", owner, e));
-                        break;
-                    }
-                },
-                SlugSpec::Repo { owner, name } => match fetch_repo_prs(&owner, &name).await {
-                    Ok(mut res) => new_list.append(&mut res),
-                    Err(e) => {
-                        any_err = Some(format!("Failed to fetch {}/{}: {}", owner, name, e));
-                        break;
-                    }
-                },
-            }
-        }
-        (new_list, any_err)
     }
 
     fn apply_pr_list_and_restore_selection(&mut self, new_list: Vec<PrNode>) {

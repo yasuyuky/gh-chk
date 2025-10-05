@@ -68,7 +68,7 @@ enum PendingTask {
     MergeSelected,
     ApproveSelected,
     Reload,
-    LoadPreviewForSelected,
+    LoadBodyForSelected,
     LoadDiffForSelected,
     LoadCommitsForSelected,
 }
@@ -184,12 +184,12 @@ impl App {
         }
     }
 
-    async fn load_preview_for(&mut self, pr: &PrNode) -> surf::Result<()> {
-        self.set_status_persistent(format!("🔎 Loading preview for #{}...", pr.number));
+    async fn load_body_for(&mut self, pr: &PrNode) -> surf::Result<()> {
+        self.set_status_persistent(format!("🔎 Loading body for #{}...", pr.number));
         let body = pr.body_text.clone();
         let text = prettify_pr_preview(&pr.title, &pr.url, &body);
         self.cache.insert((PreviewMode::Body, pr.id.clone()), text);
-        self.set_status(format!("✅ Loaded preview for #{}", pr.number));
+        self.set_status(format!("✅ Loaded body for #{}", pr.number));
         Ok(())
     }
 
@@ -257,7 +257,7 @@ impl App {
         };
 
         self.apply_pr_list_and_restore_selection(new_list);
-        self.refresh_preview_if_visible().await;
+        self.refresh_preview().await;
         self.set_status(format!("✅ Reloaded. {} PRs.", self.prs.len()));
 
         if let Err(e) = self.load_contributions().await {
@@ -276,13 +276,13 @@ impl App {
         }
     }
 
-    async fn refresh_preview_if_visible(&mut self) {
+    async fn refresh_preview(&mut self) {
         if let Some(mode) = self.preview.mode
             && let Some(pr) = self.get_selected_pr().cloned()
         {
             match mode {
                 PreviewMode::Body => {
-                    let _ = self.load_preview_for(&pr).await;
+                    let _ = self.load_body_for(&pr).await;
                 }
                 PreviewMode::Diff => {
                     let _ = self.load_diff_for(&pr).await;
@@ -1047,7 +1047,7 @@ impl App {
         if let Some(pr) = self.get_selected_pr().cloned() {
             let needs_load = self.cache.get(&(mode, pr.id.clone())).is_none();
             let pending = match mode {
-                PreviewMode::Body => PendingTask::LoadPreviewForSelected,
+                PreviewMode::Body => PendingTask::LoadBodyForSelected,
                 PreviewMode::Diff => PendingTask::LoadDiffForSelected,
                 PreviewMode::Commits => PendingTask::LoadCommitsForSelected,
             };
@@ -1119,9 +1119,9 @@ async fn run_app(
                 PendingTask::MergeSelected => app.merge_selected().await,
                 PendingTask::ApproveSelected => app.approve_selected().await,
                 PendingTask::Reload => app.reload().await,
-                PendingTask::LoadPreviewForSelected => {
+                PendingTask::LoadBodyForSelected => {
                     if let Some(pr) = app.get_selected_pr().cloned() {
-                        let _ = app.load_preview_for(&pr).await;
+                        let _ = app.load_body_for(&pr).await;
                     }
                 }
                 PendingTask::LoadDiffForSelected => {

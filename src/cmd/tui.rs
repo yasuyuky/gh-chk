@@ -113,6 +113,23 @@ enum SlugSpec {
     Repo { owner: String, name: String },
 }
 
+impl From<&str> for SlugSpec {
+    fn from(s: &str) -> Self {
+        let parts: Vec<&str> = s.split('/').collect();
+        if parts.len() == 1 {
+            SlugSpec::Owner(parts[0].to_string())
+        } else if parts.len() == 2 {
+            SlugSpec::Repo {
+                owner: parts[0].to_string(),
+                name: parts[1].to_string(),
+            }
+        } else {
+            panic!("Invalid slug spec: {}", s);
+        }
+    }
+}
+
+
 async fn fetch_owner_prs(owner: &str) -> surf::Result<Vec<PrNode>> {
     let v = json!({ "login": owner });
     let q = json!({ "query": include_str!("../query/prs.graphql"), "operationName": "GetOwnerPrs", "variables": v });

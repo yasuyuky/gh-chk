@@ -1,5 +1,5 @@
-use crate::cmd::prs::{self, MergeStateStatus};
-use crate::{graphql, rest, slug::Slug};
+use crate::cmd::prs::{self, MergeStateStatus, approve_pr, fetch_prs};
+use crate::{rest, slug::Slug};
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, MouseEventKind},
     execute,
@@ -15,7 +15,6 @@ use ratatui::{
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap},
 };
 use serde::Deserialize;
-use serde_json::json;
 use std::collections::{HashMap, HashSet};
 use std::io;
 use std::rc::Rc;
@@ -37,42 +36,6 @@ impl MergeStateStatus {
             Self::Unstable => Color::Yellow,
         }
     }
-}
-
-async fn fetch_prs(specs: &Vec<Slug>) -> surf::Result<Vec<PrNode>> {
-    let mut all_prs: Vec<PrNode> = Vec::new();
-    for spec in specs {
-        match spec {
-            Slug::Owner(owner) => all_prs.append(&mut fetch_owner_prs(&owner).await?),
-            Slug::Repo { owner, name } => all_prs.append(&mut fetch_repo_prs(&owner, &name).await?),
-        }
-    }
-    Ok(all_prs)
-}
-
-async fn fetch_owner_prs(owner: &str) -> surf::Result<Vec<PrNode>> {
-    let v = json!({ "login": owner });
-    let q = json!({ "query": include_str!("../query/prs.graphql"), "operationName": "GetOwnerPrs", "variables": v });
-    let res = graphql::query::<prs::res::Res>(&q).await?;
-    let mut prs = Vec::new();
-    for repo in res.data.repository_owner.repositories.nodes {
-        prs.extend(repo.pull_requests.nodes);
-    }
-    Ok(prs)
-}
-
-async fn fetch_repo_prs(owner: &str, name: &str) -> surf::Result<Vec<PrNode>> {
-    let v = json!({ "login": owner, "name": name });
-    let q = json!({ "query": include_str!("../query/prs.graphql"), "operationName": "GetRepoPrs", "variables": v });
-    let res = graphql::query::<prs::repo_res::RepoRes>(&q).await?;
-    Ok(res.data.repository_owner.repository.pull_requests.nodes)
-}
-
-async fn approve_pr(pr_id: &str) -> surf::Result<()> {
-    let v = json!({ "pullRequestId": pr_id });
-    let q = json!({ "query": include_str!("../query/approve.pr.graphql"), "variables": v });
-    graphql::query::<serde_json::Value>(&q).await?;
-    Ok(())
 }
 
 #[derive(Debug, Clone, Copy, Default)]

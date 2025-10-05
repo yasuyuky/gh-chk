@@ -3,6 +3,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::fmt::Display;
 
+use crate::cmd::prs::pull_request::PullRequest;
+use crate::graphql;
+use crate::slug::Slug;
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(untagged)]
 pub enum RequestedReviewer {
@@ -319,5 +323,41 @@ async fn print_repo_text(res: &repo_res::RepoRes, merge: bool) -> surf::Result<(
         }
     }
     println!("Count of PRs: {count}");
+    Ok(())
+}
+
+pub async fn fetch_prs(specs: &Vec<Slug>) -> surf::Result<Vec<PullRequest>> {
+    let mut all_prs: Vec<PullRequest> = Vec::new();
+    for spec in specs {
+        match spec {
+            Slug::Owner(owner) => all_prs.append(&mut fetch_owner_prs(&owner).await?),
+            Slug::Repo { owner, name } => all_prs.append(&mut fetch_repo_prs(&owner, &name).await?),
+        }
+    }
+    Ok(all_prs)
+}
+
+async fn fetch_owner_prs(owner: &str) -> surf::Result<Vec<PullRequest>> {
+    let v = json!({ "login": owner });
+    let q = json!({ "query": include_str!("../query/prs.graphql"), "operationName": "GetOwnerPrs", "variables": v });
+    let res = graphql::query::<res::Res>(&q).await?;
+    let mut prs = Vec::new();
+    for repo in res.data.repository_owner.repositories.nodes {
+        prs.extend(repo.pull_requests.nodes);
+    }
+    Ok(prs)
+}
+
+async fn fetch_repo_prs(owner: &str, name: &str) -> surf::Result<Vec<PullRequest>> {
+    let v = json!({ "login": owner, "name": name });
+    let q = json!({ "query": include_str!("../query/prs.graphql"), "operationName": "GetRepoPrs", "variables": v });
+    let res = graphql::query::<repo_res::RepoRes>(&q).await?;
+    Ok(res.data.repository_owner.repository.pull_requests.nodes)
+}
+
+pub async fn approve_pr(pr_id: &str) -> surf::Result<()> {
+    let v = json!({ "pullRequestId": pr_id });
+    let q = json!({ "query": include_str!("../query/approve.pr.graphql"), "variables": v });
+    graphql::query::<serde_json::Value>(&q).await?;
     Ok(())
 }

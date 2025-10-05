@@ -22,7 +22,7 @@ use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 // Type alias for GraphQL PR node for brevity (reuse prs module types)
-type PrNode = prs::repository::pull_requests::nodes::Nodes;
+type PrNode = prs::pull_request::PullRequest;
 
 impl PrNode {
     fn slug(&self) -> String {
@@ -66,7 +66,7 @@ impl PrNode {
 }
 
 fn extract_reviewer_names(
-    review_requests: &prs::repository::pull_requests::nodes::review_requests::ReviewRequests,
+    review_requests: &prs::pull_request::review_requests::ReviewRequests,
 ) -> Vec<String> {
     review_requests
         .nodes

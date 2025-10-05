@@ -22,30 +22,36 @@ impl std::fmt::Display for RequestedReviewer {
 nestruct::nest! {
     #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
     #[serde(rename_all = "camelCase")]
+    PullRequest {
+        repository: {
+            name: String,
+            owner: {
+                login: String,
+            }
+        },
+        id: String,
+        number: usize,
+        title: String,
+        url: String,
+        created_at: String,
+        body_text: String,
+        merge_state_status: crate::cmd::prs::MergeStateStatus,
+        review_decision: crate::cmd::prs::ReviewDecision?,
+        review_requests: {
+            nodes: [{
+                requested_reviewer: crate::cmd::prs::RequestedReviewer?,
+            }]
+        }
+    }
+}
+
+nestruct::nest! {
+    #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+    #[serde(rename_all = "camelCase")]
     Repository {
         name: String,
         pull_requests: {
-            nodes: [{
-                repository: {
-                    name: String,
-                    owner: {
-                        login: String,
-                    }
-                },
-                id: String,
-                number: usize,
-                title: String,
-                url: String,
-                created_at: String,
-                body_text: String,
-                merge_state_status: crate::cmd::prs::MergeStateStatus,
-                review_decision: Option<crate::cmd::prs::ReviewDecision>,
-                review_requests: {
-                    nodes: [{
-                        requested_reviewer: Option<crate::cmd::prs::RequestedReviewer>,
-                    }]
-                }
-            }]
+            nodes: [ crate::cmd::prs::pull_request::PullRequest ]
         }
     }
 }
@@ -78,7 +84,7 @@ nestruct::nest! {
     }
 }
 
-impl Display for repository::pull_requests::nodes::Nodes {
+impl Display for pull_request::PullRequest {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let created_date = self
             .created_at

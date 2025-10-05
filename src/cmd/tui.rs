@@ -1,5 +1,5 @@
-use crate::cmd::prs::{self, MergeStateStatus, ReviewDecision};
-use crate::{graphql, rest};
+use crate::cmd::prs::{self, MergeStateStatus, approve_pr, fetch_prs};
+use crate::{rest, slug::Slug};
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, MouseEventKind},
     execute,
@@ -15,65 +15,13 @@ use ratatui::{
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap},
 };
 use serde::Deserialize;
-use serde_json::json;
 use std::collections::{HashMap, HashSet};
 use std::io;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 // Type alias for GraphQL PR node for brevity (reuse prs module types)
-type PrNode = prs::repository::pull_requests::nodes::Nodes;
-
-impl PrNode {
-    fn slug(&self) -> String {
-        format!("{}/{}", self.repository.owner.login, self.repository.name)
-    }
-    fn numslug(&self) -> String {
-        format!("#{} in {}", self.number, self.slug())
-    }
-    fn display_line(&self) -> String {
-        let review_str = match &self.review_decision {
-            Some(ReviewDecision::Approved) => " [approved]".to_string(),
-            Some(ReviewDecision::ChangesRequested) => " [changes requested]".to_string(),
-            Some(ReviewDecision::ReviewRequired) => " [review required]".to_string(),
-            None => String::default(),
-        };
-        let reviewers_str = if self.review_requests.nodes.is_empty() {
-            String::default()
-        } else {
-            format!(
-                " 👥 {}",
-                extract_reviewer_names(&self.review_requests).join(", ")
-            )
-        };
-        let created_date = self
-            .created_at
-            .split('T')
-            .next()
-            .unwrap_or(&self.created_at)
-            .to_string();
-        format!(
-            "#{} {} {} {}{}{} ({})",
-            self.number,
-            self.merge_state_status.to_emoji(),
-            self.slug(),
-            self.title,
-            review_str,
-            reviewers_str,
-            created_date
-        )
-    }
-}
-
-fn extract_reviewer_names(
-    review_requests: &prs::repository::pull_requests::nodes::review_requests::ReviewRequests,
-) -> Vec<String> {
-    review_requests
-        .nodes
-        .iter()
-        .filter_map(|node| node.requested_reviewer.as_ref().map(ToString::to_string))
-        .collect()
-}
+type PrNode = prs::pull_request::PullRequest;
 
 impl MergeStateStatus {
     fn to_color(&self) -> Color {
@@ -90,52 +38,11 @@ impl MergeStateStatus {
     }
 }
 
-// Contributions GraphQL fetching and types are defined in contributions.rs
-// Reuse PR GraphQL types from prs.rs to avoid duplication.
-
-nestruct::nest! {
-    #[derive(serde::Serialize, serde::Deserialize, Debug)]
-    #[serde(rename_all = "camelCase")]
-    PrBodyRes {
-        data: {
-            repository: {
-                pull_request: {
-                    body_text: String,
-                }
-            }
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-enum SlugSpec {
-    Owner(String),
-    Repo { owner: String, name: String },
-}
-
-async fn fetch_owner_prs(owner: &str) -> surf::Result<Vec<PrNode>> {
-    let v = json!({ "login": owner });
-    let q = json!({ "query": include_str!("../query/prs.graphql"), "operationName": "GetOwnerPrs", "variables": v });
-    let res = graphql::query::<prs::res::Res>(&q).await?;
-    let mut prs = Vec::new();
-    for repo in res.data.repository_owner.repositories.nodes {
-        prs.extend(repo.pull_requests.nodes);
-    }
-    Ok(prs)
-}
-
-async fn fetch_repo_prs(owner: &str, name: &str) -> surf::Result<Vec<PrNode>> {
-    let v = json!({ "login": owner, "name": name });
-    let q = json!({ "query": include_str!("../query/prs.graphql"), "operationName": "GetRepoPrs", "variables": v });
-    let res = graphql::query::<prs::repo_res::RepoRes>(&q).await?;
-    Ok(res.data.repository_owner.repository.pull_requests.nodes)
-}
-
-async fn approve_pr(pr_id: &str) -> surf::Result<()> {
-    let v = json!({ "pullRequestId": pr_id });
-    let q = json!({ "query": include_str!("../query/approve.pr.graphql"), "variables": v });
-    graphql::query::<serde_json::Value>(&q).await?;
-    Ok(())
+#[derive(Debug, Clone, Copy, Default)]
+struct Preview {
+    mode: Option<PreviewMode>,
+    scroll: u16,
+    height: u16,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -161,7 +68,7 @@ enum PendingTask {
     MergeSelected,
     ApproveSelected,
     Reload,
-    LoadPreviewForSelected,
+    LoadBodyForSelected,
     LoadDiffForSelected,
     LoadCommitsForSelected,
 }
@@ -172,11 +79,9 @@ struct App {
     should_quit: bool,
     status_message: Option<String>,
     status_clear_at: Option<Instant>,
-    specs: Vec<SlugSpec>,
+    specs: Vec<Slug>,
     cache: HashMap<(PreviewMode, String), Text<'static>>, // (mode, pr_id) -> content
-    preview_mode: Option<PreviewMode>,
-    preview_scroll: u16,
-    preview_area_height: u16,
+    preview: Preview,
     contrib_lines: Option<Vec<Line<'static>>>,
     contrib_height: u16,
     contrib_title: String,
@@ -184,7 +89,8 @@ struct App {
 }
 
 impl App {
-    fn new(prs: Vec<PrNode>, specs: Vec<SlugSpec>) -> App {
+    async fn new(specs: Vec<Slug>) -> App {
+        let prs = fetch_prs(&specs).await.expect("Failed to fetch PRs");
         let mut list_state = ListState::default();
         if !prs.is_empty() {
             list_state.select(Some(0));
@@ -197,9 +103,7 @@ impl App {
             status_clear_at: None,
             specs,
             cache: HashMap::new(),
-            preview_mode: None,
-            preview_scroll: 0,
-            preview_area_height: 0,
+            preview: Preview::default(),
             contrib_lines: None,
             contrib_height: 9,
             contrib_title: "Contributions".to_string(),
@@ -207,32 +111,13 @@ impl App {
         }
     }
 
-    fn next(&mut self) {
+    fn navigate(&mut self, d: isize) {
         if self.prs.is_empty() {
             return;
         }
-        let len = self.prs.len();
-        let i = self
-            .list_state
-            .selected()
-            .map(|i| (i + 1) % len)
-            .unwrap_or(0);
-        self.list_state.select(Some(i));
-        self.preview_scroll = 0;
-    }
-
-    fn previous(&mut self) {
-        if self.prs.is_empty() {
-            return;
-        }
-        let len = self.prs.len();
-        let i = self
-            .list_state
-            .selected()
-            .map(|i| (i + len - 1) % len)
-            .unwrap_or(0);
-        self.list_state.select(Some(i));
-        self.preview_scroll = 0;
+        let i = (self.list_state.selected().unwrap_or(0) as isize + d) % self.prs.len() as isize;
+        self.list_state.select(Some(i as usize));
+        self.preview.scroll = 0;
     }
 
     fn get_selected_pr(&self) -> Option<&PrNode> {
@@ -299,16 +184,15 @@ impl App {
         }
     }
 
-    async fn load_preview_for(&mut self, pr: &PrNode) -> surf::Result<()> {
-        self.set_status_persistent(format!("🔎 Loading preview for #{}...", pr.number));
-        let body = pr.body_text.clone();
-        let text = prettify_pr_preview(&pr.title, &pr.url, &body);
+    async fn load_body(&mut self, pr: &PrNode) -> surf::Result<()> {
+        self.set_status_persistent(format!("🔎 Loading body for #{}...", pr.number));
+        let text = prettify_pr_preview(&pr.title, &pr.url, &pr.body_text);
         self.cache.insert((PreviewMode::Body, pr.id.clone()), text);
-        self.set_status(format!("✅ Loaded preview for #{}", pr.number));
+        self.set_status(format!("✅ Loaded body for #{}", pr.number));
         Ok(())
     }
 
-    async fn load_diff_for(&mut self, pr: &PrNode) -> surf::Result<()> {
+    async fn load_diff(&mut self, pr: &PrNode) -> surf::Result<()> {
         self.set_status_persistent(format!("🔎 Loading diff for #{}...", pr.number));
         let files =
             fetch_pr_files(&pr.repository.owner.login, &pr.repository.name, pr.number).await?;
@@ -338,7 +222,7 @@ impl App {
         Ok(())
     }
 
-    async fn load_commits_for(&mut self, pr: &PrNode) -> surf::Result<()> {
+    async fn load_commits(&mut self, pr: &PrNode) -> surf::Result<()> {
         self.set_status_persistent(format!("🔎 Loading commits for #{}...", pr.number));
         let commits =
             fetch_pr_commits(&pr.repository.owner.login, &pr.repository.name, pr.number).await?;
@@ -351,55 +235,33 @@ impl App {
     }
 
     fn scroll_preview_down(&mut self, n: u16) {
-        if self.preview_mode.is_some() {
-            self.preview_scroll = self.preview_scroll.saturating_add(n);
+        if self.preview.mode.is_some() {
+            self.preview.scroll = self.preview.scroll.saturating_add(n);
         }
     }
     fn scroll_preview_up(&mut self, n: u16) {
-        if self.preview_mode.is_some() {
-            self.preview_scroll = self.preview_scroll.saturating_sub(n);
+        if self.preview.mode.is_some() {
+            self.preview.scroll = self.preview.scroll.saturating_sub(n);
         }
     }
 
     async fn reload(&mut self) {
         self.set_status_persistent("🔄 Reloading...".to_string());
-        let (new_list, any_err) = self.fetch_all_prs().await;
-        if let Some(err) = any_err {
-            self.set_status(format!("❌ Reload error: {}", err));
-            return;
-        }
+        let new_list = match fetch_prs(&self.specs).await {
+            Ok(prs) => prs,
+            Err(e) => {
+                self.set_status(format!("❌ Reload error: {}", e));
+                return;
+            }
+        };
 
         self.apply_pr_list_and_restore_selection(new_list);
-        self.refresh_preview_if_visible().await;
+        self.refresh_preview().await;
         self.set_status(format!("✅ Reloaded. {} PRs.", self.prs.len()));
 
         if let Err(e) = self.load_contributions().await {
             self.set_status(format!("❌ Contrib load error: {}", e));
         }
-    }
-
-    async fn fetch_all_prs(&self) -> (Vec<PrNode>, Option<String>) {
-        let mut new_list: Vec<PrNode> = Vec::new();
-        let mut any_err: Option<String> = None;
-        for spec in self.specs.clone() {
-            match spec {
-                SlugSpec::Owner(owner) => match fetch_owner_prs(&owner).await {
-                    Ok(mut res) => new_list.append(&mut res),
-                    Err(e) => {
-                        any_err = Some(format!("Failed to fetch {}: {}", owner, e));
-                        break;
-                    }
-                },
-                SlugSpec::Repo { owner, name } => match fetch_repo_prs(&owner, &name).await {
-                    Ok(mut res) => new_list.append(&mut res),
-                    Err(e) => {
-                        any_err = Some(format!("Failed to fetch {}/{}: {}", owner, name, e));
-                        break;
-                    }
-                },
-            }
-        }
-        (new_list, any_err)
     }
 
     fn apply_pr_list_and_restore_selection(&mut self, new_list: Vec<PrNode>) {
@@ -413,20 +275,19 @@ impl App {
         }
     }
 
-    async fn refresh_preview_if_visible(&mut self) {
-        let Some(mode) = self.preview_mode else {
-            return;
-        };
-        if let Some(pr) = self.get_selected_pr().cloned() {
+    async fn refresh_preview(&mut self) {
+        if let Some(mode) = self.preview.mode
+            && let Some(pr) = self.get_selected_pr().cloned()
+        {
             match mode {
                 PreviewMode::Body => {
-                    let _ = self.load_preview_for(&pr).await;
+                    let _ = self.load_body(&pr).await;
                 }
                 PreviewMode::Diff => {
-                    let _ = self.load_diff_for(&pr).await;
+                    let _ = self.load_diff(&pr).await;
                 }
                 PreviewMode::Commits => {
-                    let _ = self.load_commits_for(&pr).await;
+                    let _ = self.load_commits(&pr).await;
                 }
             }
         }
@@ -492,33 +353,22 @@ fn contrast_fg(r: u8, g: u8, b: u8) -> Color {
 fn make_diff_text(diff: &str) -> Text<'static> {
     let mut text = Text::default();
     for line in diff.lines() {
-        let styled = if line.starts_with("===") {
-            Line::from(Span::styled(
-                line.to_string(),
-                Style::default()
-                    .fg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD),
-            ))
+        let style = if line.starts_with("===") {
+            Style::default()
+                .fg(Color::Magenta)
+                .add_modifier(Modifier::BOLD)
         } else if line.starts_with("@@") {
-            Line::from(Span::styled(
-                line.to_string(),
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD),
-            ))
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD)
         } else if line.starts_with('+') {
-            Line::from(Span::styled(
-                line.to_string(),
-                Style::default().fg(Color::Green),
-            ))
+            Style::default().fg(Color::Green)
         } else if line.starts_with('-') {
-            Line::from(Span::styled(
-                line.to_string(),
-                Style::default().fg(Color::Red),
-            ))
+            Style::default().fg(Color::Red)
         } else {
-            Line::from(line.to_string())
+            Style::default()
         };
+        let styled = Line::from(Span::styled(line.to_owned(), style));
         text.lines.push(styled);
     }
     text
@@ -580,7 +430,7 @@ fn ellipsize(s: &str, max: usize) -> String {
 }
 
 fn make_preview_block_title(app: &App, area_width: u16, total_lines: u16) -> String {
-    if let (Some(pr), Some(mode)) = (app.get_selected_pr(), app.preview_mode) {
+    if let (Some(pr), Some(mode)) = (app.get_selected_pr(), app.preview.mode) {
         // Reserve a bit for borders/padding
         let w = area_width.saturating_sub(4) as usize;
         // Base info
@@ -836,7 +686,7 @@ fn build_pr_list(app: &App) -> List<'static> {
 
 fn build_preview_text(app: &App) -> Text<'static> {
     if let Some(pr) = app.get_selected_pr() {
-        match app.preview_mode {
+        match app.preview.mode {
             Some(mode) => match app.cache.get(&(mode, pr.id.clone())) {
                 Some(cached) => cached.clone(),
                 None => Text::from(format!("Loading...{}", mode)),
@@ -859,8 +709,8 @@ fn render_preview(f: &mut Frame, app: &mut App, area: Rect) {
     let preview = Paragraph::new(preview_text)
         .block(Block::default().borders(Borders::ALL).title(title))
         .wrap(Wrap { trim: false })
-        .scroll((app.preview_scroll, 0));
-    app.preview_area_height = area.height;
+        .scroll((app.preview.scroll, 0));
+    app.preview.height = area.height;
     f.render_widget(preview, area);
 }
 
@@ -896,12 +746,12 @@ fn build_help_text(app: &App) -> String {
         msg.clone()
     } else {
         let base = "q:quit • ?:help • Enter/o:open • m:merge • a:approve • r:reload • ←/→:list/body/diff/graph";
-        let nav = if app.preview_mode.is_some() {
+        let nav = if app.preview.mode.is_some() {
             "↑/↓/wheel:scroll"
         } else {
             "↑/↓:navigate"
         };
-        app.preview_mode.map_or_else(
+        app.preview.mode.map_or_else(
             || format!("{} • {}", base, nav),
             |mode| format!("{} • {} • mode:{}", base, nav, mode),
         )
@@ -918,10 +768,10 @@ fn render_help(f: &mut Frame, app: &App, area: Rect) {
 
 fn ui(f: &mut Frame, app: &mut App) {
     let outer = layout_outer(f.area(), app.contrib_height);
-    let main_chunks = layout_main_chunks(outer[0], app.preview_mode);
+    let main_chunks = layout_main_chunks(outer[0], app.preview.mode);
 
     render_pr_list(f, app, main_chunks[0]);
-    if app.preview_mode.is_some() {
+    if app.preview.mode.is_some() {
         let area = if main_chunks.len() > 1 {
             main_chunks[1]
         } else {
@@ -1095,16 +945,16 @@ fn dedup_branches(branches: &mut Vec<String>) {
     branches.retain(|sha| seen.insert(sha.clone()));
 }
 
-fn run_tui(prs: Vec<PrNode>, specs: Vec<SlugSpec>) -> Result<(), Box<dyn std::error::Error>> {
+async fn run_tui(specs: Vec<Slug>) -> Result<(), Box<dyn std::error::Error>> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let mut app = App::new(prs, specs);
-    let _ = async_std::task::block_on(app.load_contributions());
-    let res = async_std::task::block_on(run_app(&mut terminal, &mut app));
+    let mut app = App::new(specs).await;
+    app.load_contributions().await?;
+    let res = run_app(&mut terminal, &mut app).await;
 
     disable_raw_mode()?;
     execute!(
@@ -1149,18 +999,18 @@ impl App {
     }
 
     async fn on_down(&mut self) {
-        if self.preview_mode.is_some() {
+        if self.preview.mode.is_some() {
             self.scroll_preview_down(1);
         } else {
-            self.next();
+            self.navigate(1);
         }
     }
 
     async fn on_up(&mut self) {
-        if self.preview_mode.is_some() {
+        if self.preview.mode.is_some() {
             self.scroll_preview_up(1);
         } else {
-            self.previous();
+            self.navigate(-1);
         }
     }
 
@@ -1196,7 +1046,7 @@ impl App {
         if let Some(pr) = self.get_selected_pr().cloned() {
             let needs_load = self.cache.get(&(mode, pr.id.clone())).is_none();
             let pending = match mode {
-                PreviewMode::Body => PendingTask::LoadPreviewForSelected,
+                PreviewMode::Body => PendingTask::LoadBodyForSelected,
                 PreviewMode::Diff => PendingTask::LoadDiffForSelected,
                 PreviewMode::Commits => PendingTask::LoadCommitsForSelected,
             };
@@ -1209,18 +1059,18 @@ impl App {
 
     fn on_right(&mut self) {
         // Right: closed -> Body -> Diff -> Commits
-        self.preview_scroll = 0;
-        match self.preview_mode {
+        self.preview.scroll = 0;
+        match self.preview.mode {
             None => {
-                self.preview_mode = Some(PreviewMode::Body);
+                self.preview.mode = Some(PreviewMode::Body);
                 self.queue_mode_if_needed(PreviewMode::Body);
             }
             Some(PreviewMode::Body) => {
-                self.preview_mode = Some(PreviewMode::Diff);
+                self.preview.mode = Some(PreviewMode::Diff);
                 self.queue_mode_if_needed(PreviewMode::Diff);
             }
             Some(PreviewMode::Diff) => {
-                self.preview_mode = Some(PreviewMode::Commits);
+                self.preview.mode = Some(PreviewMode::Commits);
                 self.queue_mode_if_needed(PreviewMode::Commits);
             }
             Some(PreviewMode::Commits) => {}
@@ -1229,17 +1079,17 @@ impl App {
 
     fn on_left(&mut self) {
         // Left: Commits -> Diff -> Body -> Close
-        self.preview_scroll = 0;
-        match self.preview_mode {
+        self.preview.scroll = 0;
+        match self.preview.mode {
             Some(PreviewMode::Commits) => {
-                self.preview_mode = Some(PreviewMode::Diff);
+                self.preview.mode = Some(PreviewMode::Diff);
                 self.queue_mode_if_needed(PreviewMode::Diff);
             }
             Some(PreviewMode::Diff) => {
-                self.preview_mode = Some(PreviewMode::Body);
+                self.preview.mode = Some(PreviewMode::Body);
                 self.queue_mode_if_needed(PreviewMode::Body);
             }
-            Some(PreviewMode::Body) => self.preview_mode = None,
+            Some(PreviewMode::Body) => self.preview.mode = None,
             None => {}
         }
     }
@@ -1262,31 +1112,26 @@ async fn run_app(
 
         // If a long-running task is queued, redraw once to show the status
         // immediately, then execute the task.
-        if app.pending_task.is_some() {
+        if let Some(task) = app.pending_task.take() {
             terminal.draw(|f| ui(f, app))?;
-            let task = app.pending_task.take();
-            if let Some(task) = task {
-                match task {
-                    PendingTask::MergeSelected => async_std::task::block_on(app.merge_selected()),
-                    PendingTask::ApproveSelected => {
-                        async_std::task::block_on(app.approve_selected())
+            match task {
+                PendingTask::MergeSelected => app.merge_selected().await,
+                PendingTask::ApproveSelected => app.approve_selected().await,
+                PendingTask::Reload => app.reload().await,
+                PendingTask::LoadBodyForSelected => {
+                    if let Some(pr) = app.get_selected_pr().cloned() {
+                        let _ = app.load_body(&pr).await;
                     }
-                    PendingTask::Reload => async_std::task::block_on(app.reload()),
-                    PendingTask::LoadPreviewForSelected => async_std::task::block_on(async {
-                        if let Some(pr) = app.get_selected_pr().cloned() {
-                            let _ = app.load_preview_for(&pr).await;
-                        }
-                    }),
-                    PendingTask::LoadDiffForSelected => async_std::task::block_on(async {
-                        if let Some(pr) = app.get_selected_pr().cloned() {
-                            let _ = app.load_diff_for(&pr).await;
-                        }
-                    }),
-                    PendingTask::LoadCommitsForSelected => async_std::task::block_on(async {
-                        if let Some(pr) = app.get_selected_pr().cloned() {
-                            let _ = app.load_commits_for(&pr).await;
-                        }
-                    }),
+                }
+                PendingTask::LoadDiffForSelected => {
+                    if let Some(pr) = app.get_selected_pr().cloned() {
+                        let _ = app.load_diff(&pr).await;
+                    }
+                }
+                PendingTask::LoadCommitsForSelected => {
+                    if let Some(pr) = app.get_selected_pr().cloned() {
+                        let _ = app.load_commits(&pr).await;
+                    }
                 }
             }
         }
@@ -1313,29 +1158,12 @@ pub async fn run(slugs: Vec<String>) -> surf::Result<()> {
         slugs
     };
 
-    let mut specs: Vec<SlugSpec> = Vec::new();
-    let mut all_prs = Vec::new();
-    for slug in slugs.clone() {
-        let vs: Vec<String> = slug.split('/').map(String::from).collect();
-        match vs.len() {
-            1 => {
-                specs.push(SlugSpec::Owner(vs[0].clone()));
-                let prs = fetch_owner_prs(&vs[0]).await?;
-                all_prs.extend(prs);
-            }
-            2 => {
-                specs.push(SlugSpec::Repo {
-                    owner: vs[0].clone(),
-                    name: vs[1].clone(),
-                });
-                let prs = fetch_repo_prs(&vs[0], &vs[1]).await?;
-                all_prs.extend(prs);
-            }
-            _ => panic!("unknown slug format"),
-        }
+    let mut specs: Vec<Slug> = Vec::new();
+    for slug in slugs {
+        specs.push(Slug::from(slug.as_str()));
     }
 
-    run_tui(all_prs, specs).map_err(|e| {
+    run_tui(specs).await.map_err(|e| {
         surf::Error::from_str(
             surf::StatusCode::InternalServerError,
             format!("TUI error: {}", e),

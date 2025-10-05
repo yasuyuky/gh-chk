@@ -90,23 +90,6 @@ impl MergeStateStatus {
     }
 }
 
-// Contributions GraphQL fetching and types are defined in contributions.rs
-// Reuse PR GraphQL types from prs.rs to avoid duplication.
-
-nestruct::nest! {
-    #[derive(serde::Serialize, serde::Deserialize, Debug)]
-    #[serde(rename_all = "camelCase")]
-    PrBodyRes {
-        data: {
-            repository: {
-                pull_request: {
-                    body_text: String,
-                }
-            }
-        }
-    }
-}
-
 #[derive(Debug, Clone)]
 enum SlugSpec {
     Owner(String),

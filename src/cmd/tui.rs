@@ -492,33 +492,22 @@ fn contrast_fg(r: u8, g: u8, b: u8) -> Color {
 fn make_diff_text(diff: &str) -> Text<'static> {
     let mut text = Text::default();
     for line in diff.lines() {
-        let styled = if line.starts_with("===") {
-            Line::from(Span::styled(
-                line.to_string(),
-                Style::default()
-                    .fg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD),
-            ))
+        let style = if line.starts_with("===") {
+            Style::default()
+                .fg(Color::Magenta)
+                .add_modifier(Modifier::BOLD)
         } else if line.starts_with("@@") {
-            Line::from(Span::styled(
-                line.to_string(),
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD),
-            ))
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD)
         } else if line.starts_with('+') {
-            Line::from(Span::styled(
-                line.to_string(),
-                Style::default().fg(Color::Green),
-            ))
+            Style::default().fg(Color::Green)
         } else if line.starts_with('-') {
-            Line::from(Span::styled(
-                line.to_string(),
-                Style::default().fg(Color::Red),
-            ))
+            Style::default().fg(Color::Red)
         } else {
-            Line::from(line.to_string())
+            Style::default()
         };
+        let styled = Line::from(Span::styled(line.to_owned(), style));
         text.lines.push(styled);
     }
     text

@@ -213,7 +213,8 @@ struct App {
 }
 
 impl App {
-    fn new(prs: Vec<PrNode>, specs: Vec<SlugSpec>) -> App {
+    async fn new(specs: Vec<SlugSpec>) -> App {
+        let prs = fetch_prs(&specs).await.expect("Failed to fetch PRs");
         let mut list_state = ListState::default();
         if !prs.is_empty() {
             list_state.select(Some(0));
@@ -1113,14 +1114,14 @@ fn dedup_branches(branches: &mut Vec<String>) {
     branches.retain(|sha| seen.insert(sha.clone()));
 }
 
-fn run_tui(prs: Vec<PrNode>, specs: Vec<SlugSpec>) -> Result<(), Box<dyn std::error::Error>> {
+async fn run_tui(specs: Vec<SlugSpec>) -> Result<(), Box<dyn std::error::Error>> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let mut app = App::new(prs, specs);
+    let mut app = App::new(specs).await;
     let _ = async_std::task::block_on(app.load_contributions());
     let res = async_std::task::block_on(run_app(&mut terminal, &mut app));
 
@@ -1332,28 +1333,11 @@ pub async fn run(slugs: Vec<String>) -> surf::Result<()> {
     };
 
     let mut specs: Vec<SlugSpec> = Vec::new();
-    let mut all_prs = Vec::new();
-    for slug in slugs.clone() {
-        let vs: Vec<String> = slug.split('/').map(String::from).collect();
-        match vs.len() {
-            1 => {
-                specs.push(SlugSpec::Owner(vs[0].clone()));
-                let prs = fetch_owner_prs(&vs[0]).await?;
-                all_prs.extend(prs);
-            }
-            2 => {
-                specs.push(SlugSpec::Repo {
-                    owner: vs[0].clone(),
-                    name: vs[1].clone(),
-                });
-                let prs = fetch_repo_prs(&vs[0], &vs[1]).await?;
-                all_prs.extend(prs);
-            }
-            _ => panic!("unknown slug format"),
-        }
+    for slug in slugs {
+        specs.push(SlugSpec::from(slug.as_str()));
     }
 
-    run_tui(all_prs, specs).map_err(|e| {
+    run_tui(specs).await.map_err(|e| {
         surf::Error::from_str(
             surf::StatusCode::InternalServerError,
             format!("TUI error: {}", e),

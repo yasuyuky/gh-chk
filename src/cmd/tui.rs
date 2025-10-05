@@ -115,13 +115,8 @@ impl App {
         if self.prs.is_empty() {
             return;
         }
-        let len = self.prs.len();
-        let i = self
-            .list_state
-            .selected()
-            .map(|i| (i + 1) % len)
-            .unwrap_or(0);
-        self.list_state.select(Some(i));
+        let i = (self.list_state.selected().unwrap_or(0) as isize + 1) % self.prs.len() as isize;
+        self.list_state.select(Some(i as usize));
         self.preview.scroll = 0;
     }
 
@@ -129,13 +124,8 @@ impl App {
         if self.prs.is_empty() {
             return;
         }
-        let len = self.prs.len();
-        let i = self
-            .list_state
-            .selected()
-            .map(|i| (i + len - 1) % len)
-            .unwrap_or(0);
-        self.list_state.select(Some(i));
+        let i = (self.list_state.selected().unwrap_or(0) as isize - 1) % self.prs.len() as isize;
+        self.list_state.select(Some(i as usize));
         self.preview.scroll = 0;
     }
 

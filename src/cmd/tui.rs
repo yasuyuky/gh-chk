@@ -1,5 +1,5 @@
 use crate::cmd::prs::{self, MergeStateStatus};
-use crate::{graphql, rest, slug::SlugSpec};
+use crate::{graphql, rest, slug::Slug};
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, MouseEventKind},
     execute,
@@ -39,14 +39,12 @@ impl MergeStateStatus {
     }
 }
 
-async fn fetch_prs(specs: &Vec<SlugSpec>) -> surf::Result<Vec<PrNode>> {
+async fn fetch_prs(specs: &Vec<Slug>) -> surf::Result<Vec<PrNode>> {
     let mut all_prs: Vec<PrNode> = Vec::new();
     for spec in specs {
         match spec {
-            SlugSpec::Owner(owner) => all_prs.append(&mut fetch_owner_prs(&owner).await?),
-            SlugSpec::Repo { owner, name } => {
-                all_prs.append(&mut fetch_repo_prs(&owner, &name).await?)
-            }
+            Slug::Owner(owner) => all_prs.append(&mut fetch_owner_prs(&owner).await?),
+            Slug::Repo { owner, name } => all_prs.append(&mut fetch_repo_prs(&owner, &name).await?),
         }
     }
     Ok(all_prs)
@@ -118,7 +116,7 @@ struct App {
     should_quit: bool,
     status_message: Option<String>,
     status_clear_at: Option<Instant>,
-    specs: Vec<SlugSpec>,
+    specs: Vec<Slug>,
     cache: HashMap<(PreviewMode, String), Text<'static>>, // (mode, pr_id) -> content
     preview: Preview,
     contrib_lines: Option<Vec<Line<'static>>>,
@@ -128,7 +126,7 @@ struct App {
 }
 
 impl App {
-    async fn new(specs: Vec<SlugSpec>) -> App {
+    async fn new(specs: Vec<Slug>) -> App {
         let prs = fetch_prs(&specs).await.expect("Failed to fetch PRs");
         let mut list_state = ListState::default();
         if !prs.is_empty() {
@@ -1004,7 +1002,7 @@ fn dedup_branches(branches: &mut Vec<String>) {
     branches.retain(|sha| seen.insert(sha.clone()));
 }
 
-async fn run_tui(specs: Vec<SlugSpec>) -> Result<(), Box<dyn std::error::Error>> {
+async fn run_tui(specs: Vec<Slug>) -> Result<(), Box<dyn std::error::Error>> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
@@ -1217,9 +1215,9 @@ pub async fn run(slugs: Vec<String>) -> surf::Result<()> {
         slugs
     };
 
-    let mut specs: Vec<SlugSpec> = Vec::new();
+    let mut specs: Vec<Slug> = Vec::new();
     for slug in slugs {
-        specs.push(SlugSpec::from(slug.as_str()));
+        specs.push(Slug::from(slug.as_str()));
     }
 
     run_tui(specs).await.map_err(|e| {

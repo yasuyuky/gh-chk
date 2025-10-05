@@ -1085,8 +1085,8 @@ async fn run_tui(specs: Vec<SlugSpec>) -> Result<(), Box<dyn std::error::Error>>
     let mut terminal = Terminal::new(backend)?;
 
     let mut app = App::new(specs).await;
-    let _ = async_std::task::block_on(app.load_contributions());
-    let res = async_std::task::block_on(run_app(&mut terminal, &mut app));
+    app.load_contributions().await?;
+    let res = run_app(&mut terminal, &mut app).await;
 
     disable_raw_mode()?;
     execute!(
@@ -1249,26 +1249,24 @@ async fn run_app(
             let task = app.pending_task.take();
             if let Some(task) = task {
                 match task {
-                    PendingTask::MergeSelected => async_std::task::block_on(app.merge_selected()),
-                    PendingTask::ApproveSelected => {
-                        async_std::task::block_on(app.approve_selected())
-                    }
-                    PendingTask::Reload => async_std::task::block_on(app.reload()),
-                    PendingTask::LoadPreviewForSelected => async_std::task::block_on(async {
+                    PendingTask::MergeSelected => app.merge_selected().await,
+                    PendingTask::ApproveSelected => app.approve_selected().await,
+                    PendingTask::Reload => app.reload().await,
+                    PendingTask::LoadPreviewForSelected => {
                         if let Some(pr) = app.get_selected_pr().cloned() {
                             let _ = app.load_preview_for(&pr).await;
                         }
-                    }),
-                    PendingTask::LoadDiffForSelected => async_std::task::block_on(async {
+                    }
+                    PendingTask::LoadDiffForSelected => {
                         if let Some(pr) = app.get_selected_pr().cloned() {
                             let _ = app.load_diff_for(&pr).await;
                         }
-                    }),
-                    PendingTask::LoadCommitsForSelected => async_std::task::block_on(async {
+                    }
+                    PendingTask::LoadCommitsForSelected => {
                         if let Some(pr) = app.get_selected_pr().cloned() {
                             let _ = app.load_commits_for(&pr).await;
                         }
-                    }),
+                    }
                 }
             }
         }

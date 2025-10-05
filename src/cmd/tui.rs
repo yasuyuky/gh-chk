@@ -184,7 +184,7 @@ impl App {
         }
     }
 
-    async fn load_body_for(&mut self, pr: &PrNode) -> surf::Result<()> {
+    async fn load_body(&mut self, pr: &PrNode) -> surf::Result<()> {
         self.set_status_persistent(format!("🔎 Loading body for #{}...", pr.number));
         let body = pr.body_text.clone();
         let text = prettify_pr_preview(&pr.title, &pr.url, &body);
@@ -193,7 +193,7 @@ impl App {
         Ok(())
     }
 
-    async fn load_diff_for(&mut self, pr: &PrNode) -> surf::Result<()> {
+    async fn load_diff(&mut self, pr: &PrNode) -> surf::Result<()> {
         self.set_status_persistent(format!("🔎 Loading diff for #{}...", pr.number));
         let files =
             fetch_pr_files(&pr.repository.owner.login, &pr.repository.name, pr.number).await?;
@@ -223,7 +223,7 @@ impl App {
         Ok(())
     }
 
-    async fn load_commits_for(&mut self, pr: &PrNode) -> surf::Result<()> {
+    async fn load_commits(&mut self, pr: &PrNode) -> surf::Result<()> {
         self.set_status_persistent(format!("🔎 Loading commits for #{}...", pr.number));
         let commits =
             fetch_pr_commits(&pr.repository.owner.login, &pr.repository.name, pr.number).await?;
@@ -282,13 +282,13 @@ impl App {
         {
             match mode {
                 PreviewMode::Body => {
-                    let _ = self.load_body_for(&pr).await;
+                    let _ = self.load_body(&pr).await;
                 }
                 PreviewMode::Diff => {
-                    let _ = self.load_diff_for(&pr).await;
+                    let _ = self.load_diff(&pr).await;
                 }
                 PreviewMode::Commits => {
-                    let _ = self.load_commits_for(&pr).await;
+                    let _ = self.load_commits(&pr).await;
                 }
             }
         }
@@ -1121,17 +1121,17 @@ async fn run_app(
                 PendingTask::Reload => app.reload().await,
                 PendingTask::LoadBodyForSelected => {
                     if let Some(pr) = app.get_selected_pr().cloned() {
-                        let _ = app.load_body_for(&pr).await;
+                        let _ = app.load_body(&pr).await;
                     }
                 }
                 PendingTask::LoadDiffForSelected => {
                     if let Some(pr) = app.get_selected_pr().cloned() {
-                        let _ = app.load_diff_for(&pr).await;
+                        let _ = app.load_diff(&pr).await;
                     }
                 }
                 PendingTask::LoadCommitsForSelected => {
                     if let Some(pr) = app.get_selected_pr().cloned() {
-                        let _ = app.load_commits_for(&pr).await;
+                        let _ = app.load_commits(&pr).await;
                     }
                 }
             }

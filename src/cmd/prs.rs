@@ -45,6 +45,57 @@ nestruct::nest! {
     }
 }
 
+impl pull_request::PullRequest {
+    pub fn slug(&self) -> String {
+        format!("{}/{}", self.repository.owner.login, self.repository.name)
+    }
+    pub fn numslug(&self) -> String {
+        format!("#{} in {}", self.number, self.slug())
+    }
+    pub fn display_line(&self) -> String {
+        let review_str = match &self.review_decision {
+            Some(ReviewDecision::Approved) => " [approved]".to_string(),
+            Some(ReviewDecision::ChangesRequested) => " [changes requested]".to_string(),
+            Some(ReviewDecision::ReviewRequired) => " [review required]".to_string(),
+            None => String::default(),
+        };
+        let reviewers_str = if self.review_requests.nodes.is_empty() {
+            String::default()
+        } else {
+            format!(
+                " 👥 {}",
+                extract_reviewer_names(&self.review_requests).join(", ")
+            )
+        };
+        let created_date = self
+            .created_at
+            .split('T')
+            .next()
+            .unwrap_or(&self.created_at)
+            .to_string();
+        format!(
+            "#{} {} {} {}{}{} ({})",
+            self.number,
+            self.merge_state_status.to_emoji(),
+            self.slug(),
+            self.title,
+            review_str,
+            reviewers_str,
+            created_date
+        )
+    }
+}
+
+fn extract_reviewer_names(
+    review_requests: &pull_request::review_requests::ReviewRequests,
+) -> Vec<String> {
+    review_requests
+        .nodes
+        .iter()
+        .filter_map(|node| node.requested_reviewer.as_ref().map(ToString::to_string))
+        .collect()
+}
+
 nestruct::nest! {
     #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
     #[serde(rename_all = "camelCase")]

@@ -167,6 +167,13 @@ async fn approve_pr(pr_id: &str) -> surf::Result<()> {
     Ok(())
 }
 
+#[derive(Debug, Clone, Copy, Default)]
+struct Preview {
+    mode: Option<PreviewMode>,
+    scroll: u16,
+    height: u16,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum PreviewMode {
     Body,
@@ -203,9 +210,7 @@ struct App {
     status_clear_at: Option<Instant>,
     specs: Vec<SlugSpec>,
     cache: HashMap<(PreviewMode, String), Text<'static>>, // (mode, pr_id) -> content
-    preview_mode: Option<PreviewMode>,
-    preview_scroll: u16,
-    preview_area_height: u16,
+    preview: Preview,
     contrib_lines: Option<Vec<Line<'static>>>,
     contrib_height: u16,
     contrib_title: String,
@@ -227,9 +232,7 @@ impl App {
             status_clear_at: None,
             specs,
             cache: HashMap::new(),
-            preview_mode: None,
-            preview_scroll: 0,
-            preview_area_height: 0,
+            preview: Preview::default(),
             contrib_lines: None,
             contrib_height: 9,
             contrib_title: "Contributions".to_string(),
@@ -248,7 +251,7 @@ impl App {
             .map(|i| (i + 1) % len)
             .unwrap_or(0);
         self.list_state.select(Some(i));
-        self.preview_scroll = 0;
+        self.preview.scroll = 0;
     }
 
     fn previous(&mut self) {
@@ -262,7 +265,7 @@ impl App {
             .map(|i| (i + len - 1) % len)
             .unwrap_or(0);
         self.list_state.select(Some(i));
-        self.preview_scroll = 0;
+        self.preview.scroll = 0;
     }
 
     fn get_selected_pr(&self) -> Option<&PrNode> {
@@ -381,13 +384,13 @@ impl App {
     }
 
     fn scroll_preview_down(&mut self, n: u16) {
-        if self.preview_mode.is_some() {
-            self.preview_scroll = self.preview_scroll.saturating_add(n);
+        if self.preview.mode.is_some() {
+            self.preview.scroll = self.preview.scroll.saturating_add(n);
         }
     }
     fn scroll_preview_up(&mut self, n: u16) {
-        if self.preview_mode.is_some() {
-            self.preview_scroll = self.preview_scroll.saturating_sub(n);
+        if self.preview.mode.is_some() {
+            self.preview.scroll = self.preview.scroll.saturating_sub(n);
         }
     }
 
@@ -422,7 +425,7 @@ impl App {
     }
 
     async fn refresh_preview_if_visible(&mut self) {
-        let Some(mode) = self.preview_mode else {
+        let Some(mode) = self.preview.mode else {
             return;
         };
         if let Some(pr) = self.get_selected_pr().cloned() {
@@ -577,7 +580,7 @@ fn ellipsize(s: &str, max: usize) -> String {
 }
 
 fn make_preview_block_title(app: &App, area_width: u16, total_lines: u16) -> String {
-    if let (Some(pr), Some(mode)) = (app.get_selected_pr(), app.preview_mode) {
+    if let (Some(pr), Some(mode)) = (app.get_selected_pr(), app.preview.mode) {
         // Reserve a bit for borders/padding
         let w = area_width.saturating_sub(4) as usize;
         // Base info
@@ -833,7 +836,7 @@ fn build_pr_list(app: &App) -> List<'static> {
 
 fn build_preview_text(app: &App) -> Text<'static> {
     if let Some(pr) = app.get_selected_pr() {
-        match app.preview_mode {
+        match app.preview.mode {
             Some(mode) => match app.cache.get(&(mode, pr.id.clone())) {
                 Some(cached) => cached.clone(),
                 None => Text::from(format!("Loading...{}", mode)),
@@ -856,8 +859,8 @@ fn render_preview(f: &mut Frame, app: &mut App, area: Rect) {
     let preview = Paragraph::new(preview_text)
         .block(Block::default().borders(Borders::ALL).title(title))
         .wrap(Wrap { trim: false })
-        .scroll((app.preview_scroll, 0));
-    app.preview_area_height = area.height;
+        .scroll((app.preview.scroll, 0));
+    app.preview.height = area.height;
     f.render_widget(preview, area);
 }
 
@@ -893,12 +896,12 @@ fn build_help_text(app: &App) -> String {
         msg.clone()
     } else {
         let base = "q:quit • ?:help • Enter/o:open • m:merge • a:approve • r:reload • ←/→:list/body/diff/graph";
-        let nav = if app.preview_mode.is_some() {
+        let nav = if app.preview.mode.is_some() {
             "↑/↓/wheel:scroll"
         } else {
             "↑/↓:navigate"
         };
-        app.preview_mode.map_or_else(
+        app.preview.mode.map_or_else(
             || format!("{} • {}", base, nav),
             |mode| format!("{} • {} • mode:{}", base, nav, mode),
         )
@@ -915,10 +918,10 @@ fn render_help(f: &mut Frame, app: &App, area: Rect) {
 
 fn ui(f: &mut Frame, app: &mut App) {
     let outer = layout_outer(f.area(), app.contrib_height);
-    let main_chunks = layout_main_chunks(outer[0], app.preview_mode);
+    let main_chunks = layout_main_chunks(outer[0], app.preview.mode);
 
     render_pr_list(f, app, main_chunks[0]);
-    if app.preview_mode.is_some() {
+    if app.preview.mode.is_some() {
         let area = if main_chunks.len() > 1 {
             main_chunks[1]
         } else {
@@ -1146,7 +1149,7 @@ impl App {
     }
 
     async fn on_down(&mut self) {
-        if self.preview_mode.is_some() {
+        if self.preview.mode.is_some() {
             self.scroll_preview_down(1);
         } else {
             self.next();
@@ -1154,7 +1157,7 @@ impl App {
     }
 
     async fn on_up(&mut self) {
-        if self.preview_mode.is_some() {
+        if self.preview.mode.is_some() {
             self.scroll_preview_up(1);
         } else {
             self.previous();
@@ -1206,18 +1209,18 @@ impl App {
 
     fn on_right(&mut self) {
         // Right: closed -> Body -> Diff -> Commits
-        self.preview_scroll = 0;
-        match self.preview_mode {
+        self.preview.scroll = 0;
+        match self.preview.mode {
             None => {
-                self.preview_mode = Some(PreviewMode::Body);
+                self.preview.mode = Some(PreviewMode::Body);
                 self.queue_mode_if_needed(PreviewMode::Body);
             }
             Some(PreviewMode::Body) => {
-                self.preview_mode = Some(PreviewMode::Diff);
+                self.preview.mode = Some(PreviewMode::Diff);
                 self.queue_mode_if_needed(PreviewMode::Diff);
             }
             Some(PreviewMode::Diff) => {
-                self.preview_mode = Some(PreviewMode::Commits);
+                self.preview.mode = Some(PreviewMode::Commits);
                 self.queue_mode_if_needed(PreviewMode::Commits);
             }
             Some(PreviewMode::Commits) => {}
@@ -1226,17 +1229,17 @@ impl App {
 
     fn on_left(&mut self) {
         // Left: Commits -> Diff -> Body -> Close
-        self.preview_scroll = 0;
-        match self.preview_mode {
+        self.preview.scroll = 0;
+        match self.preview.mode {
             Some(PreviewMode::Commits) => {
-                self.preview_mode = Some(PreviewMode::Diff);
+                self.preview.mode = Some(PreviewMode::Diff);
                 self.queue_mode_if_needed(PreviewMode::Diff);
             }
             Some(PreviewMode::Diff) => {
-                self.preview_mode = Some(PreviewMode::Body);
+                self.preview.mode = Some(PreviewMode::Body);
                 self.queue_mode_if_needed(PreviewMode::Body);
             }
-            Some(PreviewMode::Body) => self.preview_mode = None,
+            Some(PreviewMode::Body) => self.preview.mode = None,
             None => {}
         }
     }

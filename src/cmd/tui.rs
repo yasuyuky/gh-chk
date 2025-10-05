@@ -111,20 +111,11 @@ impl App {
         }
     }
 
-    fn next(&mut self) {
+    fn navigate(&mut self, d: isize) {
         if self.prs.is_empty() {
             return;
         }
-        let i = (self.list_state.selected().unwrap_or(0) as isize + 1) % self.prs.len() as isize;
-        self.list_state.select(Some(i as usize));
-        self.preview.scroll = 0;
-    }
-
-    fn previous(&mut self) {
-        if self.prs.is_empty() {
-            return;
-        }
-        let i = (self.list_state.selected().unwrap_or(0) as isize - 1) % self.prs.len() as isize;
+        let i = (self.list_state.selected().unwrap_or(0) as isize + d) % self.prs.len() as isize;
         self.list_state.select(Some(i as usize));
         self.preview.scroll = 0;
     }
@@ -1012,7 +1003,7 @@ impl App {
         if self.preview.mode.is_some() {
             self.scroll_preview_down(1);
         } else {
-            self.next();
+            self.navigate(1);
         }
     }
 
@@ -1020,7 +1011,7 @@ impl App {
         if self.preview.mode.is_some() {
             self.scroll_preview_up(1);
         } else {
-            self.previous();
+            self.navigate(-1);
         }
     }
 

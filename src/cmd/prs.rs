@@ -330,8 +330,8 @@ pub async fn fetch_prs(specs: &Vec<Slug>) -> surf::Result<Vec<PullRequest>> {
     let mut all_prs: Vec<PullRequest> = Vec::new();
     for spec in specs {
         match spec {
-            Slug::Owner(owner) => all_prs.append(&mut fetch_owner_prs(&owner).await?),
-            Slug::Repo { owner, name } => all_prs.append(&mut fetch_repo_prs(&owner, &name).await?),
+            Slug::Owner(owner) => all_prs.append(&mut fetch_owner_prs(owner).await?),
+            Slug::Repo { owner, name } => all_prs.append(&mut fetch_repo_prs(owner, name).await?),
         }
     }
     Ok(all_prs)

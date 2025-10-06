@@ -845,22 +845,19 @@ impl PrCommit {
     }
 
     fn display_author(&self) -> Option<String> {
-        if let Some(author) = self.author.as_ref() {
-            if let Some(login) = author.login.as_ref() {
-                return Some(login.clone());
-            }
+        if let Some(author) = self.author.as_ref()
+            && let Some(login) = author.login.as_ref()
+        {
+            return Some(login.clone());
         }
-        self.commit
-            .author
-            .as_ref()
-            .and_then(|person| person.name.clone())
+        self.commit.author.as_ref().and_then(|a| a.name.clone())
     }
 
     fn display_date(&self) -> Option<String> {
         self.commit
             .author
             .as_ref()
-            .and_then(|person| person.date.as_ref())
+            .and_then(|a| a.date.as_ref())
             .and_then(|date| date.split('T').next().map(str::to_string))
     }
 

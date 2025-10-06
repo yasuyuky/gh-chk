@@ -845,22 +845,19 @@ impl PrCommit {
     }
 
     fn display_author(&self) -> Option<String> {
-        if let Some(author) = self.author.as_ref() {
-            if let Some(login) = author.login.as_ref() {
-                return Some(login.clone());
-            }
+        if let Some(author) = self.author.as_ref()
+            && let Some(login) = author.login.as_ref()
+        {
+            return Some(login.clone());
         }
-        self.commit
-            .author
-            .as_ref()
-            .and_then(|person| person.name.clone())
+        self.commit.author.as_ref().and_then(|a| a.name.clone())
     }
 
     fn display_date(&self) -> Option<String> {
         self.commit
             .author
             .as_ref()
-            .and_then(|person| person.date.as_ref())
+            .and_then(|a| a.date.as_ref())
             .and_then(|date| date.split('T').next().map(str::to_string))
     }
 
@@ -1044,13 +1041,13 @@ impl App {
 
     fn queue_mode_if_needed(&mut self, mode: PreviewMode) {
         if let Some(pr) = self.get_selected_pr().cloned() {
-            let needs_load = self.cache.get(&(mode, pr.id.clone())).is_none();
+            let has_cache = self.cache.contains_key(&(mode, pr.id.clone()));
             let pending = match mode {
                 PreviewMode::Body => PendingTask::LoadBodyForSelected,
                 PreviewMode::Diff => PendingTask::LoadDiffForSelected,
                 PreviewMode::Commits => PendingTask::LoadCommitsForSelected,
             };
-            if needs_load {
+            if !has_cache {
                 self.set_status_persistent(format!("🔎 Loading {} for #{}...", mode, pr.number));
                 self.pending_task = Some(pending);
             }

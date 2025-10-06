@@ -1044,13 +1044,13 @@ impl App {
 
     fn queue_mode_if_needed(&mut self, mode: PreviewMode) {
         if let Some(pr) = self.get_selected_pr().cloned() {
-            let needs_load = self.cache.get(&(mode, pr.id.clone())).is_none();
+            let has_cache = self.cache.contains_key(&(mode, pr.id.clone()));
             let pending = match mode {
                 PreviewMode::Body => PendingTask::LoadBodyForSelected,
                 PreviewMode::Diff => PendingTask::LoadDiffForSelected,
                 PreviewMode::Commits => PendingTask::LoadCommitsForSelected,
             };
-            if needs_load {
+            if !has_cache {
                 self.set_status_persistent(format!("🔎 Loading {} for #{}...", mode, pr.number));
                 self.pending_task = Some(pending);
             }

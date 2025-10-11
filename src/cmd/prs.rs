@@ -64,11 +64,7 @@ impl pull_request::PullRequest {
     }
     fn review_status(&self) -> String {
         match &self.review_decision {
-            Some(rd) => {
-                let label = rd.to_label();
-                let bracketed = format!("[{}]", label);
-                rd.colorize(&bracketed)
-            }
+            Some(rd) => format!("[{}]", rd.to_label()),
             None => String::default(),
         }
     }

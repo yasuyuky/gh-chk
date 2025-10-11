@@ -76,12 +76,6 @@ impl pull_request::PullRequest {
 
 impl Display for pull_request::PullRequest {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let review_str = match &self.review_decision {
-            Some(ReviewDecision::Approved) => " [approved]".to_string(),
-            Some(ReviewDecision::ChangesRequested) => " [changes requested]".to_string(),
-            Some(ReviewDecision::ReviewRequired) => " [review required]".to_string(),
-            None => String::default(),
-        };
         let reviewers_str = if self.review_requests.nodes.is_empty() {
             String::default()
         } else {
@@ -97,7 +91,7 @@ impl Display for pull_request::PullRequest {
             self.merge_state_status.to_emoji(),
             self.slug(),
             self.title,
-            review_str,
+            self.review_status(),
             reviewers_str,
             self.created_date()
         )
@@ -106,23 +100,13 @@ impl Display for pull_request::PullRequest {
 
 impl Debug for pull_request::PullRequest {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let review = match &self.review_decision {
-            Some(rd) => {
-                let label = rd.to_label();
-                let bracketed = format!("[{}]", label);
-                rd.colorize(&bracketed)
-            }
-            None => String::default(),
-        };
-        let review_sep = if review.is_empty() { "" } else { " " };
         let s = format!(
-            "{:>6} {} {} {}{}{} {}",
+            "{:>6} {} {} {} {} {}",
             format!("#{}", self.number).bold(),
             self.merge_state_status.to_emoji(),
             self.url,
             self.title.bold(),
-            review_sep,
-            review,
+            self.review_status(),
             format!("({})", self.created_date()).bright_black()
         );
         write!(f, "{}", self.merge_state_status.colorize(&s))

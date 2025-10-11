@@ -4,8 +4,8 @@ use serde_json::json;
 use std::fmt::{Debug, Display};
 
 use crate::cmd::prs::pull_request::PullRequest;
-use crate::graphql;
 use crate::slug::Slug;
+use crate::{config, graphql};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(untagged)]
@@ -226,6 +226,13 @@ pub async fn check(slugs: Vec<String>, merge: bool) -> surf::Result<()> {
     } else {
         slugs
     };
+
+    if let Some(config::Format::Json) = config::FORMAT.get() {
+        let specs: Vec<Slug> = slugs.iter().map(|s| Slug::from(s.as_str())).collect();
+        let prs = fetch_prs(&specs).await?;
+        println!("{}", serde_json::to_string_pretty(&prs).unwrap());
+        return Ok(());
+    }
 
     for slug in slugs {
         println!("{}", slug.bright_blue());

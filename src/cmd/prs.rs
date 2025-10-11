@@ -56,6 +56,12 @@ impl pull_request::PullRequest {
     pub fn numslug(&self) -> String {
         format!("#{} in {}", self.number, self.slug())
     }
+    fn created_date(&self) -> &str {
+        self.created_at
+            .split('T')
+            .next()
+            .unwrap_or(&self.created_at)
+    }
 }
 
 impl Display for pull_request::PullRequest {

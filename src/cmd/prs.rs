@@ -276,64 +276,6 @@ pub async fn check(slugs: Vec<String>, merge: bool) -> surf::Result<()> {
     Ok(())
 }
 
-async fn check_owner(owner: &str, merge: bool) -> surf::Result<()> {
-    let v = json!({ "login": owner });
-    let q = json!({ "query": include_str!("../query/prs.graphql"), "operationName": "GetOwnerPrs", "variables": v });
-    let res = crate::graphql::query::<res::Res>(&q).await?;
-    match crate::config::FORMAT.get() {
-        Some(&crate::config::Format::Json) => println!("{}", serde_json::to_string_pretty(&res)?),
-        _ => print_owner_text(&res, merge).await?,
-    }
-    Ok(())
-}
-
-async fn print_owner_text(res: &res::Res, merge: bool) -> surf::Result<()> {
-    let mut count = 0usize;
-    for repo in &res.data.repository_owner.repositories.nodes {
-        if repo.pull_requests.nodes.is_empty() {
-            continue;
-        }
-        println!("{}", repo.name.cyan());
-        for pr in &repo.pull_requests.nodes {
-            count += 1;
-            println!("{pr}");
-            if merge && pr.merge_state_status == MergeStateStatus::Clean {
-                println!("🔄 Merging PR #{}", pr.number);
-                merge_pr(&pr.id).await?;
-                println!("✅ Merged PR #{}", pr.number);
-            }
-        }
-    }
-    println!("Count of PRs: {count}");
-    Ok(())
-}
-
-async fn check_repo(owner: &str, name: &str, merge: bool) -> surf::Result<()> {
-    let v = json!({ "login": owner, "name": name });
-    let q = json!({ "query": include_str!("../query/prs.graphql"), "operationName": "GetRepoPrs", "variables": v });
-    let res = crate::graphql::query::<repo_res::RepoRes>(&q).await?;
-    match crate::config::FORMAT.get() {
-        Some(&crate::config::Format::Json) => println!("{}", serde_json::to_string_pretty(&res)?),
-        _ => print_repo_text(&res, merge).await?,
-    }
-    Ok(())
-}
-
-async fn print_repo_text(res: &repo_res::RepoRes, merge: bool) -> surf::Result<()> {
-    let mut count = 0usize;
-    for pr in &res.data.repository_owner.repository.pull_requests.nodes {
-        count += 1;
-        println!("{pr}");
-        if merge && pr.merge_state_status == MergeStateStatus::Clean {
-            println!("🔄 Merging PR #{}", pr.number);
-            merge_pr(&pr.id).await?;
-            println!("✅ Merged PR #{}", pr.number);
-        }
-    }
-    println!("Count of PRs: {count}");
-    Ok(())
-}
-
 pub async fn fetch_prs(specs: &Vec<Slug>) -> surf::Result<Vec<PullRequest>> {
     let mut all_prs: Vec<PullRequest> = Vec::new();
     for spec in specs {

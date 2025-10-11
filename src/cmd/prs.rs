@@ -262,11 +262,15 @@ pub async fn check(slugs: Vec<String>, merge: bool) -> surf::Result<()> {
 
     for slug in slugs {
         println!("{}", slug.bright_blue());
-        let vs: Vec<String> = slug.split('/').map(String::from).collect();
-        match vs.len() {
-            1 => check_owner(&vs[0], merge).await?,
-            2 => check_repo(&vs[0], &vs[1], merge).await?,
-            _ => panic!("unknown slug format"),
+        let slug = Slug::from(slug.as_str());
+        let prs = fetch_prs(&vec![slug]).await?;
+        for pr in &prs {
+            println!("{:?}", pr);
+            if merge && pr.merge_state_status == MergeStateStatus::Clean {
+                println!("🔄 Merging PR #{}", pr.number);
+                merge_pr(&pr.id).await?;
+                println!("✅ Merged PR #{}", pr.number);
+            }
         }
     }
     Ok(())

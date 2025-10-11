@@ -80,12 +80,6 @@ impl Display for pull_request::PullRequest {
                 extract_reviewer_names(&self.review_requests).join(", ")
             )
         };
-        let created_date = self
-            .created_at
-            .split('T')
-            .next()
-            .unwrap_or(&self.created_at)
-            .to_string();
         write!(
             f,
             "#{} {} {} {}{}{} ({})",
@@ -95,19 +89,13 @@ impl Display for pull_request::PullRequest {
             self.title,
             review_str,
             reviewers_str,
-            created_date
+            self.created_date()
         )
     }
 }
 
 impl Debug for pull_request::PullRequest {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let created_date = self
-            .created_at
-            .split('T')
-            .next()
-            .unwrap_or(&self.created_at)
-            .to_string();
         let review = match &self.review_decision {
             Some(rd) => {
                 let label = rd.to_label();
@@ -125,7 +113,7 @@ impl Debug for pull_request::PullRequest {
             self.title.bold(),
             review_sep,
             review,
-            format!("({})", created_date).bright_black()
+            format!("({})", self.created_date()).bright_black()
         );
         write!(f, "{}", self.merge_state_status.colorize(&s))
     }

@@ -72,23 +72,14 @@ impl pull_request::PullRequest {
 
 impl Display for pull_request::PullRequest {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let reviewers_str = if self.review_requests.nodes.is_empty() {
-            String::default()
-        } else {
-            format!(
-                " 👥 {}",
-                extract_reviewer_names(&self.review_requests).join(", ")
-            )
-        };
         write!(
             f,
-            "#{} {} {} {}{}{} ({})",
+            "#{} {} {} {} {} ({})",
             self.number,
             self.merge_state_status.to_emoji(),
             self.slug(),
             self.title,
             self.review_status(),
-            reviewers_str,
             self.created_date()
         )
     }

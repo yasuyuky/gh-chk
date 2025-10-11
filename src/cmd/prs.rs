@@ -64,7 +64,7 @@ impl pull_request::PullRequest {
     }
     fn review_status(&self) -> String {
         match &self.review_decision {
-            Some(rd) => format!("[{}]", rd.to_label()),
+            Some(rd) => format!("[{}]", rd),
             None => String::default(),
         }
     }
@@ -191,15 +191,18 @@ pub enum ReviewDecision {
     ReviewRequired,
 }
 
-impl ReviewDecision {
-    pub fn to_label(&self) -> &'static str {
-        match self {
+impl Display for ReviewDecision {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
             Self::Approved => "approved",
             Self::ChangesRequested => "changes requested",
             Self::ReviewRequired => "review required",
-        }
+        };
+        write!(f, "{}", s)
     }
+}
 
+impl ReviewDecision {
     fn colorize(&self, s: &str) -> String {
         use colored::Colorize as _;
         match self {

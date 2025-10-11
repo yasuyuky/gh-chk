@@ -662,25 +662,19 @@ fn layout_main_chunks(area: Rect, preview_mode: Option<PreviewMode>) -> Rc<[Rect
 }
 
 fn build_pr_list(app: &App) -> List<'static> {
-    let items: Vec<ListItem> = app
-        .prs
-        .iter()
-        .map(|pr| {
-            let line = pr.display_line();
-            ListItem::new(Line::from(Span::styled(
-                line,
-                Style::default().fg(pr.merge_state_status.to_color()),
-            )))
-        })
-        .collect();
-
+    let mut items: Vec<ListItem> = Vec::new();
+    for pr in &app.prs {
+        let line = pr.to_string();
+        let styled = Span::styled(line, Style::default().fg(pr.merge_state_status.to_color()));
+        items.push(ListItem::new(Line::from(styled)));
+    }
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(format!("Pull Requests: total {}", app.prs.len()));
+    let highlight_style = Style::default().add_modifier(Modifier::BOLD);
     List::new(items)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title("Pull Requests"),
-        )
-        .highlight_style(Style::default().add_modifier(Modifier::BOLD))
+        .block(block)
+        .highlight_style(highlight_style)
         .highlight_symbol(">> ")
 }
 

@@ -24,7 +24,7 @@ impl std::fmt::Display for RequestedReviewer {
 }
 
 nestruct::nest! {
-    #[derive(serde::Serialize, serde::Deserialize, Clone)]
+    #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
     #[serde(rename_all = "camelCase")]
     PullRequest {
         repository: {
@@ -68,6 +68,20 @@ impl pull_request::PullRequest {
             None => String::default(),
         }
     }
+    fn colorized_string(&self) -> String {
+        format!(
+            "{:>6} {} {} {} {} {}",
+            format!("#{}", self.number).bold(),
+            self.merge_state_status.to_emoji(),
+            self.merge_state_status.colorize(&self.url),
+            self.title.bold(),
+            self.review_decision
+                .as_ref()
+                .map(|rd| rd.colorize(&format!("[{}]", rd)))
+                .unwrap_or_default(),
+            format!("({})", self.created_date()).bright_black()
+        )
+    }
 }
 
 impl Display for pull_request::PullRequest {
@@ -82,21 +96,6 @@ impl Display for pull_request::PullRequest {
             self.review_status(),
             self.created_date()
         )
-    }
-}
-
-impl Debug for pull_request::PullRequest {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let s = format!(
-            "{:>6} {} {} {} {} {}",
-            format!("#{}", self.number).bold(),
-            self.merge_state_status.to_emoji(),
-            self.url,
-            self.title.bold(),
-            self.review_status(),
-            format!("({})", self.created_date()).bright_black()
-        );
-        write!(f, "{}", self.merge_state_status.colorize(&s))
     }
 }
 
@@ -233,7 +232,7 @@ pub async fn check(slugs: Vec<String>, merge: bool) -> surf::Result<()> {
         let slug = Slug::from(slug.as_str());
         let prs = fetch_prs(&vec![slug]).await?;
         for pr in &prs {
-            println!("{:?}", pr);
+            println!("{}", pr.colorized_string());
             if merge && pr.merge_state_status == MergeStateStatus::Clean {
                 println!("🔄 Merging PR #{}", pr.number);
                 merge_pr(&pr.id).await?;

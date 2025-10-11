@@ -100,16 +100,6 @@ impl Debug for pull_request::PullRequest {
     }
 }
 
-fn extract_reviewer_names(
-    review_requests: &pull_request::review_requests::ReviewRequests,
-) -> Vec<String> {
-    review_requests
-        .nodes
-        .iter()
-        .filter_map(|node| node.requested_reviewer.as_ref().map(ToString::to_string))
-        .collect()
-}
-
 nestruct::nest! {
     #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
     #[serde(rename_all = "camelCase")]

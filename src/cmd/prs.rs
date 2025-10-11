@@ -24,7 +24,7 @@ impl std::fmt::Display for RequestedReviewer {
 }
 
 nestruct::nest! {
-    #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+    #[derive(serde::Serialize, serde::Deserialize, Clone)]
     #[serde(rename_all = "camelCase")]
     PullRequest {
         repository: {

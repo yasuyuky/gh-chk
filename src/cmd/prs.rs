@@ -1,7 +1,7 @@
 use colored::Colorize;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::fmt::Display;
+use std::fmt::{Debug, Display};
 
 use crate::cmd::prs::pull_request::PullRequest;
 use crate::graphql;
@@ -143,7 +143,7 @@ nestruct::nest! {
     }
 }
 
-impl Display for pull_request::PullRequest {
+impl Debug for pull_request::PullRequest {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let created_date = self
             .created_at

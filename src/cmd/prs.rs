@@ -62,6 +62,16 @@ impl pull_request::PullRequest {
             .next()
             .unwrap_or(&self.created_at)
     }
+    fn review_status(&self) -> String {
+        match &self.review_decision {
+            Some(rd) => {
+                let label = rd.to_label();
+                let bracketed = format!("[{}]", label);
+                rd.colorize(&bracketed)
+            }
+            None => String::default(),
+        }
+    }
 }
 
 impl Display for pull_request::PullRequest {

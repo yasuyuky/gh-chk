@@ -94,6 +94,37 @@ impl Display for pull_request::PullRequest {
     }
 }
 
+impl Debug for pull_request::PullRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let created_date = self
+            .created_at
+            .split('T')
+            .next()
+            .unwrap_or(&self.created_at)
+            .to_string();
+        let review = match &self.review_decision {
+            Some(rd) => {
+                let label = rd.to_label();
+                let bracketed = format!("[{}]", label);
+                rd.colorize(&bracketed)
+            }
+            None => String::default(),
+        };
+        let review_sep = if review.is_empty() { "" } else { " " };
+        let s = format!(
+            "{:>6} {} {} {}{}{} {}",
+            format!("#{}", self.number).bold(),
+            self.merge_state_status.to_emoji(),
+            self.url,
+            self.title.bold(),
+            review_sep,
+            review,
+            format!("({})", created_date).bright_black()
+        );
+        write!(f, "{}", self.merge_state_status.colorize(&s))
+    }
+}
+
 fn extract_reviewer_names(
     review_requests: &pull_request::review_requests::ReviewRequests,
 ) -> Vec<String> {
@@ -140,37 +171,6 @@ nestruct::nest! {
                 repository: crate::cmd::prs::repository::Repository
             }
         }
-    }
-}
-
-impl Debug for pull_request::PullRequest {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let created_date = self
-            .created_at
-            .split('T')
-            .next()
-            .unwrap_or(&self.created_at)
-            .to_string();
-        let review = match &self.review_decision {
-            Some(rd) => {
-                let label = rd.to_label();
-                let bracketed = format!("[{}]", label);
-                rd.colorize(&bracketed)
-            }
-            None => String::default(),
-        };
-        let review_sep = if review.is_empty() { "" } else { " " };
-        let s = format!(
-            "{:>6} {} {} {}{}{} {}",
-            format!("#{}", self.number).bold(),
-            self.merge_state_status.to_emoji(),
-            self.url,
-            self.title.bold(),
-            review_sep,
-            review,
-            format!("({})", created_date).bright_black()
-        );
-        write!(f, "{}", self.merge_state_status.colorize(&s))
     }
 }
 

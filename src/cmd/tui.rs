@@ -390,39 +390,6 @@ fn make_preview_block_title(app: &App, area_width: u16, total_lines: u16) -> Str
     }
 }
 
-fn style_linkish(s: &str) -> Vec<Span<'static>> {
-    let mut out: Vec<Span> = Vec::new();
-    let mut rest = s;
-    while let Some(idx) = rest.find("http://").or_else(|| rest.find("https://")) {
-        let (pre, link_start) = rest.split_at(idx);
-        if !pre.is_empty() {
-            out.push(Span::raw(pre.to_string()));
-        }
-        let mut end = link_start.len();
-        for (i, ch) in link_start.char_indices() {
-            if ch.is_whitespace() {
-                end = i;
-                break;
-            }
-        }
-        let (url_part, tail) = link_start.split_at(end);
-        out.push(Span::styled(
-            url_part.to_string(),
-            Style::default()
-                .fg(Color::Blue)
-                .add_modifier(Modifier::UNDERLINED),
-        ));
-        rest = tail;
-        if rest.is_empty() {
-            break;
-        }
-    }
-    if !rest.is_empty() {
-        out.push(Span::raw(rest.to_string()));
-    }
-    out
-}
-
 fn style_inline_code_and_links(s: &str) -> Line<'static> {
     let mut spans: Vec<Span> = Vec::new();
     let mut in_code = false;
@@ -439,7 +406,7 @@ fn style_inline_code_and_links(s: &str) -> Line<'static> {
                     ));
                 } else {
                     // process links in normal text
-                    spans.extend(style_linkish(&buf));
+                    spans.extend(styling::style_linkish(&buf));
                 }
                 buf.clear();
             }
@@ -457,7 +424,7 @@ fn style_inline_code_and_links(s: &str) -> Line<'static> {
                     .fg(Color::Yellow),
             ));
         } else {
-            spans.extend(style_linkish(&buf));
+            spans.extend(styling::style_linkish(&buf));
         }
     }
     Line::from(spans)

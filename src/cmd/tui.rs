@@ -216,7 +216,7 @@ impl App {
         if out.is_empty() {
             out = "No file changes found.".to_string();
         }
-        let text = make_diff_text(&out);
+        let text = styling::make_diff_text(&out);
         self.cache.insert((PreviewMode::Diff, pr.id.clone()), text);
         self.set_status(format!("✅ Loaded diff for #{}", pr.number));
         Ok(())
@@ -325,30 +325,6 @@ impl App {
         self.contrib_lines = Some(lines);
         Ok(())
     }
-}
-
-fn make_diff_text(diff: &str) -> Text<'static> {
-    let mut text = Text::default();
-    for line in diff.lines() {
-        let style = if line.starts_with("===") {
-            Style::default()
-                .fg(Color::Magenta)
-                .add_modifier(Modifier::BOLD)
-        } else if line.starts_with("@@") {
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD)
-        } else if line.starts_with('+') {
-            Style::default().fg(Color::Green)
-        } else if line.starts_with('-') {
-            Style::default().fg(Color::Red)
-        } else {
-            Style::default()
-        };
-        let styled = Line::from(Span::styled(line.to_owned(), style));
-        text.lines.push(styled);
-    }
-    text
 }
 
 fn make_commit_graph_text(entries: &[CommitGraphEntry]) -> Text<'static> {

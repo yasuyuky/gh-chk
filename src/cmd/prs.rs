@@ -1,11 +1,11 @@
 use colored::Colorize;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::fmt::Display;
+use std::fmt::{Debug, Display};
 
 use crate::cmd::prs::pull_request::PullRequest;
-use crate::graphql;
 use crate::slug::Slug;
+use crate::{config, graphql};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(untagged)]
@@ -56,48 +56,47 @@ impl pull_request::PullRequest {
     pub fn numslug(&self) -> String {
         format!("#{} in {}", self.number, self.slug())
     }
-    pub fn display_line(&self) -> String {
-        let review_str = match &self.review_decision {
-            Some(ReviewDecision::Approved) => " [approved]".to_string(),
-            Some(ReviewDecision::ChangesRequested) => " [changes requested]".to_string(),
-            Some(ReviewDecision::ReviewRequired) => " [review required]".to_string(),
-            None => String::default(),
-        };
-        let reviewers_str = if self.review_requests.nodes.is_empty() {
-            String::default()
-        } else {
-            format!(
-                " 👥 {}",
-                extract_reviewer_names(&self.review_requests).join(", ")
-            )
-        };
-        let created_date = self
-            .created_at
+    fn created_date(&self) -> &str {
+        self.created_at
             .split('T')
             .next()
             .unwrap_or(&self.created_at)
-            .to_string();
+    }
+    fn review_status(&self) -> String {
+        match &self.review_decision {
+            Some(rd) => format!("[{}]", rd),
+            None => String::default(),
+        }
+    }
+    fn colorized_string(&self) -> String {
         format!(
-            "#{} {} {} {}{}{} ({})",
-            self.number,
+            "{:>6} {} {} {} {} {}",
+            format!("#{}", self.number).bold(),
             self.merge_state_status.to_emoji(),
-            self.slug(),
-            self.title,
-            review_str,
-            reviewers_str,
-            created_date
+            self.merge_state_status.colorize(&self.url),
+            self.title.bold(),
+            self.review_decision
+                .as_ref()
+                .map(|rd| rd.colorize(&format!("[{}]", rd)))
+                .unwrap_or_default(),
+            format!("({})", self.created_date()).bright_black()
         )
     }
 }
 
-fn extract_reviewer_names(
-    review_requests: &pull_request::review_requests::ReviewRequests,
-) -> Vec<String> {
-    review_requests
-        .nodes
-        .iter()
-        .filter_map(|node| node.requested_reviewer.as_ref().map(ToString::to_string))
-        .collect()
+impl Display for pull_request::PullRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "#{} {} {} {} {} ({})",
+            self.number,
+            self.merge_state_status.to_emoji(),
+            self.slug(),
+            self.title,
+            self.review_status(),
+            self.created_date()
+        )
+    }
 }
 
 nestruct::nest! {
@@ -139,37 +138,6 @@ nestruct::nest! {
     }
 }
 
-impl Display for pull_request::PullRequest {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let created_date = self
-            .created_at
-            .split('T')
-            .next()
-            .unwrap_or(&self.created_at)
-            .to_string();
-        let review = match &self.review_decision {
-            Some(rd) => {
-                let label = rd.to_label();
-                let bracketed = format!("[{}]", label);
-                rd.colorize(&bracketed)
-            }
-            None => String::default(),
-        };
-        let review_sep = if review.is_empty() { "" } else { " " };
-        let s = format!(
-            "{:>6} {} {} {}{}{} {}",
-            format!("#{}", self.number).bold(),
-            self.merge_state_status.to_emoji(),
-            self.url,
-            self.title.bold(),
-            review_sep,
-            review,
-            format!("({})", created_date).bright_black()
-        );
-        write!(f, "{}", self.merge_state_status.colorize(&s))
-    }
-}
-
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum MergeStateStatus {
@@ -189,8 +157,8 @@ impl MergeStateStatus {
             Self::Behind => "⏩",
             Self::Blocked => "🚫",
             Self::Clean => "✅",
-            Self::Dirty => "⚠️ ",
-            Self::Draft => "✏️ ",
+            Self::Dirty => "⚠️",
+            Self::Draft => "✏️",
             Self::HasHooks => "🪝",
             Self::Unknown => "❓",
             Self::Unstable => "❌",
@@ -222,15 +190,18 @@ pub enum ReviewDecision {
     ReviewRequired,
 }
 
-impl ReviewDecision {
-    pub fn to_label(&self) -> &'static str {
-        match self {
+impl Display for ReviewDecision {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
             Self::Approved => "approved",
             Self::ChangesRequested => "changes requested",
             Self::ReviewRequired => "review required",
-        }
+        };
+        write!(f, "{}", s)
     }
+}
 
+impl ReviewDecision {
     fn colorize(&self, s: &str) -> String {
         use colored::Colorize as _;
         match self {
@@ -256,39 +227,19 @@ pub async fn check(slugs: Vec<String>, merge: bool) -> surf::Result<()> {
         slugs
     };
 
+    if matches!(config::FORMAT.get(), Some(config::Format::Json)) {
+        let specs: Vec<Slug> = slugs.iter().map(|s| Slug::from(s.as_str())).collect();
+        let prs = fetch_prs(&specs).await?;
+        println!("{}", serde_json::to_string_pretty(&prs).unwrap());
+        return Ok(());
+    }
+
     for slug in slugs {
         println!("{}", slug.bright_blue());
-        let vs: Vec<String> = slug.split('/').map(String::from).collect();
-        match vs.len() {
-            1 => check_owner(&vs[0], merge).await?,
-            2 => check_repo(&vs[0], &vs[1], merge).await?,
-            _ => panic!("unknown slug format"),
-        }
-    }
-    Ok(())
-}
-
-async fn check_owner(owner: &str, merge: bool) -> surf::Result<()> {
-    let v = json!({ "login": owner });
-    let q = json!({ "query": include_str!("../query/prs.graphql"), "operationName": "GetOwnerPrs", "variables": v });
-    let res = crate::graphql::query::<res::Res>(&q).await?;
-    match crate::config::FORMAT.get() {
-        Some(&crate::config::Format::Json) => println!("{}", serde_json::to_string_pretty(&res)?),
-        _ => print_owner_text(&res, merge).await?,
-    }
-    Ok(())
-}
-
-async fn print_owner_text(res: &res::Res, merge: bool) -> surf::Result<()> {
-    let mut count = 0usize;
-    for repo in &res.data.repository_owner.repositories.nodes {
-        if repo.pull_requests.nodes.is_empty() {
-            continue;
-        }
-        println!("{}", repo.name.cyan());
-        for pr in &repo.pull_requests.nodes {
-            count += 1;
-            println!("{pr}");
+        let slug = Slug::from(slug.as_str());
+        let prs = fetch_prs(&vec![slug]).await?;
+        for pr in &prs {
+            println!("{}", pr.colorized_string());
             if merge && pr.merge_state_status == MergeStateStatus::Clean {
                 println!("🔄 Merging PR #{}", pr.number);
                 merge_pr(&pr.id).await?;
@@ -296,33 +247,6 @@ async fn print_owner_text(res: &res::Res, merge: bool) -> surf::Result<()> {
             }
         }
     }
-    println!("Count of PRs: {count}");
-    Ok(())
-}
-
-async fn check_repo(owner: &str, name: &str, merge: bool) -> surf::Result<()> {
-    let v = json!({ "login": owner, "name": name });
-    let q = json!({ "query": include_str!("../query/prs.graphql"), "operationName": "GetRepoPrs", "variables": v });
-    let res = crate::graphql::query::<repo_res::RepoRes>(&q).await?;
-    match crate::config::FORMAT.get() {
-        Some(&crate::config::Format::Json) => println!("{}", serde_json::to_string_pretty(&res)?),
-        _ => print_repo_text(&res, merge).await?,
-    }
-    Ok(())
-}
-
-async fn print_repo_text(res: &repo_res::RepoRes, merge: bool) -> surf::Result<()> {
-    let mut count = 0usize;
-    for pr in &res.data.repository_owner.repository.pull_requests.nodes {
-        count += 1;
-        println!("{pr}");
-        if merge && pr.merge_state_status == MergeStateStatus::Clean {
-            println!("🔄 Merging PR #{}", pr.number);
-            merge_pr(&pr.id).await?;
-            println!("✅ Merged PR #{}", pr.number);
-        }
-    }
-    println!("Count of PRs: {count}");
     Ok(())
 }
 

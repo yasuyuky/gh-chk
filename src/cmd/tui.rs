@@ -390,46 +390,6 @@ fn make_preview_block_title(app: &App, area_width: u16, total_lines: u16) -> Str
     }
 }
 
-fn style_inline_code_and_links(s: &str) -> Line<'static> {
-    let mut spans: Vec<Span> = Vec::new();
-    let mut in_code = false;
-    let mut buf = String::default();
-    for ch in s.chars() {
-        if ch == '`' {
-            if !buf.is_empty() {
-                if in_code {
-                    spans.push(Span::styled(
-                        buf.clone(),
-                        Style::default()
-                            .bg(Color::Rgb(40, 40, 40))
-                            .fg(Color::Yellow),
-                    ));
-                } else {
-                    // process links in normal text
-                    spans.extend(styling::style_linkish(&buf));
-                }
-                buf.clear();
-            }
-            in_code = !in_code;
-        } else {
-            buf.push(ch);
-        }
-    }
-    if !buf.is_empty() {
-        if in_code {
-            spans.push(Span::styled(
-                buf,
-                Style::default()
-                    .bg(Color::Rgb(40, 40, 40))
-                    .fg(Color::Yellow),
-            ));
-        } else {
-            spans.extend(styling::style_linkish(&buf));
-        }
-    }
-    Line::from(spans)
-}
-
 fn prettify_pr_preview(title: &str, url: &str, body: &str) -> Text<'static> {
     let mut text = Text::default();
 
@@ -534,7 +494,7 @@ fn prettify_pr_preview(title: &str, url: &str, body: &str) -> Text<'static> {
         }
 
         // Normal line with inline code and links
-        text.lines.push(style_inline_code_and_links(line));
+        text.lines.push(styling::style_inline_code_and_links(line));
     }
 
     text

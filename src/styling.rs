@@ -65,3 +65,36 @@ pub fn make_diff_text(diff: &str) -> Text<'static> {
     }
     text
 }
+
+pub fn style_linkish(s: &str) -> Vec<Span<'static>> {
+    let mut out: Vec<Span> = Vec::new();
+    let mut rest = s;
+    while let Some(idx) = rest.find("http://").or_else(|| rest.find("https://")) {
+        let (pre, link_start) = rest.split_at(idx);
+        if !pre.is_empty() {
+            out.push(Span::raw(pre.to_string()));
+        }
+        let mut end = link_start.len();
+        for (i, ch) in link_start.char_indices() {
+            if ch.is_whitespace() {
+                end = i;
+                break;
+            }
+        }
+        let (url_part, tail) = link_start.split_at(end);
+        out.push(Span::styled(
+            url_part.to_string(),
+            Style::default()
+                .fg(Color::Blue)
+                .add_modifier(Modifier::UNDERLINED),
+        ));
+        rest = tail;
+        if rest.is_empty() {
+            break;
+        }
+    }
+    if !rest.is_empty() {
+        out.push(Span::raw(rest.to_string()));
+    }
+    out
+}

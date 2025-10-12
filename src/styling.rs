@@ -138,3 +138,113 @@ pub fn style_inline_code_and_links(s: &str) -> Line<'static> {
     }
     Line::from(spans)
 }
+
+pub fn prettify_pr_preview(title: &str, url: &str, body: &str) -> Text<'static> {
+    let mut text = Text::default();
+
+    // Title
+    text.lines.push(Line::from(Span::styled(
+        title.to_string(),
+        Style::default()
+            .fg(Color::Magenta)
+            .add_modifier(Modifier::BOLD),
+    )));
+    // URL
+    text.lines.push(Line::from(Span::styled(
+        url.to_string(),
+        Style::default()
+            .fg(Color::Blue)
+            .add_modifier(Modifier::UNDERLINED),
+    )));
+    text.lines.push(Line::from(""));
+
+    // Body
+    let mut in_fenced_code = false;
+    for raw_line in body.lines() {
+        let line = raw_line.trim_end_matches('\r');
+        let trimmed = line.trim_start();
+        // Toggle fenced code blocks
+        if trimmed.starts_with("```") {
+            in_fenced_code = !in_fenced_code;
+            continue;
+        }
+        if in_fenced_code {
+            text.lines.push(Line::from(Span::styled(
+                line.to_string(),
+                Style::default().bg(Color::Rgb(35, 35, 35)).fg(Color::White),
+            )));
+            continue;
+        }
+
+        // Headings
+        if let Some(rest) = trimmed.strip_prefix("###### ") {
+            text.lines.push(Line::from(Span::styled(
+                rest.to_string(),
+                Style::default()
+                    .fg(Color::Gray)
+                    .add_modifier(Modifier::BOLD),
+            )));
+            continue;
+        } else if let Some(rest) = trimmed.strip_prefix("##### ") {
+            text.lines.push(Line::from(Span::styled(
+                rest.to_string(),
+                Style::default()
+                    .fg(Color::Gray)
+                    .add_modifier(Modifier::BOLD),
+            )));
+            continue;
+        } else if let Some(rest) = trimmed.strip_prefix("#### ") {
+            text.lines.push(Line::from(Span::styled(
+                rest.to_string(),
+                Style::default()
+                    .fg(Color::Blue)
+                    .add_modifier(Modifier::BOLD),
+            )));
+            continue;
+        } else if let Some(rest) = trimmed.strip_prefix("### ") {
+            text.lines.push(Line::from(Span::styled(
+                rest.to_string(),
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            )));
+            continue;
+        } else if let Some(rest) = trimmed.strip_prefix("## ") {
+            text.lines.push(Line::from(Span::styled(
+                rest.to_string(),
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            )));
+            continue;
+        } else if let Some(rest) = trimmed.strip_prefix("# ") {
+            text.lines.push(Line::from(Span::styled(
+                rest.to_string(),
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            )));
+            continue;
+        }
+
+        // Unordered lists
+        if let Some(rest) = trimmed.strip_prefix("- ") {
+            text.lines.push(Line::from(vec![
+                Span::styled("• ", Style::default().fg(Color::Green)),
+                Span::raw(rest.to_string()),
+            ]));
+            continue;
+        } else if let Some(rest) = trimmed.strip_prefix("* ") {
+            text.lines.push(Line::from(vec![
+                Span::styled("• ", Style::default().fg(Color::Green)),
+                Span::raw(rest.to_string()),
+            ]));
+            continue;
+        }
+
+        // Normal line with inline code and links
+        text.lines.push(style_inline_code_and_links(line));
+    }
+
+    text
+}

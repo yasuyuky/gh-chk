@@ -1,5 +1,5 @@
 use crate::cmd::prs::{self, MergeStateStatus, approve_pr, fetch_prs};
-use crate::{rest, slug::Slug};
+use crate::{rest, slug::Slug, styling};
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, MouseEventKind},
     execute,
@@ -304,8 +304,8 @@ impl App {
             let mut spans: Vec<Span> = Vec::new();
             for w in weeks {
                 if let Some(d) = w.contribution_days.get(day) {
-                    let (r, g, b) = hex_to_rgb(&d.color);
-                    let fg = contrast_fg(r, g, b);
+                    let (r, g, b) = styling::hex_to_rgb(&d.color);
+                    let fg = styling::contrast_fg(r, g, b);
                     let cnt = d.contribution_count;
                     let txt = if cnt >= 100 {
                         String::from("++")
@@ -324,29 +324,6 @@ impl App {
         }
         self.contrib_lines = Some(lines);
         Ok(())
-    }
-}
-
-fn hex_to_rgb(s: &str) -> (u8, u8, u8) {
-    let hex = s.trim_start_matches('#');
-    if hex.len() < 6 {
-        return (0, 0, 0);
-    }
-    let r = u8::from_str_radix(&hex[0..2], 16).unwrap_or(0);
-    let g = u8::from_str_radix(&hex[2..4], 16).unwrap_or(0);
-    let b = u8::from_str_radix(&hex[4..6], 16).unwrap_or(0);
-    (r, g, b)
-}
-
-fn contrast_fg(r: u8, g: u8, b: u8) -> Color {
-    let r_f = r as f32 / 255.0;
-    let g_f = g as f32 / 255.0;
-    let b_f = b as f32 / 255.0;
-    let lum = 0.2126 * r_f + 0.7152 * g_f + 0.0722 * b_f;
-    if lum > 0.6 {
-        Color::Black
-    } else {
-        Color::White
     }
 }
 

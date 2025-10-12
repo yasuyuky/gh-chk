@@ -1,4 +1,7 @@
-use ratatui::style::Color;
+use ratatui::{
+    style::{Color, Modifier, Style},
+    text::{Line, Span, Text},
+};
 
 pub fn hex_to_rgb(s: &str) -> (u8, u8, u8) {
     let hex = s.trim_start_matches('#');
@@ -37,4 +40,28 @@ pub fn ellipsize(s: &str, max: usize) -> String {
     }
     out.push('…');
     out
+}
+
+pub fn make_diff_text(diff: &str) -> Text<'static> {
+    let mut text = Text::default();
+    for line in diff.lines() {
+        let style = if line.starts_with("===") {
+            Style::default()
+                .fg(Color::Magenta)
+                .add_modifier(Modifier::BOLD)
+        } else if line.starts_with("@@") {
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD)
+        } else if line.starts_with('+') {
+            Style::default().fg(Color::Green)
+        } else if line.starts_with('-') {
+            Style::default().fg(Color::Red)
+        } else {
+            Style::default()
+        };
+        let styled = Line::from(Span::styled(line.to_owned(), style));
+        text.lines.push(styled);
+    }
+    text
 }

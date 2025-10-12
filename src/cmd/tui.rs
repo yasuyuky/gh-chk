@@ -390,22 +390,6 @@ fn make_commit_graph_text(entries: &[CommitGraphEntry]) -> Text<'static> {
     text
 }
 
-fn ellipsize(s: &str, max: usize) -> String {
-    if s.chars().count() <= max {
-        return s.to_string();
-    }
-    let mut out = String::default();
-    for (i, ch) in s.chars().enumerate() {
-        if i >= max.saturating_sub(1) {
-            // leave room for '…'
-            break;
-        }
-        out.push(ch);
-    }
-    out.push('…');
-    out
-}
-
 fn make_preview_block_title(app: &App, area_width: u16, total_lines: u16) -> String {
     if let (Some(pr), Some(mode)) = (app.get_selected_pr(), app.preview.mode) {
         // Reserve a bit for borders/padding
@@ -416,7 +400,7 @@ fn make_preview_block_title(app: &App, area_width: u16, total_lines: u16) -> Str
         let mut title = base.clone();
         if w > base.len() + 3 {
             let remain = w - base.len() - 3;
-            let short = ellipsize(&pr.title, remain);
+            let short = styling::ellipsize(&pr.title, remain);
             title = format!("{} • {}", base, short);
         }
 

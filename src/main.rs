@@ -8,6 +8,7 @@ mod env_keys;
 mod graphql;
 mod rest;
 mod slug;
+mod styling;
 
 #[derive(Parser)]
 struct Opt {

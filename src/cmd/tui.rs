@@ -1,5 +1,5 @@
 use crate::cmd::prs::{self, MergeStateStatus, approve_pr, fetch_prs};
-use crate::{rest, slug::Slug};
+use crate::{rest, slug::Slug, styling};
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, MouseEventKind},
     execute,
@@ -186,7 +186,7 @@ impl App {
 
     async fn load_body(&mut self, pr: &PrNode) -> surf::Result<()> {
         self.set_status_persistent(format!("🔎 Loading body for #{}...", pr.number));
-        let text = prettify_pr_preview(&pr.title, &pr.url, &pr.body_text);
+        let text = styling::prettify_pr_preview(&pr.title, &pr.url, &pr.body_text);
         self.cache.insert((PreviewMode::Body, pr.id.clone()), text);
         self.set_status(format!("✅ Loaded body for #{}", pr.number));
         Ok(())
@@ -216,7 +216,7 @@ impl App {
         if out.is_empty() {
             out = "No file changes found.".to_string();
         }
-        let text = make_diff_text(&out);
+        let text = styling::make_diff_text(&out);
         self.cache.insert((PreviewMode::Diff, pr.id.clone()), text);
         self.set_status(format!("✅ Loaded diff for #{}", pr.number));
         Ok(())
@@ -304,8 +304,8 @@ impl App {
             let mut spans: Vec<Span> = Vec::new();
             for w in weeks {
                 if let Some(d) = w.contribution_days.get(day) {
-                    let (r, g, b) = hex_to_rgb(&d.color);
-                    let fg = contrast_fg(r, g, b);
+                    let (r, g, b) = styling::hex_to_rgb(&d.color);
+                    let fg = styling::contrast_fg(r, g, b);
                     let cnt = d.contribution_count;
                     let txt = if cnt >= 100 {
                         String::from("++")
@@ -325,53 +325,6 @@ impl App {
         self.contrib_lines = Some(lines);
         Ok(())
     }
-}
-
-fn hex_to_rgb(s: &str) -> (u8, u8, u8) {
-    let hex = s.trim_start_matches('#');
-    if hex.len() < 6 {
-        return (0, 0, 0);
-    }
-    let r = u8::from_str_radix(&hex[0..2], 16).unwrap_or(0);
-    let g = u8::from_str_radix(&hex[2..4], 16).unwrap_or(0);
-    let b = u8::from_str_radix(&hex[4..6], 16).unwrap_or(0);
-    (r, g, b)
-}
-
-fn contrast_fg(r: u8, g: u8, b: u8) -> Color {
-    let r_f = r as f32 / 255.0;
-    let g_f = g as f32 / 255.0;
-    let b_f = b as f32 / 255.0;
-    let lum = 0.2126 * r_f + 0.7152 * g_f + 0.0722 * b_f;
-    if lum > 0.6 {
-        Color::Black
-    } else {
-        Color::White
-    }
-}
-
-fn make_diff_text(diff: &str) -> Text<'static> {
-    let mut text = Text::default();
-    for line in diff.lines() {
-        let style = if line.starts_with("===") {
-            Style::default()
-                .fg(Color::Magenta)
-                .add_modifier(Modifier::BOLD)
-        } else if line.starts_with("@@") {
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD)
-        } else if line.starts_with('+') {
-            Style::default().fg(Color::Green)
-        } else if line.starts_with('-') {
-            Style::default().fg(Color::Red)
-        } else {
-            Style::default()
-        };
-        let styled = Line::from(Span::styled(line.to_owned(), style));
-        text.lines.push(styled);
-    }
-    text
 }
 
 fn make_commit_graph_text(entries: &[CommitGraphEntry]) -> Text<'static> {
@@ -413,22 +366,6 @@ fn make_commit_graph_text(entries: &[CommitGraphEntry]) -> Text<'static> {
     text
 }
 
-fn ellipsize(s: &str, max: usize) -> String {
-    if s.chars().count() <= max {
-        return s.to_string();
-    }
-    let mut out = String::default();
-    for (i, ch) in s.chars().enumerate() {
-        if i >= max.saturating_sub(1) {
-            // leave room for '…'
-            break;
-        }
-        out.push(ch);
-    }
-    out.push('…');
-    out
-}
-
 fn make_preview_block_title(app: &App, area_width: u16, total_lines: u16) -> String {
     if let (Some(pr), Some(mode)) = (app.get_selected_pr(), app.preview.mode) {
         // Reserve a bit for borders/padding
@@ -439,7 +376,7 @@ fn make_preview_block_title(app: &App, area_width: u16, total_lines: u16) -> Str
         let mut title = base.clone();
         if w > base.len() + 3 {
             let remain = w - base.len() - 3;
-            let short = ellipsize(&pr.title, remain);
+            let short = styling::ellipsize(&pr.title, remain);
             title = format!("{} • {}", base, short);
         }
 
@@ -451,189 +388,6 @@ fn make_preview_block_title(app: &App, area_width: u16, total_lines: u16) -> Str
     } else {
         "Preview".to_string()
     }
-}
-
-fn style_linkish(s: &str) -> Vec<Span<'static>> {
-    let mut out: Vec<Span> = Vec::new();
-    let mut rest = s;
-    while let Some(idx) = rest.find("http://").or_else(|| rest.find("https://")) {
-        let (pre, link_start) = rest.split_at(idx);
-        if !pre.is_empty() {
-            out.push(Span::raw(pre.to_string()));
-        }
-        let mut end = link_start.len();
-        for (i, ch) in link_start.char_indices() {
-            if ch.is_whitespace() {
-                end = i;
-                break;
-            }
-        }
-        let (url_part, tail) = link_start.split_at(end);
-        out.push(Span::styled(
-            url_part.to_string(),
-            Style::default()
-                .fg(Color::Blue)
-                .add_modifier(Modifier::UNDERLINED),
-        ));
-        rest = tail;
-        if rest.is_empty() {
-            break;
-        }
-    }
-    if !rest.is_empty() {
-        out.push(Span::raw(rest.to_string()));
-    }
-    out
-}
-
-fn style_inline_code_and_links(s: &str) -> Line<'static> {
-    let mut spans: Vec<Span> = Vec::new();
-    let mut in_code = false;
-    let mut buf = String::default();
-    for ch in s.chars() {
-        if ch == '`' {
-            if !buf.is_empty() {
-                if in_code {
-                    spans.push(Span::styled(
-                        buf.clone(),
-                        Style::default()
-                            .bg(Color::Rgb(40, 40, 40))
-                            .fg(Color::Yellow),
-                    ));
-                } else {
-                    // process links in normal text
-                    spans.extend(style_linkish(&buf));
-                }
-                buf.clear();
-            }
-            in_code = !in_code;
-        } else {
-            buf.push(ch);
-        }
-    }
-    if !buf.is_empty() {
-        if in_code {
-            spans.push(Span::styled(
-                buf,
-                Style::default()
-                    .bg(Color::Rgb(40, 40, 40))
-                    .fg(Color::Yellow),
-            ));
-        } else {
-            spans.extend(style_linkish(&buf));
-        }
-    }
-    Line::from(spans)
-}
-
-fn prettify_pr_preview(title: &str, url: &str, body: &str) -> Text<'static> {
-    let mut text = Text::default();
-
-    // Title
-    text.lines.push(Line::from(Span::styled(
-        title.to_string(),
-        Style::default()
-            .fg(Color::Magenta)
-            .add_modifier(Modifier::BOLD),
-    )));
-    // URL
-    text.lines.push(Line::from(Span::styled(
-        url.to_string(),
-        Style::default()
-            .fg(Color::Blue)
-            .add_modifier(Modifier::UNDERLINED),
-    )));
-    text.lines.push(Line::from(""));
-
-    // Body
-    let mut in_fenced_code = false;
-    for raw_line in body.lines() {
-        let line = raw_line.trim_end_matches('\r');
-        let trimmed = line.trim_start();
-        // Toggle fenced code blocks
-        if trimmed.starts_with("```") {
-            in_fenced_code = !in_fenced_code;
-            continue;
-        }
-        if in_fenced_code {
-            text.lines.push(Line::from(Span::styled(
-                line.to_string(),
-                Style::default().bg(Color::Rgb(35, 35, 35)).fg(Color::White),
-            )));
-            continue;
-        }
-
-        // Headings
-        if let Some(rest) = trimmed.strip_prefix("###### ") {
-            text.lines.push(Line::from(Span::styled(
-                rest.to_string(),
-                Style::default()
-                    .fg(Color::Gray)
-                    .add_modifier(Modifier::BOLD),
-            )));
-            continue;
-        } else if let Some(rest) = trimmed.strip_prefix("##### ") {
-            text.lines.push(Line::from(Span::styled(
-                rest.to_string(),
-                Style::default()
-                    .fg(Color::Gray)
-                    .add_modifier(Modifier::BOLD),
-            )));
-            continue;
-        } else if let Some(rest) = trimmed.strip_prefix("#### ") {
-            text.lines.push(Line::from(Span::styled(
-                rest.to_string(),
-                Style::default()
-                    .fg(Color::Blue)
-                    .add_modifier(Modifier::BOLD),
-            )));
-            continue;
-        } else if let Some(rest) = trimmed.strip_prefix("### ") {
-            text.lines.push(Line::from(Span::styled(
-                rest.to_string(),
-                Style::default()
-                    .fg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD),
-            )));
-            continue;
-        } else if let Some(rest) = trimmed.strip_prefix("## ") {
-            text.lines.push(Line::from(Span::styled(
-                rest.to_string(),
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD),
-            )));
-            continue;
-        } else if let Some(rest) = trimmed.strip_prefix("# ") {
-            text.lines.push(Line::from(Span::styled(
-                rest.to_string(),
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD),
-            )));
-            continue;
-        }
-
-        // Unordered lists
-        if let Some(rest) = trimmed.strip_prefix("- ") {
-            text.lines.push(Line::from(vec![
-                Span::styled("• ", Style::default().fg(Color::Green)),
-                Span::raw(rest.to_string()),
-            ]));
-            continue;
-        } else if let Some(rest) = trimmed.strip_prefix("* ") {
-            text.lines.push(Line::from(vec![
-                Span::styled("• ", Style::default().fg(Color::Green)),
-                Span::raw(rest.to_string()),
-            ]));
-            continue;
-        }
-
-        // Normal line with inline code and links
-        text.lines.push(style_inline_code_and_links(line));
-    }
-
-    text
 }
 
 fn layout_outer(area: Rect, contrib_height: u16) -> Rc<[Rect]> {

@@ -22,3 +22,19 @@ pub fn contrast_fg(r: u8, g: u8, b: u8) -> Color {
         Color::White
     }
 }
+
+pub fn ellipsize(s: &str, max: usize) -> String {
+    if s.chars().count() <= max {
+        return s.to_string();
+    }
+    let mut out = String::default();
+    for (i, ch) in s.chars().enumerate() {
+        if i >= max.saturating_sub(1) {
+            // leave room for '…'
+            break;
+        }
+        out.push(ch);
+    }
+    out.push('…');
+    out
+}

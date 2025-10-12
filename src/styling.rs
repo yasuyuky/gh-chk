@@ -98,3 +98,43 @@ pub fn style_linkish(s: &str) -> Vec<Span<'static>> {
     }
     out
 }
+
+pub fn style_inline_code_and_links(s: &str) -> Line<'static> {
+    let mut spans: Vec<Span> = Vec::new();
+    let mut in_code = false;
+    let mut buf = String::default();
+    for ch in s.chars() {
+        if ch == '`' {
+            if !buf.is_empty() {
+                if in_code {
+                    spans.push(Span::styled(
+                        buf.clone(),
+                        Style::default()
+                            .bg(Color::Rgb(40, 40, 40))
+                            .fg(Color::Yellow),
+                    ));
+                } else {
+                    // process links in normal text
+                    spans.extend(style_linkish(&buf));
+                }
+                buf.clear();
+            }
+            in_code = !in_code;
+        } else {
+            buf.push(ch);
+        }
+    }
+    if !buf.is_empty() {
+        if in_code {
+            spans.push(Span::styled(
+                buf,
+                Style::default()
+                    .bg(Color::Rgb(40, 40, 40))
+                    .fg(Color::Yellow),
+            ));
+        } else {
+            spans.extend(style_linkish(&buf));
+        }
+    }
+    Line::from(spans)
+}

@@ -103,12 +103,13 @@ impl Display for pull_request::PullRequest {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "#{} {} {} {} {} ({})",
+            "#{} {} {} {} {} {} ({})",
             self.number,
             self.merge_state_status.to_emoji(),
             self.slug(),
             self.title,
             self.review_status(),
+            self.review_requests(),
             self.created_date()
         )
     }

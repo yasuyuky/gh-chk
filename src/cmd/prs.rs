@@ -62,6 +62,21 @@ impl pull_request::PullRequest {
             .next()
             .unwrap_or(&self.created_at)
     }
+    fn review_requests(&self) -> String {
+        if self.review_requests.nodes.is_empty() {
+            String::default()
+        } else if self.review_requests.nodes.len() == 1 {
+            format!(
+                "(r: {})",
+                &self.review_requests.nodes[0]
+                    .requested_reviewer
+                    .as_ref()
+                    .unwrap()
+            )
+        } else {
+            format!("(r: {})", &self.review_requests.nodes.len())
+        }
+    }
     fn review_status(&self) -> String {
         match &self.review_decision {
             Some(rd) => format!("[{}]", rd),

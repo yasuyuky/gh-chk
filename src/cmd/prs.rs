@@ -80,7 +80,7 @@ impl pull_request::PullRequest {
     }
     fn colorized_string(&self) -> String {
         format!(
-            "{:>6} {} {} {} {} {}",
+            "{:>6} {} {} {} {} {} {}",
             format!("#{}", self.number).bold(),
             self.merge_state_status.to_emoji(),
             self.merge_state_status.colorize(&self.url),
@@ -89,6 +89,7 @@ impl pull_request::PullRequest {
                 .as_ref()
                 .map(|rd| rd.colorize(&format!("[{}]", rd)))
                 .unwrap_or_default(),
+            self.review_requests(),
             format!("({})", self.created_date()).bright_black()
         )
     }

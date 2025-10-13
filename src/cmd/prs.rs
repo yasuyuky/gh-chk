@@ -66,15 +66,10 @@ impl pull_request::PullRequest {
         if self.review_requests.nodes.is_empty() {
             String::default()
         } else if self.review_requests.nodes.len() == 1 {
-            format!(
-                "(r: {})",
-                &self.review_requests.nodes[0]
-                    .requested_reviewer
-                    .as_ref()
-                    .unwrap()
-            )
+            let name = &self.review_requests.nodes[0].requested_reviewer;
+            format!("[r: {}]", name.as_ref().unwrap())
         } else {
-            format!("(r: {})", &self.review_requests.nodes.len())
+            format!("[r: {}]", &self.review_requests.nodes.len())
         }
     }
     fn review_status(&self) -> String {

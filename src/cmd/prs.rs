@@ -62,6 +62,16 @@ impl pull_request::PullRequest {
             .next()
             .unwrap_or(&self.created_at)
     }
+    fn review_requests(&self) -> String {
+        if self.review_requests.nodes.is_empty() {
+            String::default()
+        } else if self.review_requests.nodes.len() == 1 {
+            let name = &self.review_requests.nodes[0].requested_reviewer;
+            format!("[r: {}]", name.as_ref().unwrap())
+        } else {
+            format!("[r: {}]", &self.review_requests.nodes.len())
+        }
+    }
     fn review_status(&self) -> String {
         match &self.review_decision {
             Some(rd) => format!("[{}]", rd),
@@ -70,7 +80,7 @@ impl pull_request::PullRequest {
     }
     fn colorized_string(&self) -> String {
         format!(
-            "{:>6} {} {} {} {} {}",
+            "{:>6} {} {} {} {} {} {}",
             format!("#{}", self.number).bold(),
             self.merge_state_status.to_emoji(),
             self.merge_state_status.colorize(&self.url),
@@ -79,6 +89,7 @@ impl pull_request::PullRequest {
                 .as_ref()
                 .map(|rd| rd.colorize(&format!("[{}]", rd)))
                 .unwrap_or_default(),
+            self.review_requests(),
             format!("({})", self.created_date()).bright_black()
         )
     }
@@ -88,12 +99,13 @@ impl Display for pull_request::PullRequest {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "#{} {} {} {} {} ({})",
+            "#{} {} {} {} {} {} ({})",
             self.number,
             self.merge_state_status.to_emoji(),
             self.slug(),
             self.title,
             self.review_status(),
+            self.review_requests(),
             self.created_date()
         )
     }

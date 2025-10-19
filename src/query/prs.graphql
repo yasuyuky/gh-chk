@@ -54,3 +54,9 @@ query GetRepoPrs($login: String!, $name: String!) {
     }
   }
 }
+
+mutation MergePullRequest($pullRequestId: ID!) {
+  mergePullRequest(input: { pullRequestId: $pullRequestId }) {
+    clientMutationId
+  }
+}

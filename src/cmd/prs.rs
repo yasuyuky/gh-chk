@@ -227,7 +227,7 @@ impl ReviewDecision {
 
 pub async fn merge_pr(pr_id: &str) -> surf::Result<()> {
     let v = json!({ "pullRequestId": pr_id });
-    let q = json!({ "query": include_str!("../query/merge.pr.graphql"), "variables": v });
+    let q = json!({ "query": include_str!("../query/prs.graphql"), "operationName": "MergePullRequest", "variables": v });
     crate::graphql::query::<serde_json::Value>(&q).await?;
     Ok(())
 }

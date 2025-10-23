@@ -293,7 +293,7 @@ async fn fetch_repo_prs(owner: &str, name: &str) -> surf::Result<Vec<PullRequest
 
 pub async fn approve_pr(pr_id: &str) -> surf::Result<()> {
     let v = json!({ "pullRequestId": pr_id });
-    let q = json!({ "query": include_str!("../query/approve.pr.graphql"), "variables": v });
+    let q = json!({ "query": include_str!("../query/prs.graphql"), "operationName": "ApprovePullRequest", "variables": v });
     graphql::query::<serde_json::Value>(&q).await?;
     Ok(())
 }

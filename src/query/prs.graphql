@@ -60,3 +60,11 @@ mutation MergePullRequest($pullRequestId: ID!) {
     clientMutationId
   }
 }
+
+mutation ApprovePullRequest($pullRequestId: ID!) {
+  addPullRequestReview(
+    input: { pullRequestId: $pullRequestId, event: APPROVE }
+  ) {
+    clientMutationId
+  }
+}

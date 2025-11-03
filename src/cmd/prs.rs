@@ -1,7 +1,7 @@
 use colored::Colorize;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::fmt::{Debug, Display};
+use std::fmt::{Debug, Display, write};
 
 use crate::cmd::prs::pull_request::PullRequest;
 use crate::slug::Slug;
@@ -231,6 +231,21 @@ pub struct PrFile {
     pub additions: i64,
     pub deletions: i64,
     pub patch: Option<String>,
+}
+
+impl Display for PrFile {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut out = String::default();
+        out += &format!(
+            "=== {} (+{}, -{}) ===",
+            self.filename, self.additions, self.deletions
+        );
+        match self.patch {
+            Some(ref p) => out.push_str(&format!(" {}", p)),
+            None => out.push_str(", (no textual diff available)"),
+        };
+        write!(f, "{}\n\n", out)
+    }
 }
 
 pub async fn fetch_pr_files(owner: &str, name: &str, number: usize) -> surf::Result<Vec<PrFile>> {

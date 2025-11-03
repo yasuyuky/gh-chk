@@ -545,14 +545,6 @@ impl App {
     }
 }
 
-#[derive(Deserialize)]
-struct PrFile {
-    filename: String,
-    additions: i64,
-    deletions: i64,
-    patch: Option<String>,
-}
-
 nestruct::nest! {
     #[derive(serde::Deserialize, Clone)]
     PrCommit {
@@ -621,12 +613,6 @@ struct CommitGraphEntry {
     summary: String,
     author: Option<String>,
     date: Option<String>,
-}
-
-async fn fetch_pr_files(owner: &str, name: &str, number: usize) -> surf::Result<Vec<PrFile>> {
-    let path = format!("repos/{}/{}/pulls/{}/files", owner, name, number);
-    let q: rest::QueryMap = rest::QueryMap::default();
-    rest::get(&path, 1, &q).await
 }
 
 async fn fetch_pr_commits(owner: &str, name: &str, number: usize) -> surf::Result<Vec<PrCommit>> {

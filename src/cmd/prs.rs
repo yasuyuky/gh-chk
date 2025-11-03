@@ -237,11 +237,11 @@ impl Display for PrFile {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut out = String::default();
         out += &format!(
-            "=== {} (+{}, -{}) ===",
+            "=== {} (+{}, -{}) === \n",
             self.filename, self.additions, self.deletions
         );
         match self.patch {
-            Some(ref p) => out.push_str(&format!(" {}", p)),
+            Some(ref p) => out.push_str(&format!("{}", p)),
             None => out.push_str(", (no textual diff available)"),
         };
         write!(f, "{}\n\n", out)

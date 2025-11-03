@@ -225,6 +225,20 @@ impl ReviewDecision {
     }
 }
 
+#[derive(Deserialize)]
+pub struct PrFile {
+    pub filename: String,
+    pub additions: i64,
+    pub deletions: i64,
+    pub patch: Option<String>,
+}
+
+pub async fn fetch_pr_files(owner: &str, name: &str, number: usize) -> surf::Result<Vec<PrFile>> {
+    let path = format!("repos/{}/{}/pulls/{}/files", owner, name, number);
+    let q: crate::rest::QueryMap = crate::rest::QueryMap::default();
+    crate::rest::get(&path, 1, &q).await
+}
+
 pub async fn merge_pr(pr_id: &str) -> surf::Result<()> {
     let v = json!({ "pullRequestId": pr_id });
     let q = json!({ "query": include_str!("../query/prs.graphql"), "operationName": "MergePullRequest", "variables": v });

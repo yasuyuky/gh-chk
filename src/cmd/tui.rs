@@ -198,20 +198,7 @@ impl App {
             prs::fetch_pr_files(&pr.repository.owner.login, &pr.repository.name, pr.number).await?;
         let mut out = String::default();
         for f in files {
-            out.push_str(&format!(
-                "=== {} (+{}, -{}) ===\n",
-                f.filename, f.additions, f.deletions
-            ));
-            match f.patch {
-                Some(p) => {
-                    out.push_str(&p);
-                    if !out.ends_with('\n') {
-                        out.push('\n');
-                    }
-                }
-                None => out.push_str("(no textual diff available)\n"),
-            }
-            out.push('\n');
+            out += f.to_string().as_str();
         }
         if out.is_empty() {
             out = "No file changes found.".to_string();

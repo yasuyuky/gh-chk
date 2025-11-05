@@ -1,7 +1,7 @@
 use colored::Colorize;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::fmt::{Debug, Display, write};
+use std::fmt::{Debug, Display};
 
 use crate::cmd::prs::pull_request::PullRequest;
 use crate::slug::Slug;

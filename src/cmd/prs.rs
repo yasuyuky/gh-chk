@@ -244,7 +244,7 @@ impl Display for PrFile {
             Some(ref p) => out.push_str(&format!("{}", p)),
             None => out.push_str(", (no textual diff available)"),
         };
-        write!(f, "{}\n\n", out)
+        writeln!(f, "{}\n", out)
     }
 }
 

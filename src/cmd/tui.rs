@@ -1,5 +1,5 @@
-use crate::cmd::prs::{self, MergeStateStatus, approve_pr, fetch_prs};
-use crate::{rest, slug::Slug, styling};
+use crate::cmd::prs::{self, Commit, CommitGraphEntry, MergeStateStatus, approve_pr, fetch_prs};
+use crate::{slug::Slug, styling};
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, MouseEventKind},
     execute,
@@ -14,7 +14,6 @@ use ratatui::{
     text::{Line, Span, Text},
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap},
 };
-use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
 use std::io;
 use std::rc::Rc;
@@ -195,23 +194,10 @@ impl App {
     async fn load_diff(&mut self, pr: &PrNode) -> surf::Result<()> {
         self.set_status_persistent(format!("🔎 Loading diff for #{}...", pr.number));
         let files =
-            fetch_pr_files(&pr.repository.owner.login, &pr.repository.name, pr.number).await?;
+            prs::fetch_pr_files(&pr.repository.owner.login, &pr.repository.name, pr.number).await?;
         let mut out = String::default();
         for f in files {
-            out.push_str(&format!(
-                "=== {} (+{}, -{}) ===\n",
-                f.filename, f.additions, f.deletions
-            ));
-            match f.patch {
-                Some(p) => {
-                    out.push_str(&p);
-                    if !out.ends_with('\n') {
-                        out.push('\n');
-                    }
-                }
-                None => out.push_str("(no textual diff available)\n"),
-            }
-            out.push('\n');
+            out += f.to_string().as_str();
         }
         if out.is_empty() {
             out = "No file changes found.".to_string();
@@ -225,7 +211,8 @@ impl App {
     async fn load_commits(&mut self, pr: &PrNode) -> surf::Result<()> {
         self.set_status_persistent(format!("🔎 Loading commits for #{}...", pr.number));
         let commits =
-            fetch_pr_commits(&pr.repository.owner.login, &pr.repository.name, pr.number).await?;
+            prs::fetch_pr_commits(&pr.repository.owner.login, &pr.repository.name, pr.number)
+                .await?;
         let entries = build_commit_graph_entries(&commits);
         let text = make_commit_graph_text(&entries); // pre-render to check for emptiness
         self.cache
@@ -545,97 +532,7 @@ impl App {
     }
 }
 
-#[derive(Deserialize)]
-struct PrFile {
-    filename: String,
-    additions: i64,
-    deletions: i64,
-    patch: Option<String>,
-}
-
-nestruct::nest! {
-    #[derive(serde::Deserialize, Clone)]
-    PrCommit {
-        sha: String,
-        commit: {
-            message: String,
-            author: {
-                name: String?,
-                date: String?,
-            }?,
-        },
-        parents: [{
-            sha: String,
-        }],
-        author: {
-            login: String?,
-        }?,
-    }
-}
-
-use pr_commit::PrCommit;
-
-impl PrCommit {
-    fn summary(&self) -> String {
-        let mut summary = self
-            .commit
-            .message
-            .lines()
-            .next()
-            .unwrap_or("")
-            .trim()
-            .to_string();
-        if summary.len() > 80 {
-            summary.truncate(77);
-            summary.push_str("...");
-        }
-        summary
-    }
-
-    fn display_author(&self) -> Option<String> {
-        if let Some(author) = self.author.as_ref()
-            && let Some(login) = author.login.as_ref()
-        {
-            return Some(login.clone());
-        }
-        self.commit.author.as_ref().and_then(|a| a.name.clone())
-    }
-
-    fn display_date(&self) -> Option<String> {
-        self.commit
-            .author
-            .as_ref()
-            .and_then(|a| a.date.as_ref())
-            .and_then(|date| date.split('T').next().map(str::to_string))
-    }
-
-    fn parent_shas(&self) -> impl Iterator<Item = &str> {
-        self.parents.iter().map(|p| p.sha.as_str())
-    }
-}
-
-#[derive(Clone)]
-struct CommitGraphEntry {
-    graph: String,
-    short_sha: String,
-    summary: String,
-    author: Option<String>,
-    date: Option<String>,
-}
-
-async fn fetch_pr_files(owner: &str, name: &str, number: usize) -> surf::Result<Vec<PrFile>> {
-    let path = format!("repos/{}/{}/pulls/{}/files", owner, name, number);
-    let q: rest::QueryMap = rest::QueryMap::default();
-    rest::get(&path, 1, &q).await
-}
-
-async fn fetch_pr_commits(owner: &str, name: &str, number: usize) -> surf::Result<Vec<PrCommit>> {
-    let path = format!("repos/{}/{}/pulls/{}/commits", owner, name, number);
-    let q: rest::QueryMap = rest::QueryMap::default();
-    rest::get(&path, 1, &q).await
-}
-
-fn build_commit_graph_entries(commits: &[PrCommit]) -> Vec<CommitGraphEntry> {
+fn build_commit_graph_entries(commits: &[Commit]) -> Vec<CommitGraphEntry> {
     let mut active: Vec<String> = Vec::new();
     let mut lines: Vec<CommitGraphEntry> = Vec::new();
 

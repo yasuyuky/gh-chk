@@ -1,4 +1,4 @@
-use crate::cmd::prs::{self, MergeStateStatus, approve_pr, fetch_prs};
+use crate::cmd::prs::{self, CommitGraphEntry, MergeStateStatus, PrCommit, approve_pr, fetch_prs};
 use crate::{rest, slug::Slug, styling};
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, MouseEventKind},
@@ -211,7 +211,8 @@ impl App {
     async fn load_commits(&mut self, pr: &PrNode) -> surf::Result<()> {
         self.set_status_persistent(format!("🔎 Loading commits for #{}...", pr.number));
         let commits =
-            fetch_pr_commits(&pr.repository.owner.login, &pr.repository.name, pr.number).await?;
+            prs::fetch_pr_commits(&pr.repository.owner.login, &pr.repository.name, pr.number)
+                .await?;
         let entries = build_commit_graph_entries(&commits);
         let text = make_commit_graph_text(&entries); // pre-render to check for emptiness
         self.cache
@@ -529,82 +530,6 @@ impl App {
         self.status_message = Some(msg.into());
         self.status_clear_at = None;
     }
-}
-
-nestruct::nest! {
-    #[derive(serde::Deserialize, Clone)]
-    PrCommit {
-        sha: String,
-        commit: {
-            message: String,
-            author: {
-                name: String?,
-                date: String?,
-            }?,
-        },
-        parents: [{
-            sha: String,
-        }],
-        author: {
-            login: String?,
-        }?,
-    }
-}
-
-use pr_commit::PrCommit;
-
-impl PrCommit {
-    fn summary(&self) -> String {
-        let mut summary = self
-            .commit
-            .message
-            .lines()
-            .next()
-            .unwrap_or("")
-            .trim()
-            .to_string();
-        if summary.len() > 80 {
-            summary.truncate(77);
-            summary.push_str("...");
-        }
-        summary
-    }
-
-    fn display_author(&self) -> Option<String> {
-        if let Some(author) = self.author.as_ref()
-            && let Some(login) = author.login.as_ref()
-        {
-            return Some(login.clone());
-        }
-        self.commit.author.as_ref().and_then(|a| a.name.clone())
-    }
-
-    fn display_date(&self) -> Option<String> {
-        self.commit
-            .author
-            .as_ref()
-            .and_then(|a| a.date.as_ref())
-            .and_then(|date| date.split('T').next().map(str::to_string))
-    }
-
-    fn parent_shas(&self) -> impl Iterator<Item = &str> {
-        self.parents.iter().map(|p| p.sha.as_str())
-    }
-}
-
-#[derive(Clone)]
-struct CommitGraphEntry {
-    graph: String,
-    short_sha: String,
-    summary: String,
-    author: Option<String>,
-    date: Option<String>,
-}
-
-async fn fetch_pr_commits(owner: &str, name: &str, number: usize) -> surf::Result<Vec<PrCommit>> {
-    let path = format!("repos/{}/{}/pulls/{}/commits", owner, name, number);
-    let q: rest::QueryMap = rest::QueryMap::default();
-    rest::get(&path, 1, &q).await
 }
 
 fn build_commit_graph_entries(commits: &[PrCommit]) -> Vec<CommitGraphEntry> {

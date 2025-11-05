@@ -14,7 +14,6 @@ use ratatui::{
     text::{Line, Span, Text},
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap},
 };
-use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
 use std::io;
 use std::rc::Rc;

@@ -1,4 +1,4 @@
-use crate::cmd::prs::{self, CommitGraphEntry, MergeStateStatus, PrCommit, approve_pr, fetch_prs};
+use crate::cmd::prs::{self, Commit, CommitGraphEntry, MergeStateStatus, approve_pr, fetch_prs};
 use crate::{slug::Slug, styling};
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, MouseEventKind},
@@ -532,7 +532,7 @@ impl App {
     }
 }
 
-fn build_commit_graph_entries(commits: &[PrCommit]) -> Vec<CommitGraphEntry> {
+fn build_commit_graph_entries(commits: &[Commit]) -> Vec<CommitGraphEntry> {
     let mut active: Vec<String> = Vec::new();
     let mut lines: Vec<CommitGraphEntry> = Vec::new();
 

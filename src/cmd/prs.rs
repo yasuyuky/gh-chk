@@ -250,7 +250,7 @@ impl Display for PrFile {
 
 nestruct::nest! {
     #[derive(serde::Deserialize, Clone)]
-    PrCommit {
+    Commit {
         sha: String,
         commit: {
             message: String,
@@ -268,9 +268,9 @@ nestruct::nest! {
     }
 }
 
-pub use pr_commit::PrCommit;
+pub use commit::Commit;
 
-impl PrCommit {
+impl Commit {
     pub fn summary(&self) -> String {
         let mut summary = self
             .commit
@@ -324,11 +324,7 @@ pub async fn fetch_pr_files(owner: &str, name: &str, number: usize) -> surf::Res
     crate::rest::get(&path, 1, &q).await
 }
 
-pub async fn fetch_pr_commits(
-    owner: &str,
-    name: &str,
-    number: usize,
-) -> surf::Result<Vec<PrCommit>> {
+pub async fn fetch_pr_commits(owner: &str, name: &str, number: usize) -> surf::Result<Vec<Commit>> {
     let path = format!("repos/{}/{}/pulls/{}/commits", owner, name, number);
     let q: crate::rest::QueryMap = crate::rest::QueryMap::default();
     crate::rest::get(&path, 1, &q).await

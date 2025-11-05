@@ -248,8 +248,88 @@ impl Display for PrFile {
     }
 }
 
+nestruct::nest! {
+    #[derive(serde::Deserialize, Clone)]
+    PrCommit {
+        sha: String,
+        commit: {
+            message: String,
+            author: {
+                name: String?,
+                date: String?,
+            }?,
+        },
+        parents: [{
+            sha: String,
+        }],
+        author: {
+            login: String?,
+        }?,
+    }
+}
+
+pub use pr_commit::PrCommit;
+
+impl PrCommit {
+    pub fn summary(&self) -> String {
+        let mut summary = self
+            .commit
+            .message
+            .lines()
+            .next()
+            .unwrap_or("")
+            .trim()
+            .to_string();
+        if summary.len() > 80 {
+            summary.truncate(77);
+            summary.push_str("...");
+        }
+        summary
+    }
+
+    pub fn display_author(&self) -> Option<String> {
+        if let Some(author) = self.author.as_ref()
+            && let Some(login) = author.login.as_ref()
+        {
+            return Some(login.clone());
+        }
+        self.commit.author.as_ref().and_then(|a| a.name.clone())
+    }
+
+    pub fn display_date(&self) -> Option<String> {
+        self.commit
+            .author
+            .as_ref()
+            .and_then(|a| a.date.as_ref())
+            .and_then(|date| date.split('T').next().map(str::to_string))
+    }
+
+    pub fn parent_shas(&self) -> impl Iterator<Item = &str> {
+        self.parents.iter().map(|p| p.sha.as_str())
+    }
+}
+
+#[derive(Clone)]
+pub struct CommitGraphEntry {
+    pub graph: String,
+    pub short_sha: String,
+    pub summary: String,
+    pub author: Option<String>,
+    pub date: Option<String>,
+}
+
 pub async fn fetch_pr_files(owner: &str, name: &str, number: usize) -> surf::Result<Vec<PrFile>> {
     let path = format!("repos/{}/{}/pulls/{}/files", owner, name, number);
+    let q: crate::rest::QueryMap = crate::rest::QueryMap::default();
+    crate::rest::get(&path, 1, &q).await
+}
+
+pub async fn fetch_pr_commits(
+    owner: &str,
+    name: &str,
+    number: usize,
+) -> surf::Result<Vec<PrCommit>> {
+    let path = format!("repos/{}/{}/pulls/{}/commits", owner, name, number);
     let q: crate::rest::QueryMap = crate::rest::QueryMap::default();
     crate::rest::get(&path, 1, &q).await
 }

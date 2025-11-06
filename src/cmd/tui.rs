@@ -194,7 +194,7 @@ impl App {
     async fn load_diff(&mut self, pr: &PrNode) -> surf::Result<()> {
         self.set_status_persistent(format!("🔎 Loading diff for #{}...", pr.number));
         let files =
-            prs::fetch_pr_files(&pr.repository.owner.login, &pr.repository.name, pr.number).await?;
+            prs::fetch_pr_diffs(&pr.repository.owner.login, &pr.repository.name, pr.number).await?;
         let mut out = String::default();
         for f in files {
             out += f.to_string().as_str();

@@ -318,7 +318,7 @@ pub struct CommitGraphEntry {
     pub date: Option<String>,
 }
 
-pub async fn fetch_pr_files(owner: &str, name: &str, number: usize) -> surf::Result<Vec<Diff>> {
+pub async fn fetch_pr_diffs(owner: &str, name: &str, number: usize) -> surf::Result<Vec<Diff>> {
     let path = format!("repos/{}/{}/pulls/{}/files", owner, name, number);
     let q: crate::rest::QueryMap = crate::rest::QueryMap::default();
     crate::rest::get(&path, 1, &q).await

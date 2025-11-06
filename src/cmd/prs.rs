@@ -226,14 +226,14 @@ impl ReviewDecision {
 }
 
 #[derive(Deserialize)]
-pub struct PrFile {
+pub struct Diff {
     pub filename: String,
     pub additions: i64,
     pub deletions: i64,
     pub patch: Option<String>,
 }
 
-impl Display for PrFile {
+impl Display for Diff {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut out = String::default();
         out += &format!(
@@ -318,7 +318,7 @@ pub struct CommitGraphEntry {
     pub date: Option<String>,
 }
 
-pub async fn fetch_pr_files(owner: &str, name: &str, number: usize) -> surf::Result<Vec<PrFile>> {
+pub async fn fetch_pr_files(owner: &str, name: &str, number: usize) -> surf::Result<Vec<Diff>> {
     let path = format!("repos/{}/{}/pulls/{}/files", owner, name, number);
     let q: crate::rest::QueryMap = crate::rest::QueryMap::default();
     crate::rest::get(&path, 1, &q).await

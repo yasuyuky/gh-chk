@@ -38,7 +38,6 @@ nestruct::nest! {
         title: String,
         url: String,
         created_at: String,
-        body_text: String,
         merge_state_status: crate::cmd::prs::MergeStateStatus,
         review_decision: crate::cmd::prs::ReviewDecision?,
         review_requests: {
@@ -145,6 +144,22 @@ nestruct::nest! {
             repository_owner: {
                 login: String,
                 repository: crate::cmd::prs::repository::Repository
+            }
+        }
+    }
+}
+
+nestruct::nest! {
+    #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+    #[serde(rename_all = "camelCase")]
+    PrBodyRes {
+        data: {
+            repository_owner: {
+                repository: {
+                    pull_request: {
+                        body_text: String,
+                    }
+                }
             }
         }
     }
@@ -328,6 +343,13 @@ pub async fn fetch_pr_commits(owner: &str, name: &str, number: usize) -> surf::R
     let path = format!("repos/{}/{}/pulls/{}/commits", owner, name, number);
     let q: crate::rest::QueryMap = crate::rest::QueryMap::default();
     crate::rest::get(&path, 1, &q).await
+}
+
+pub async fn fetch_pr_body(owner: &str, name: &str, number: usize) -> surf::Result<String> {
+    let v = json!({ "login": owner, "name": name, "number": number });
+    let q = json!({"query": include_str!("../query/prs.graphql"), "operationName": "GetPrBody", "variables": v});
+    let res = graphql::query::<pr_body_res::PrBodyRes>(&q).await?;
+    Ok(res.data.repository_owner.repository.pull_request.body_text)
 }
 
 pub async fn merge_pr(pr_id: &str) -> surf::Result<()> {

@@ -11,7 +11,6 @@ fragment Prs on PullRequestConnection {
     title
     url
     createdAt
-    bodyText
     mergeStateStatus
     reviewDecision
     reviewRequests(first: 10) {
@@ -50,6 +49,16 @@ query GetRepoPrs($login: String!, $name: String!) {
       name
       pullRequests(first: 100, states: OPEN) {
         ...Prs
+      }
+    }
+  }
+}
+
+query GetPrBody($login: String!, $name: String!, $number: Int!) {
+  repositoryOwner(login: $login) {
+    repository(name: $name) {
+      pullRequest(number: $number) {
+        bodyText
       }
     }
   }

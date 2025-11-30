@@ -346,6 +346,13 @@ pub async fn fetch_pr_commits(owner: &str, name: &str, number: usize) -> surf::R
     crate::rest::get(&path, 1, &q).await
 }
 
+pub async fn fetch_pr_body(owner: &str, name: &str, number: usize) -> surf::Result<String> {
+    let v = json!({ "login": owner, "name": name, "number": number });
+    let q = json!({"query": include_str!("../query/prs.graphql"), "operationName": "GetPrBody", "variables": v});
+    let res = graphql::query::<pr_body_res::PrBodyRes>(&q).await?;
+    Ok(res.data.repository_owner.repository.pull_request.body_text)
+}
+
 pub async fn merge_pr(pr_id: &str) -> surf::Result<()> {
     let v = json!({ "pullRequestId": pr_id });
     let q = json!({ "query": include_str!("../query/prs.graphql"), "operationName": "MergePullRequest", "variables": v });

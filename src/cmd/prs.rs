@@ -150,6 +150,22 @@ nestruct::nest! {
     }
 }
 
+nestruct::nest! {
+    #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+    #[serde(rename_all = "camelCase")]
+    PrBodyRes {
+        data: {
+            repository_owner: {
+                repository: {
+                    pull_request: {
+                        body_text: String,
+                    }
+                }
+            }
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum MergeStateStatus {

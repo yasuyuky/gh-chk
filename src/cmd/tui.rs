@@ -185,7 +185,9 @@ impl App {
 
     async fn load_body(&mut self, pr: &PrNode) -> surf::Result<()> {
         self.set_status_persistent(format!("🔎 Loading body for #{}...", pr.number));
-        let text = styling::prettify_pr_preview(&pr.title, &pr.url, &pr.body_text);
+        let body: String =
+            prs::fetch_pr_body(&pr.repository.owner.login, &pr.repository.name, pr.number).await?;
+        let text = styling::prettify_pr_preview(&pr.title, &pr.url, &body);
         self.cache.insert((PreviewMode::Body, pr.id.clone()), text);
         self.set_status(format!("✅ Loaded body for #{}", pr.number));
         Ok(())

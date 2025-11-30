@@ -55,6 +55,16 @@ query GetRepoPrs($login: String!, $name: String!) {
   }
 }
 
+query GetPrBody($login: String!, $name: String!, $number: Int!) {
+  repositoryOwner(login: $login) {
+    repository(name: $name) {
+      pullRequest(number: $number) {
+        bodyText
+      }
+    }
+  }
+}
+
 mutation MergePullRequest($pullRequestId: ID!) {
   mergePullRequest(input: { pullRequestId: $pullRequestId }) {
     clientMutationId

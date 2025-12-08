@@ -263,6 +263,7 @@ impl App {
             let new_sel = sel.min(self.prs.len().saturating_sub(1));
             self.list_state.select(Some(new_sel));
         }
+        self.prune_cache_to_existing();
     }
 
     async fn refresh_preview(&mut self) {

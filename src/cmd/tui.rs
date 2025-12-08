@@ -132,13 +132,11 @@ impl App {
                 self.set_status_persistent(format!("Merging PR {}...", pr.numslug()));
                 match crate::cmd::prs::merge_pr(&pr.id).await {
                     Ok(_) => {
-                        self.set_status(format!("✅ Merged PR {}.", pr.numslug()));
-                        self.prs.remove(selected_index);
-                        if self.prs.is_empty() {
-                            self.list_state.select(None);
-                        } else if selected_index >= self.prs.len() {
-                            self.list_state.select(Some(self.prs.len() - 1));
-                        }
+                        self.set_status_persistent(format!(
+                            "✅ Merged PR {}. Reloading...",
+                            pr.numslug()
+                        ));
+                        self.pending_task = Some(PendingTask::ReloadSelected);
                         // Reload contributions to reflect the newly merged PR
                         if let Err(e) = self.load_contributions().await {
                             self.set_status(format!("❌ Contrib load error: {}", e));
@@ -167,7 +165,7 @@ impl App {
                         "✅ Approved PR {}. Reloading...",
                         pr.numslug()
                     ));
-                    self.pending_task = Some(PendingTask::Reload);
+                    self.pending_task = Some(PendingTask::ReloadSelected);
                 }
                 Err(e) => {
                     self.set_status(format!("❌ Failed to approve PR {}: {}", pr.numslug(), e));

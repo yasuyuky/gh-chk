@@ -282,6 +282,11 @@ impl App {
         }
     }
 
+    fn prune_cache_to_existing(&mut self) {
+        let ids: HashSet<String> = self.prs.iter().map(|pr| pr.id.clone()).collect();
+        self.cache.retain(|(_, pr_id), _| ids.contains(pr_id));
+    }
+
     async fn load_contributions(&mut self) -> surf::Result<()> {
         let login = crate::cmd::viewer::get().await?;
         let res = crate::cmd::contributions::fetch_calendar(&login).await?;

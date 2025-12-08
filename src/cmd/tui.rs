@@ -331,6 +331,33 @@ impl App {
         self.preview.scroll = 0;
     }
 
+    async fn reload_selected_pr(&mut self) {
+        let Some(selected_index) = self.list_state.selected() else {
+            return;
+        };
+        let Some(pr) = self.prs.get(selected_index).cloned() else {
+            return;
+        };
+
+        let owner = pr.repository.owner.login.clone();
+        let name = pr.repository.name.clone();
+        self.set_status_persistent(format!("🔄 Reloading {}...", pr.numslug()));
+        match prs::fetch_repo_prs(&owner, &name).await {
+            Ok(mut repo_prs) => {
+                self.replace_repo_prs(&owner, &name, &mut repo_prs, Some(pr.id.clone()));
+                self.drop_preview_cache_for(&pr.id);
+                self.refresh_preview().await;
+                let still_present = self.prs.iter().any(|p| p.id == pr.id);
+                if still_present {
+                    self.set_status(format!("✅ Reloaded {}.", pr.numslug()));
+                } else {
+                    self.set_status(format!("✅ Removed {} (no longer open).", pr.numslug()));
+                }
+            }
+            Err(e) => self.set_status(format!("❌ Reload error for {}: {}", pr.numslug(), e)),
+        }
+    }
+
     async fn load_contributions(&mut self) -> surf::Result<()> {
         let login = crate::cmd::viewer::get().await?;
         let res = crate::cmd::contributions::fetch_calendar(&login).await?;

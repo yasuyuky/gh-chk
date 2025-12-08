@@ -294,6 +294,43 @@ impl App {
         }
     }
 
+    fn replace_repo_prs(
+        &mut self,
+        owner: &str,
+        name: &str,
+        repo_prs: &mut Vec<PrNode>,
+        keep_selection: Option<String>,
+    ) {
+        let insert_at = self
+            .prs
+            .iter()
+            .position(|pr| pr.repository.owner.login == owner && pr.repository.name == name)
+            .unwrap_or(self.prs.len());
+
+        self.prs
+            .retain(|pr| !(pr.repository.owner.login == owner && pr.repository.name == name));
+
+        let mut incoming: Vec<PrNode> = Vec::new();
+        incoming.append(repo_prs);
+        self.prs.splice(insert_at..insert_at, incoming);
+
+        self.prune_cache_to_existing();
+
+        let selection = keep_selection
+            .and_then(|id| self.prs.iter().position(|pr| pr.id == id))
+            .or_else(|| {
+                if self.prs.is_empty() {
+                    None
+                } else if insert_at >= self.prs.len() {
+                    Some(self.prs.len() - 1)
+                } else {
+                    Some(insert_at)
+                }
+            });
+        self.list_state.select(selection);
+        self.preview.scroll = 0;
+    }
+
     async fn load_contributions(&mut self) -> surf::Result<()> {
         let login = crate::cmd::viewer::get().await?;
         let res = crate::cmd::contributions::fetch_calendar(&login).await?;

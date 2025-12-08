@@ -411,7 +411,7 @@ async fn fetch_owner_prs(owner: &str) -> surf::Result<Vec<PullRequest>> {
     Ok(prs)
 }
 
-async fn fetch_repo_prs(owner: &str, name: &str) -> surf::Result<Vec<PullRequest>> {
+pub async fn fetch_repo_prs(owner: &str, name: &str) -> surf::Result<Vec<PullRequest>> {
     let v = json!({ "login": owner, "name": name });
     let q = json!({ "query": include_str!("../query/prs.graphql"), "operationName": "GetRepoPrs", "variables": v });
     let res = graphql::query::<repo_res::RepoRes>(&q).await?;

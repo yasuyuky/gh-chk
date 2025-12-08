@@ -287,6 +287,13 @@ impl App {
         self.cache.retain(|(_, pr_id), _| ids.contains(pr_id));
     }
 
+    fn drop_preview_cache_for(&mut self, pr_id: &str) {
+        let id = pr_id.to_string();
+        for mode in [PreviewMode::Body, PreviewMode::Diff, PreviewMode::Commits] {
+            self.cache.remove(&(mode, id.clone()));
+        }
+    }
+
     async fn load_contributions(&mut self) -> surf::Result<()> {
         let login = crate::cmd::viewer::get().await?;
         let res = crate::cmd::contributions::fetch_calendar(&login).await?;

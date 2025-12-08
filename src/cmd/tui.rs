@@ -67,6 +67,7 @@ enum PendingTask {
     MergeSelected,
     ApproveSelected,
     Reload,
+    ReloadSelected,
     LoadBodyForSelected,
     LoadDiffForSelected,
     LoadCommitsForSelected,

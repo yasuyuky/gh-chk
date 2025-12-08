@@ -67,6 +67,7 @@ enum PendingTask {
     MergeSelected,
     ApproveSelected,
     Reload,
+    ReloadSelected,
     LoadBodyForSelected,
     LoadDiffForSelected,
     LoadCommitsForSelected,
@@ -131,13 +132,11 @@ impl App {
                 self.set_status_persistent(format!("Merging PR {}...", pr.numslug()));
                 match crate::cmd::prs::merge_pr(&pr.id).await {
                     Ok(_) => {
-                        self.set_status(format!("✅ Merged PR {}.", pr.numslug()));
-                        self.prs.remove(selected_index);
-                        if self.prs.is_empty() {
-                            self.list_state.select(None);
-                        } else if selected_index >= self.prs.len() {
-                            self.list_state.select(Some(self.prs.len() - 1));
-                        }
+                        self.set_status_persistent(format!(
+                            "✅ Merged PR {}. Reloading...",
+                            pr.numslug()
+                        ));
+                        self.pending_task = Some(PendingTask::ReloadSelected);
                         // Reload contributions to reflect the newly merged PR
                         if let Err(e) = self.load_contributions().await {
                             self.set_status(format!("❌ Contrib load error: {}", e));
@@ -166,7 +165,7 @@ impl App {
                         "✅ Approved PR {}. Reloading...",
                         pr.numslug()
                     ));
-                    self.pending_task = Some(PendingTask::Reload);
+                    self.pending_task = Some(PendingTask::ReloadSelected);
                 }
                 Err(e) => {
                     self.set_status(format!("❌ Failed to approve PR {}: {}", pr.numslug(), e));
@@ -262,6 +261,7 @@ impl App {
             let new_sel = sel.min(self.prs.len().saturating_sub(1));
             self.list_state.select(Some(new_sel));
         }
+        self.prune_cache_to_existing();
     }
 
     async fn refresh_preview(&mut self) {
@@ -279,6 +279,82 @@ impl App {
                     let _ = self.load_commits(&pr).await;
                 }
             }
+        }
+    }
+
+    fn prune_cache_to_existing(&mut self) {
+        let ids: HashSet<String> = self.prs.iter().map(|pr| pr.id.clone()).collect();
+        self.cache.retain(|(_, pr_id), _| ids.contains(pr_id));
+    }
+
+    fn drop_preview_cache_for(&mut self, pr_id: &str) {
+        let id = pr_id.to_string();
+        for mode in [PreviewMode::Body, PreviewMode::Diff, PreviewMode::Commits] {
+            self.cache.remove(&(mode, id.clone()));
+        }
+    }
+
+    fn replace_repo_prs(
+        &mut self,
+        owner: &str,
+        name: &str,
+        repo_prs: &mut Vec<PrNode>,
+        keep_selection: Option<String>,
+    ) {
+        let insert_at = self
+            .prs
+            .iter()
+            .position(|pr| pr.repository.owner.login == owner && pr.repository.name == name)
+            .unwrap_or_else(|| self.prs.len());
+
+        self.prs
+            .retain(|pr| !(pr.repository.owner.login == owner && pr.repository.name == name));
+
+        let mut incoming: Vec<PrNode> = Vec::new();
+        incoming.append(repo_prs);
+        self.prs.splice(insert_at..insert_at, incoming);
+
+        self.prune_cache_to_existing();
+
+        let selection = keep_selection
+            .and_then(|id| self.prs.iter().position(|pr| pr.id == id))
+            .or_else(|| {
+                if self.prs.is_empty() {
+                    None
+                } else if insert_at >= self.prs.len() {
+                    Some(self.prs.len() - 1)
+                } else {
+                    Some(insert_at)
+                }
+            });
+        self.list_state.select(selection);
+        self.preview.scroll = 0;
+    }
+
+    async fn reload_selected_pr(&mut self) {
+        let Some(selected_index) = self.list_state.selected() else {
+            return;
+        };
+        let Some(pr) = self.prs.get(selected_index).cloned() else {
+            return;
+        };
+
+        let owner = pr.repository.owner.login.clone();
+        let name = pr.repository.name.clone();
+        self.set_status_persistent(format!("🔄 Reloading {}...", pr.numslug()));
+        match prs::fetch_repo_prs(&owner, &name).await {
+            Ok(mut repo_prs) => {
+                self.replace_repo_prs(&owner, &name, &mut repo_prs, Some(pr.id.clone()));
+                self.drop_preview_cache_for(&pr.id);
+                self.refresh_preview().await;
+                let still_present = self.prs.iter().any(|p| p.id == pr.id);
+                if still_present {
+                    self.set_status(format!("✅ Reloaded {}.", pr.numslug()));
+                } else {
+                    self.set_status(format!("✅ Removed {} (no longer open).", pr.numslug()));
+                }
+            }
+            Err(e) => self.set_status(format!("❌ Reload error for {}: {}", pr.numslug(), e)),
         }
     }
 
@@ -762,6 +838,7 @@ async fn run_app(
                 PendingTask::MergeSelected => app.merge_selected().await,
                 PendingTask::ApproveSelected => app.approve_selected().await,
                 PendingTask::Reload => app.reload().await,
+                PendingTask::ReloadSelected => app.reload_selected_pr().await,
                 PendingTask::LoadBodyForSelected => {
                     if let Some(pr) = app.get_selected_pr().cloned() {
                         let _ = app.load_body(&pr).await;

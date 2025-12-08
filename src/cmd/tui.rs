@@ -838,6 +838,7 @@ async fn run_app(
                 PendingTask::MergeSelected => app.merge_selected().await,
                 PendingTask::ApproveSelected => app.approve_selected().await,
                 PendingTask::Reload => app.reload().await,
+                PendingTask::ReloadSelected => app.reload_selected_pr().await,
                 PendingTask::LoadBodyForSelected => {
                     if let Some(pr) = app.get_selected_pr().cloned() {
                         let _ = app.load_body(&pr).await;

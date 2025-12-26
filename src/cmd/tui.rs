@@ -234,7 +234,6 @@ impl App {
     }
 
     async fn reload(&mut self) {
-        self.set_status_persistent("🔄 Reloading...".to_string());
         let new_list = match fetch_prs(&self.specs).await {
             Ok(prs) => prs,
             Err(e) => {

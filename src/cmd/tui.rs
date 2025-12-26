@@ -700,6 +700,7 @@ impl App {
             KeyCode::Char('m') => self.on_merge_key(),
             KeyCode::Char('a') => self.on_approve_key(),
             KeyCode::Char('r') => self.on_reload_key(),
+            KeyCode::Char('R') => self.on_reload_all_key(),
             KeyCode::Char('?') => self.on_clear_help(),
             KeyCode::Right => self.on_right(),
             KeyCode::Left => self.on_left(),

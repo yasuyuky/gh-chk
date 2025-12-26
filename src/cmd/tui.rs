@@ -234,7 +234,6 @@ impl App {
     }
 
     async fn reload(&mut self) {
-        self.set_status_persistent("🔄 Reloading...".to_string());
         let new_list = match fetch_prs(&self.specs).await {
             Ok(prs) => prs,
             Err(e) => {
@@ -558,7 +557,7 @@ fn build_help_text(app: &App) -> String {
     if let Some(ref msg) = app.status_message {
         msg.clone()
     } else {
-        let base = "q:quit • ?:help • Enter/o:open • m:merge • a:approve • r:reload • ←/→:list/body/diff/graph";
+        let base = "q:quit • ?:help • Enter/o:open • m:merge • a:approve • r:reload PR • R:reload all • ←/→:list/body/diff/graph";
         let nav = if app.preview.mode.is_some() {
             "↑/↓/wheel:scroll"
         } else {
@@ -700,6 +699,7 @@ impl App {
             KeyCode::Char('m') => self.on_merge_key(),
             KeyCode::Char('a') => self.on_approve_key(),
             KeyCode::Char('r') => self.on_reload_key(),
+            KeyCode::Char('R') => self.on_reload_all_key(),
             KeyCode::Char('?') => self.on_clear_help(),
             KeyCode::Right => self.on_right(),
             KeyCode::Left => self.on_left(),
@@ -753,7 +753,12 @@ impl App {
     }
 
     fn on_reload_key(&mut self) {
-        self.set_status_persistent("🔄 Reloading...".to_string());
+        self.set_status_persistent("🔄 Reloading PR...".to_string());
+        self.pending_task = Some(PendingTask::ReloadSelected);
+    }
+
+    fn on_reload_all_key(&mut self) {
+        self.set_status_persistent("🔄 Reloading all...".to_string());
         self.pending_task = Some(PendingTask::Reload);
     }
 

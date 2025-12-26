@@ -753,7 +753,12 @@ impl App {
     }
 
     fn on_reload_key(&mut self) {
-        self.set_status_persistent("🔄 Reloading...".to_string());
+        self.set_status_persistent("🔄 Reloading PR...".to_string());
+        self.pending_task = Some(PendingTask::ReloadSelected);
+    }
+
+    fn on_reload_all_key(&mut self) {
+        self.set_status_persistent("🔄 Reloading all...".to_string());
         self.pending_task = Some(PendingTask::Reload);
     }
 

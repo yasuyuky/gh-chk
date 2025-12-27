@@ -256,7 +256,7 @@ impl Display for Diff {
             self.filename, self.additions, self.deletions
         );
         match self.patch {
-            Some(ref p) => out.push_str(&format!("{}", p)),
+            Some(ref p) => out.push_str(p),
             None => out.push_str(", (no textual diff available)"),
         };
         writeln!(f, "{}\n", out)

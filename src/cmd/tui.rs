@@ -304,7 +304,7 @@ impl App {
             .prs
             .iter()
             .position(|pr| pr.repository.owner.login == owner && pr.repository.name == name)
-            .unwrap_or_else(|| self.prs.len());
+            .unwrap_or(self.prs.len()); // skipcq: RS-W1031
 
         self.prs
             .retain(|pr| !(pr.repository.owner.login == owner && pr.repository.name == name));

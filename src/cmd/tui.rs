@@ -366,6 +366,12 @@ impl App {
         let weeks = &cal.weeks;
         let mut lines: Vec<Line> = Vec::new();
         self.contrib_title = format!("Contributions: total {}", cal.total_contributions);
+        let mut year_to_date = (0usize, 0usize);
+        let mut month_to_date = (0usize, 0usize);
+        let this_week = cal.weeks.last().unwrap();
+        let today = this_week.contribution_days.last().unwrap().date.clone();
+        let today_year = today.chars().take(4).collect::<String>();
+        let today_month = today.chars().take(7).collect::<String>();
         for day in 0..7 {
             let mut spans: Vec<Span> = Vec::new();
             for w in weeks {
@@ -373,6 +379,14 @@ impl App {
                     let (r, g, b) = styling::hex_to_rgb(&d.color);
                     let fg = styling::contrast_fg(r, g, b);
                     let cnt = d.contribution_count;
+                    if d.date.starts_with(&today_year) {
+                        year_to_date.0 += d.contribution_count;
+                        year_to_date.1 += 1;
+                    }
+                    if d.date.starts_with(&today_month) {
+                        month_to_date.0 += d.contribution_count;
+                        month_to_date.1 += 1;
+                    }
                     let txt = if cnt >= 100 {
                         String::from("++")
                     } else {
@@ -388,7 +402,32 @@ impl App {
             }
             lines.push(Line::from(spans));
         }
+        let yavg = if year_to_date.1 == 0 {
+            0.0
+        } else {
+            year_to_date.0 as f64 / year_to_date.1 as f64
+        };
+        let mavg = if month_to_date.1 == 0 {
+            0.0
+        } else {
+            month_to_date.0 as f64 / month_to_date.1 as f64
+        };
+        let stats = vec![
+            Line::from(format!(
+                "# total contributions: {:4}",
+                cal.total_contributions
+            )),
+            Line::from(format!(
+                "# year to date:        {:4} {:>5.2}",
+                year_to_date.0, yavg
+            )),
+            Line::from(format!(
+                "# month to date:       {:4} {:>5.2}",
+                month_to_date.0, mavg
+            )),
+        ];
         self.contrib_lines = Some(lines);
+        self.contrib_stats = Some(stats);
         Ok(())
     }
 }

@@ -83,6 +83,7 @@ struct App {
     cache: HashMap<(PreviewMode, String), Text<'static>>, // (mode, pr_id) -> content
     preview: Preview,
     contrib_lines: Option<Vec<Line<'static>>>,
+    contrib_stats: Option<Vec<Line<'static>>>,
     contrib_height: u16,
     contrib_title: String,
     pending_task: Option<PendingTask>,
@@ -105,6 +106,7 @@ impl App {
             cache: HashMap::new(),
             preview: Preview::default(),
             contrib_lines: None,
+            contrib_stats: None,
             contrib_height: 9,
             contrib_title: "Contributions".to_string(),
             pending_task: None,

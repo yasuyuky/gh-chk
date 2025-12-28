@@ -18,6 +18,7 @@ use std::collections::{HashMap, HashSet};
 use std::io;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
+use time::OffsetDateTime;
 
 // Type alias for GraphQL PR node for brevity (reuse prs module types)
 type PrNode = prs::pull_request::PullRequest;
@@ -83,6 +84,7 @@ struct App {
     cache: HashMap<(PreviewMode, String), Text<'static>>, // (mode, pr_id) -> content
     preview: Preview,
     contrib_lines: Option<Vec<Line<'static>>>,
+    contrib_stats: Option<Vec<Line<'static>>>,
     contrib_height: u16,
     contrib_title: String,
     pending_task: Option<PendingTask>,
@@ -105,7 +107,8 @@ impl App {
             cache: HashMap::new(),
             preview: Preview::default(),
             contrib_lines: None,
-            contrib_height: 9,
+            contrib_stats: None,
+            contrib_height: 12,
             contrib_title: "Contributions".to_string(),
             pending_task: None,
         }
@@ -364,6 +367,12 @@ impl App {
         let weeks = &cal.weeks;
         let mut lines: Vec<Line> = Vec::new();
         self.contrib_title = format!("Contributions: total {}", cal.total_contributions);
+        let mut year_to_date = (0usize, 0usize);
+        let mut month_to_date = (0usize, 0usize);
+        // Use the current date to avoid padded future days skewing YTD/MTD.
+        let today = OffsetDateTime::now_utc().date().to_string();
+        let today_year = &today[..4];
+        let today_month = &today[..7];
         for day in 0..7 {
             let mut spans: Vec<Span> = Vec::new();
             for w in weeks {
@@ -371,6 +380,16 @@ impl App {
                     let (r, g, b) = styling::hex_to_rgb(&d.color);
                     let fg = styling::contrast_fg(r, g, b);
                     let cnt = d.contribution_count;
+                    if d.date.as_str() <= today.as_str() {
+                        if d.date.starts_with(today_year) {
+                            year_to_date.0 += d.contribution_count;
+                            year_to_date.1 += 1;
+                        }
+                        if d.date.starts_with(today_month) {
+                            month_to_date.0 += d.contribution_count;
+                            month_to_date.1 += 1;
+                        }
+                    }
                     let txt = if cnt >= 100 {
                         String::from("++")
                     } else {
@@ -386,7 +405,32 @@ impl App {
             }
             lines.push(Line::from(spans));
         }
+        let yavg = if year_to_date.1 == 0 {
+            0.0
+        } else {
+            year_to_date.0 as f64 / year_to_date.1 as f64
+        };
+        let mavg = if month_to_date.1 == 0 {
+            0.0
+        } else {
+            month_to_date.0 as f64 / month_to_date.1 as f64
+        };
+        let stats = vec![
+            Line::from(format!(
+                "# total contributions: {:4}",
+                cal.total_contributions
+            )),
+            Line::from(format!(
+                "# year to date:        {:4} {:>5.2}",
+                year_to_date.0, yavg
+            )),
+            Line::from(format!(
+                "# month to date:       {:4} {:>5.2}",
+                month_to_date.0, mavg
+            )),
+        ];
         self.contrib_lines = Some(lines);
+        self.contrib_stats = Some(stats);
         Ok(())
     }
 }
@@ -533,13 +577,17 @@ fn render_contributions(f: &mut Frame, app: &mut App, area: Rect) {
     if let Some(lines) = &app.contrib_lines {
         let inner_width = area.width.saturating_sub(2);
         let visible_weeks = (inner_width / 2) as usize;
-        let mut trimmed: Vec<Line> = Vec::with_capacity(lines.len());
+        let stats_len = app.contrib_stats.as_ref().map_or(0, |stats| stats.len());
+        let mut trimmed: Vec<Line> = Vec::with_capacity(lines.len() + stats_len);
         for line in lines.iter() {
             let spans = &line.spans;
             let len = spans.len();
             let start = len.saturating_sub(visible_weeks);
             let slice: Vec<Span> = spans[start..len].to_vec();
             trimmed.push(Line::from(slice));
+        }
+        if let Some(stats) = &app.contrib_stats {
+            trimmed.extend(stats.iter().cloned());
         }
         let contrib = Paragraph::new(trimmed)
             .block(contrib_block)

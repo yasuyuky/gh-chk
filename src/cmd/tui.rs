@@ -574,13 +574,17 @@ fn render_contributions(f: &mut Frame, app: &mut App, area: Rect) {
     if let Some(lines) = &app.contrib_lines {
         let inner_width = area.width.saturating_sub(2);
         let visible_weeks = (inner_width / 2) as usize;
-        let mut trimmed: Vec<Line> = Vec::with_capacity(lines.len());
+        let stats_len = app.contrib_stats.as_ref().map_or(0, |stats| stats.len());
+        let mut trimmed: Vec<Line> = Vec::with_capacity(lines.len() + stats_len);
         for line in lines.iter() {
             let spans = &line.spans;
             let len = spans.len();
             let start = len.saturating_sub(visible_weeks);
             let slice: Vec<Span> = spans[start..len].to_vec();
             trimmed.push(Line::from(slice));
+        }
+        if let Some(stats) = &app.contrib_stats {
+            trimmed.extend(stats.iter().cloned());
         }
         let contrib = Paragraph::new(trimmed)
             .block(contrib_block)

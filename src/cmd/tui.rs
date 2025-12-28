@@ -18,6 +18,7 @@ use std::collections::{HashMap, HashSet};
 use std::io;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
+use time::OffsetDateTime;
 
 // Type alias for GraphQL PR node for brevity (reuse prs module types)
 type PrNode = prs::pull_request::PullRequest;
@@ -368,10 +369,10 @@ impl App {
         self.contrib_title = format!("Contributions: total {}", cal.total_contributions);
         let mut year_to_date = (0usize, 0usize);
         let mut month_to_date = (0usize, 0usize);
-        let this_week = cal.weeks.last().unwrap();
-        let today = this_week.contribution_days.last().unwrap().date.clone();
-        let today_year = today.chars().take(4).collect::<String>();
-        let today_month = today.chars().take(7).collect::<String>();
+        // Use the current date to avoid padded future days skewing YTD/MTD.
+        let today = OffsetDateTime::now_utc().date().to_string();
+        let today_year = &today[..4];
+        let today_month = &today[..7];
         for day in 0..7 {
             let mut spans: Vec<Span> = Vec::new();
             for w in weeks {
@@ -379,13 +380,15 @@ impl App {
                     let (r, g, b) = styling::hex_to_rgb(&d.color);
                     let fg = styling::contrast_fg(r, g, b);
                     let cnt = d.contribution_count;
-                    if d.date.starts_with(&today_year) {
-                        year_to_date.0 += d.contribution_count;
-                        year_to_date.1 += 1;
-                    }
-                    if d.date.starts_with(&today_month) {
-                        month_to_date.0 += d.contribution_count;
-                        month_to_date.1 += 1;
+                    if d.date.as_str() <= today.as_str() {
+                        if d.date.starts_with(today_year) {
+                            year_to_date.0 += d.contribution_count;
+                            year_to_date.1 += 1;
+                        }
+                        if d.date.starts_with(today_month) {
+                            month_to_date.0 += d.contribution_count;
+                            month_to_date.1 += 1;
+                        }
                     }
                     let txt = if cnt >= 100 {
                         String::from("++")

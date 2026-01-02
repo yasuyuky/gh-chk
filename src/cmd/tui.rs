@@ -108,7 +108,7 @@ impl App {
             preview: Preview::default(),
             contrib_lines: None,
             contrib_stats: None,
-            contrib_height: 12,
+            contrib_height: 9,
             contrib_title: "Contributions".to_string(),
             pending_task: None,
         }
@@ -369,10 +369,14 @@ impl App {
         self.contrib_title = format!("Contributions: total {}", cal.total_contributions);
         let mut year_to_date = (0usize, 0usize);
         let mut month_to_date = (0usize, 0usize);
+        let mut week_to_date = (0usize, 0usize);
         // Use the current date to avoid padded future days skewing YTD/MTD.
-        let today = OffsetDateTime::now_utc().date().to_string();
+        let today_date = OffsetDateTime::now_utc().date();
+        let today = today_date.to_string();
         let today_year = &today[..4];
         let today_month = &today[..7];
+        let days_from_sunday = today_date.weekday().number_from_sunday() - 1;
+        let week_start = (today_date - time::Duration::days(days_from_sunday as i64)).to_string();
         for day in 0..7 {
             let mut spans: Vec<Span> = Vec::new();
             for w in weeks {
@@ -388,6 +392,12 @@ impl App {
                         if d.date.starts_with(today_month) {
                             month_to_date.0 += d.contribution_count;
                             month_to_date.1 += 1;
+                        }
+                        if d.date.as_str() >= week_start.as_str()
+                            && d.date.as_str() <= today.as_str()
+                        {
+                            week_to_date.0 += d.contribution_count;
+                            week_to_date.1 += 1;
                         }
                     }
                     let txt = if cnt >= 100 {
@@ -410,6 +420,11 @@ impl App {
         } else {
             year_to_date.0 as f64 / year_to_date.1 as f64
         };
+        let wavg = if week_to_date.1 == 0 {
+            0.0
+        } else {
+            week_to_date.0 as f64 / week_to_date.1 as f64
+        };
         let mavg = if month_to_date.1 == 0 {
             0.0
         } else {
@@ -417,16 +432,16 @@ impl App {
         };
         let stats = vec![
             Line::from(format!(
-                "# total contributions: {:4}",
-                cal.total_contributions
-            )),
-            Line::from(format!(
-                "# year to date:        {:4} {:>5.2}",
+                "# year to date:  {:4} {:>5.2}",
                 year_to_date.0, yavg
             )),
             Line::from(format!(
-                "# month to date:       {:4} {:>5.2}",
+                "# month to date: {:4} {:>5.2}",
                 month_to_date.0, mavg
+            )),
+            Line::from(format!(
+                "# week to date:  {:4} {:>5.2}",
+                week_to_date.0, wavg
             )),
         ];
         self.contrib_lines = Some(lines);
@@ -570,34 +585,83 @@ fn render_preview(f: &mut Frame, app: &mut App, area: Rect) {
     f.render_widget(preview, area);
 }
 
+fn contrib_stats_width(stats: Option<&[Line<'static>]>) -> u16 {
+    stats.map_or(0, |stats| {
+        stats
+            .iter()
+            .map(|line| {
+                line.spans
+                    .iter()
+                    .map(|span| span.content.len())
+                    .sum::<usize>()
+            })
+            .max()
+            .unwrap_or(0)
+    }) as u16
+}
+
+fn split_contrib_areas(inner: Rect, stats: Option<&[Line<'static>]>) -> (Rect, Option<Rect>) {
+    let stats_width = contrib_stats_width(stats);
+    let min_chart_width = 10;
+    let spacer_width = 1;
+    let use_side_stats = stats_width > 0
+        && inner.width >= stats_width.saturating_add(spacer_width + min_chart_width);
+    if !use_side_stats {
+        return (inner, None);
+    }
+
+    let chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints(
+            [
+                Constraint::Min(0),
+                Constraint::Length(spacer_width),
+                Constraint::Length(stats_width),
+            ]
+            .as_ref(),
+        )
+        .split(inner);
+    (chunks[0], Some(chunks[2]))
+}
+
+fn trim_contrib_lines(lines: &[Line<'static>], visible_weeks: usize) -> Vec<Line<'static>> {
+    let mut trimmed: Vec<Line> = Vec::with_capacity(lines.len());
+    for line in lines.iter() {
+        let spans = &line.spans;
+        let len = spans.len();
+        let start = len.saturating_sub(visible_weeks);
+        let slice: Vec<Span> = spans[start..len].to_vec();
+        trimmed.push(Line::from(slice));
+    }
+    trimmed
+}
+
 fn render_contributions(f: &mut Frame, app: &mut App, area: Rect) {
     let contrib_block = Block::default()
         .borders(Borders::ALL)
         .title(app.contrib_title.clone());
+    let inner = contrib_block.inner(area);
+    f.render_widget(contrib_block, area);
     if let Some(lines) = &app.contrib_lines {
-        let inner_width = area.width.saturating_sub(2);
+        let stats = app.contrib_stats.as_deref();
+        let (chart_area, stats_area) = split_contrib_areas(inner, stats);
+        let inner_width = chart_area.width;
         let visible_weeks = (inner_width / 2) as usize;
-        let stats_len = app.contrib_stats.as_ref().map_or(0, |stats| stats.len());
-        let mut trimmed: Vec<Line> = Vec::with_capacity(lines.len() + stats_len);
-        for line in lines.iter() {
-            let spans = &line.spans;
-            let len = spans.len();
-            let start = len.saturating_sub(visible_weeks);
-            let slice: Vec<Span> = spans[start..len].to_vec();
-            trimmed.push(Line::from(slice));
-        }
-        if let Some(stats) = &app.contrib_stats {
+        let mut trimmed = trim_contrib_lines(lines, visible_weeks);
+        if stats_area.is_none()
+            && let Some(stats) = &app.contrib_stats
+        {
             trimmed.extend(stats.iter().cloned());
         }
-        let contrib = Paragraph::new(trimmed)
-            .block(contrib_block)
-            .wrap(Wrap { trim: false });
-        f.render_widget(contrib, area);
+        let contrib = Paragraph::new(trimmed).wrap(Wrap { trim: false });
+        f.render_widget(contrib, chart_area);
+        if let (Some(stats), Some(stats_area)) = (stats, stats_area) {
+            let stats = Paragraph::new(stats.to_vec()).wrap(Wrap { trim: true });
+            f.render_widget(stats, stats_area);
+        }
     } else {
-        let contrib = Paragraph::new("Loading contributions...")
-            .block(contrib_block)
-            .wrap(Wrap { trim: true });
-        f.render_widget(contrib, area);
+        let contrib = Paragraph::new("Loading contributions...").wrap(Wrap { trim: true });
+        f.render_widget(contrib, inner);
     }
 }
 

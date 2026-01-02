@@ -393,7 +393,9 @@ impl App {
                             month_to_date.0 += d.contribution_count;
                             month_to_date.1 += 1;
                         }
-                        if d.date.as_str() >= week_start.as_str() {
+                        if d.date.as_str() >= week_start.as_str()
+                            && d.date.as_str() <= today.as_str()
+                        {
                             week_to_date.0 += d.contribution_count;
                             week_to_date.1 += 1;
                         }

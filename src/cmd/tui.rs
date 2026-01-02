@@ -369,10 +369,14 @@ impl App {
         self.contrib_title = format!("Contributions: total {}", cal.total_contributions);
         let mut year_to_date = (0usize, 0usize);
         let mut month_to_date = (0usize, 0usize);
+        let mut week_to_date = (0usize, 0usize);
         // Use the current date to avoid padded future days skewing YTD/MTD.
-        let today = OffsetDateTime::now_utc().date().to_string();
+        let today_date = OffsetDateTime::now_utc().date();
+        let today = today_date.to_string();
         let today_year = &today[..4];
         let today_month = &today[..7];
+        let days_from_sunday = today_date.weekday().number_from_sunday() - 1;
+        let week_start = (today_date - time::Duration::days(days_from_sunday as i64)).to_string();
         for day in 0..7 {
             let mut spans: Vec<Span> = Vec::new();
             for w in weeks {
@@ -388,6 +392,10 @@ impl App {
                         if d.date.starts_with(today_month) {
                             month_to_date.0 += d.contribution_count;
                             month_to_date.1 += 1;
+                        }
+                        if d.date.as_str() >= week_start.as_str() {
+                            week_to_date.0 += d.contribution_count;
+                            week_to_date.1 += 1;
                         }
                     }
                     let txt = if cnt >= 100 {
@@ -410,6 +418,11 @@ impl App {
         } else {
             year_to_date.0 as f64 / year_to_date.1 as f64
         };
+        let wavg = if week_to_date.1 == 0 {
+            0.0
+        } else {
+            week_to_date.0 as f64 / week_to_date.1 as f64
+        };
         let mavg = if month_to_date.1 == 0 {
             0.0
         } else {
@@ -427,6 +440,10 @@ impl App {
             Line::from(format!(
                 "# month to date:       {:4} {:>5.2}",
                 month_to_date.0, mavg
+            )),
+            Line::from(format!(
+                "# week to date:        {:4} {:>5.2}",
+                week_to_date.0, wavg
             )),
         ];
         self.contrib_lines = Some(lines);

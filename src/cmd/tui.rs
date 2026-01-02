@@ -646,10 +646,10 @@ fn render_contributions(f: &mut Frame, app: &mut App, area: Rect) {
         let inner_width = chart_area.width;
         let visible_weeks = (inner_width / 2) as usize;
         let mut trimmed = trim_contrib_lines(lines, visible_weeks);
-        if stats_area.is_none() {
-            if let Some(stats) = &app.contrib_stats {
-                trimmed.extend(stats.iter().cloned());
-            }
+        if stats_area.is_none()
+            && let Some(stats) = &app.contrib_stats
+        {
+            trimmed.extend(stats.iter().cloned());
         }
         let contrib = Paragraph::new(trimmed).wrap(Wrap { trim: false });
         f.render_widget(contrib, chart_area);

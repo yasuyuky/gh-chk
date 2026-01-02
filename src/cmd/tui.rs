@@ -430,15 +430,15 @@ impl App {
         };
         let stats = vec![
             Line::from(format!(
-                "# year to date:        {:4} {:>5.2}",
+                "# year to date:  {:4} {:>5.2}",
                 year_to_date.0, yavg
             )),
             Line::from(format!(
-                "# month to date:       {:4} {:>5.2}",
+                "# month to date: {:4} {:>5.2}",
                 month_to_date.0, mavg
             )),
             Line::from(format!(
-                "# week to date:        {:4} {:>5.2}",
+                "# week to date:  {:4} {:>5.2}",
                 week_to_date.0, wavg
             )),
         ];

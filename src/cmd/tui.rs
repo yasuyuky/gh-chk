@@ -641,7 +641,7 @@ fn render_contributions(f: &mut Frame, app: &mut App, area: Rect) {
     let inner = contrib_block.inner(area);
     f.render_widget(contrib_block, area);
     if let Some(lines) = &app.contrib_lines {
-        let stats = app.contrib_stats.as_ref().map(|stats| stats.as_slice());
+        let stats = app.contrib_stats.as_deref();
         let (chart_area, stats_area) = split_contrib_areas(inner, stats);
         let inner_width = chart_area.width;
         let visible_weeks = (inner_width / 2) as usize;

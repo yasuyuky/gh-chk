@@ -108,7 +108,7 @@ impl App {
             preview: Preview::default(),
             contrib_lines: None,
             contrib_stats: None,
-            contrib_height: 12,
+            contrib_height: 9,
             contrib_title: "Contributions".to_string(),
             pending_task: None,
         }

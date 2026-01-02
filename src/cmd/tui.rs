@@ -584,20 +584,18 @@ fn render_preview(f: &mut Frame, app: &mut App, area: Rect) {
 }
 
 fn contrib_stats_width(stats: Option<&[Line<'static>]>) -> u16 {
-    stats
-        .map(|stats| {
-            stats
-                .iter()
-                .map(|line| {
-                    line.spans
-                        .iter()
-                        .map(|span| span.content.len())
-                        .sum::<usize>()
-                })
-                .max()
-                .unwrap_or(0)
-        })
-        .unwrap_or(0) as u16
+    stats.map_or(0, |stats| {
+        stats
+            .iter()
+            .map(|line| {
+                line.spans
+                    .iter()
+                    .map(|span| span.content.len())
+                    .sum::<usize>()
+            })
+            .max()
+            .unwrap_or(0)
+    }) as u16
 }
 
 fn split_contrib_areas(inner: Rect, stats: Option<&[Line<'static>]>) -> (Rect, Option<Rect>) {

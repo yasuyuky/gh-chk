@@ -574,10 +574,52 @@ fn render_contributions(f: &mut Frame, app: &mut App, area: Rect) {
     let contrib_block = Block::default()
         .borders(Borders::ALL)
         .title(app.contrib_title.clone());
+    let inner = contrib_block.inner(area);
+    f.render_widget(contrib_block, area);
     if let Some(lines) = &app.contrib_lines {
-        let inner_width = area.width.saturating_sub(2);
+        let stats_width = app
+            .contrib_stats
+            .as_ref()
+            .map(|stats| {
+                stats
+                    .iter()
+                    .map(|line| {
+                        line.spans
+                            .iter()
+                            .map(|span| span.content.len())
+                            .sum::<usize>()
+                    })
+                    .max()
+                    .unwrap_or(0)
+            })
+            .unwrap_or(0) as u16;
+        let min_chart_width = 10;
+        let spacer_width = 1;
+        let use_side_stats = stats_width > 0
+            && inner.width >= stats_width.saturating_add(spacer_width + min_chart_width);
+        let (chart_area, stats_area) = if use_side_stats {
+            let chunks = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints(
+                    [
+                        Constraint::Min(0),
+                        Constraint::Length(spacer_width),
+                        Constraint::Length(stats_width),
+                    ]
+                    .as_ref(),
+                )
+                .split(inner);
+            (chunks[0], Some(chunks[2]))
+        } else {
+            (inner, None)
+        };
+        let inner_width = chart_area.width;
         let visible_weeks = (inner_width / 2) as usize;
-        let stats_len = app.contrib_stats.as_ref().map_or(0, |stats| stats.len());
+        let stats_len = app
+            .contrib_stats
+            .as_ref()
+            .filter(|_| stats_area.is_none())
+            .map_or(0, |stats| stats.len());
         let mut trimmed: Vec<Line> = Vec::with_capacity(lines.len() + stats_len);
         for line in lines.iter() {
             let spans = &line.spans;
@@ -586,18 +628,20 @@ fn render_contributions(f: &mut Frame, app: &mut App, area: Rect) {
             let slice: Vec<Span> = spans[start..len].to_vec();
             trimmed.push(Line::from(slice));
         }
-        if let Some(stats) = &app.contrib_stats {
-            trimmed.extend(stats.iter().cloned());
+        if stats_area.is_none() {
+            if let Some(stats) = &app.contrib_stats {
+                trimmed.extend(stats.iter().cloned());
+            }
         }
-        let contrib = Paragraph::new(trimmed)
-            .block(contrib_block)
-            .wrap(Wrap { trim: false });
-        f.render_widget(contrib, area);
+        let contrib = Paragraph::new(trimmed).wrap(Wrap { trim: false });
+        f.render_widget(contrib, chart_area);
+        if let (Some(stats), Some(stats_area)) = (&app.contrib_stats, stats_area) {
+            let stats = Paragraph::new(stats.clone()).wrap(Wrap { trim: true });
+            f.render_widget(stats, stats_area);
+        }
     } else {
-        let contrib = Paragraph::new("Loading contributions...")
-            .block(contrib_block)
-            .wrap(Wrap { trim: true });
-        f.render_widget(contrib, area);
+        let contrib = Paragraph::new("Loading contributions...").wrap(Wrap { trim: true });
+        f.render_widget(contrib, inner);
     }
 }
 

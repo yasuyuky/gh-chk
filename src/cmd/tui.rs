@@ -430,10 +430,6 @@ impl App {
         };
         let stats = vec![
             Line::from(format!(
-                "# total contributions: {:4}",
-                cal.total_contributions
-            )),
-            Line::from(format!(
                 "# year to date:        {:4} {:>5.2}",
                 year_to_date.0, yavg
             )),

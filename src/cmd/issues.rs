@@ -45,7 +45,7 @@ pub async fn check(slugs: Vec<String>) -> surf::Result<()> {
         let res = handle.await?;
         match crate::config::FORMAT.get() {
             Some(&crate::config::Format::Json) => {
-                println!("{}", serde_json::to_string_pretty(&res)?)
+                println!("{}", serde_json::to_string_pretty(&res)?);
             }
             _ => print_text(&res),
         }

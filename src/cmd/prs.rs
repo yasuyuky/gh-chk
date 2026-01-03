@@ -373,6 +373,22 @@ pub async fn check(slugs: Vec<String>, merge: bool) -> surf::Result<()> {
         return Ok(());
     }
 
+    if merge {
+        for slug in slugs {
+            println!("{}", slug.bright_blue());
+            let prs = fetch_prs_for_spec(Slug::from(slug.as_str())).await?;
+            for pr in &prs {
+                println!("{}", pr.colorized_string());
+                if pr.merge_state_status == MergeStateStatus::Clean {
+                    println!("🔄 Merging PR #{}", pr.number);
+                    merge_pr(&pr.id).await?;
+                    println!("✅ Merged PR #{}", pr.number);
+                }
+            }
+        }
+        return Ok(());
+    }
+
     let specs: Vec<Slug> = slugs.iter().map(|s| Slug::from(s.as_str())).collect();
     let mut handles = Vec::with_capacity(specs.len());
     for spec in specs.into_iter() {
@@ -384,11 +400,6 @@ pub async fn check(slugs: Vec<String>, merge: bool) -> surf::Result<()> {
         let prs = handle.await?;
         for pr in &prs {
             println!("{}", pr.colorized_string());
-            if merge && pr.merge_state_status == MergeStateStatus::Clean {
-                println!("🔄 Merging PR #{}", pr.number);
-                merge_pr(&pr.id).await?;
-                println!("✅ Merged PR #{}", pr.number);
-            }
         }
     }
     Ok(())

@@ -373,29 +373,53 @@ pub async fn check(slugs: Vec<String>, merge: bool) -> surf::Result<()> {
         return Ok(());
     }
 
-    for slug in slugs {
+    if merge {
+        for slug in slugs {
+            println!("{}", slug.bright_blue());
+            let prs = fetch_prs_for_spec(Slug::from(slug.as_str())).await?;
+            for pr in &prs {
+                println!("{}", pr.colorized_string());
+                if pr.merge_state_status == MergeStateStatus::Clean {
+                    println!("🔄 Merging PR #{}", pr.number);
+                    merge_pr(&pr.id).await?;
+                    println!("✅ Merged PR #{}", pr.number);
+                }
+            }
+        }
+        return Ok(());
+    }
+
+    let specs: Vec<Slug> = slugs.iter().map(|s| Slug::from(s.as_str())).collect();
+    let mut handles = Vec::with_capacity(specs.len());
+    for spec in specs.into_iter() {
+        handles.push(async_std::task::spawn(fetch_prs_for_spec(spec)));
+    }
+
+    for (slug, handle) in slugs.into_iter().zip(handles) {
         println!("{}", slug.bright_blue());
-        let slug = Slug::from(slug.as_str());
-        let prs = fetch_prs(&vec![slug]).await?;
+        let prs = handle.await?;
         for pr in &prs {
             println!("{}", pr.colorized_string());
-            if merge && pr.merge_state_status == MergeStateStatus::Clean {
-                println!("🔄 Merging PR #{}", pr.number);
-                merge_pr(&pr.id).await?;
-                println!("✅ Merged PR #{}", pr.number);
-            }
         }
     }
     Ok(())
 }
 
+async fn fetch_prs_for_spec(spec: Slug) -> surf::Result<Vec<PullRequest>> {
+    match spec {
+        Slug::Owner(owner) => fetch_owner_prs(&owner).await,
+        Slug::Repo { owner, name } => fetch_repo_prs(&owner, &name).await,
+    }
+}
+
 pub async fn fetch_prs(specs: &Vec<Slug>) -> surf::Result<Vec<PullRequest>> {
     let mut all_prs: Vec<PullRequest> = Vec::new();
-    for spec in specs {
-        match spec {
-            Slug::Owner(owner) => all_prs.append(&mut fetch_owner_prs(owner).await?),
-            Slug::Repo { owner, name } => all_prs.append(&mut fetch_repo_prs(owner, name).await?),
-        }
+    let mut handles = Vec::with_capacity(specs.len());
+    for spec in specs.iter().cloned() {
+        handles.push(async_std::task::spawn(fetch_prs_for_spec(spec)));
+    }
+    for handle in handles {
+        all_prs.append(&mut handle.await?);
     }
     Ok(all_prs)
 }

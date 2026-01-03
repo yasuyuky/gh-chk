@@ -30,25 +30,33 @@ pub async fn check(slugs: Vec<String>) -> surf::Result<()> {
     } else {
         slugs
     };
+    let mut handles = Vec::new();
     for slug in slugs {
         let vs: Vec<String> = slug.split('/').map(String::from).collect();
         match vs.len() {
-            1 => check_owner(&vs[0]).await?,
+            1 => {
+                let owner = vs[0].clone();
+                handles.push(async_std::task::spawn(fetch_owner(owner)));
+            }
             _ => panic!("unknown slug format"),
+        }
+    }
+    for handle in handles {
+        let res = handle.await?;
+        match crate::config::FORMAT.get() {
+            Some(&crate::config::Format::Json) => {
+                println!("{}", serde_json::to_string_pretty(&res)?);
+            }
+            _ => print_text(&res),
         }
     }
     Ok(())
 }
 
-async fn check_owner(owner: &str) -> surf::Result<()> {
+async fn fetch_owner(owner: String) -> surf::Result<res::Res> {
     let v = json!({ "login": owner });
     let q = json!({ "query": include_str!("../query/issues.graphql"), "variables": v });
-    let res = crate::graphql::query::<res::Res>(&q).await?;
-    match crate::config::FORMAT.get() {
-        Some(&crate::config::Format::Json) => println!("{}", serde_json::to_string_pretty(&res)?),
-        _ => print_text(&res),
-    }
-    Ok(())
+    crate::graphql::query::<res::Res>(&q).await
 }
 
 fn print_text(res: &res::Res) {

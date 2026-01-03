@@ -389,15 +389,18 @@ pub async fn check(slugs: Vec<String>, merge: bool) -> surf::Result<()> {
         return Ok(());
     }
 
-    let specs: Vec<Slug> = slugs.iter().map(|s| Slug::from(s.as_str())).collect();
-    let mut handles = Vec::with_capacity(specs.len());
-    for spec in specs.into_iter() {
-        handles.push(async_std::task::spawn(fetch_prs_for_spec(spec)));
+    let mut handles = Vec::with_capacity(slugs.len());
+    for slug in slugs.into_iter() {
+        let spec = Slug::from(slug.as_str());
+        handles.push(async_std::task::spawn(async move {
+            let prs = fetch_prs_for_spec(spec).await?;
+            Ok::<(String, Vec<PullRequest>), surf::Error>((slug, prs))
+        }));
     }
 
-    for (slug, handle) in slugs.into_iter().zip(handles) {
+    for handle in handles {
+        let (slug, prs) = handle.await?;
         println!("{}", slug.bright_blue());
-        let prs = handle.await?;
         for pr in &prs {
             println!("{}", pr.colorized_string());
         }

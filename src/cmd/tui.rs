@@ -670,7 +670,7 @@ fn build_help_text(app: &App) -> String {
     if let Some(ref msg) = app.status_message {
         msg.clone()
     } else {
-        let base = "q:quit • ?:help • Enter/o:open • m:merge • a:approve • r:reload PR • R:reload all • ←/→:list/body/diff/graph";
+        let base = "q:quit • ?:help • Enter/o:open • m:merge • a:approve • r:reload PR • R:reload all • c:reload contrib • ←/→:list/body/diff/graph";
         let nav = if app.preview.mode.is_some() {
             "↑/↓/wheel:scroll"
         } else {

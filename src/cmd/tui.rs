@@ -962,6 +962,13 @@ async fn run_app(
                 PendingTask::ApproveSelected => app.approve_selected().await,
                 PendingTask::Reload => app.reload().await,
                 PendingTask::ReloadSelected => app.reload_selected_pr().await,
+                PendingTask::ReloadContrib => {
+                    if let Err(e) = app.load_contributions().await {
+                        app.set_status(format!("❌ Contrib load error: {}", e));
+                    } else {
+                        app.set_status("✅ Contrib reloaded.".to_string());
+                    }
+                }
                 PendingTask::LoadBodyForSelected => {
                     if let Some(pr) = app.get_selected_pr().cloned() {
                         let _ = app.load_body(&pr).await;

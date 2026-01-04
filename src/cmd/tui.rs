@@ -875,6 +875,11 @@ impl App {
         self.pending_task = Some(PendingTask::Reload);
     }
 
+    fn on_reload_contrib_key(&mut self) {
+        self.set_status_persistent("🔄 Reloading contrib...".to_string());
+        self.pending_task = Some(PendingTask::ReloadContrib);
+    }
+
     fn on_clear_help(&mut self) {
         self.status_message = None;
         self.status_clear_at = None;

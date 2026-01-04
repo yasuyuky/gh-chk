@@ -69,6 +69,7 @@ enum PendingTask {
     ApproveSelected,
     Reload,
     ReloadSelected,
+    ReloadContrib,
     LoadBodyForSelected,
     LoadDiffForSelected,
     LoadCommitsForSelected,

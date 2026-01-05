@@ -69,6 +69,7 @@ enum PendingTask {
     ApproveSelected,
     Reload,
     ReloadSelected,
+    ReloadContrib,
     LoadBodyForSelected,
     LoadDiffForSelected,
     LoadCommitsForSelected,
@@ -669,7 +670,7 @@ fn build_help_text(app: &App) -> String {
     if let Some(ref msg) = app.status_message {
         msg.clone()
     } else {
-        let base = "q:quit • ?:help • Enter/o:open • m:merge • a:approve • r:reload PR • R:reload all • ←/→:list/body/diff/graph";
+        let base = "q:quit • ?:help • Enter/o:open • m:merge • a:approve • r:reload PR • R:reload all • c:reload contrib • ←/→:list/body/diff/graph";
         let nav = if app.preview.mode.is_some() {
             "↑/↓/wheel:scroll"
         } else {
@@ -812,6 +813,7 @@ impl App {
             KeyCode::Char('a') => self.on_approve_key(),
             KeyCode::Char('r') => self.on_reload_key(),
             KeyCode::Char('R') => self.on_reload_all_key(),
+            KeyCode::Char('c') => self.on_reload_contrib_key(),
             KeyCode::Char('?') => self.on_clear_help(),
             KeyCode::Right => self.on_right(),
             KeyCode::Left => self.on_left(),
@@ -872,6 +874,11 @@ impl App {
     fn on_reload_all_key(&mut self) {
         self.set_status_persistent("🔄 Reloading all...".to_string());
         self.pending_task = Some(PendingTask::Reload);
+    }
+
+    fn on_reload_contrib_key(&mut self) {
+        self.set_status_persistent("🔄 Reloading contrib...".to_string());
+        self.pending_task = Some(PendingTask::ReloadContrib);
     }
 
     fn on_clear_help(&mut self) {
@@ -956,6 +963,13 @@ async fn run_app(
                 PendingTask::ApproveSelected => app.approve_selected().await,
                 PendingTask::Reload => app.reload().await,
                 PendingTask::ReloadSelected => app.reload_selected_pr().await,
+                PendingTask::ReloadContrib => {
+                    if let Err(e) = app.load_contributions().await {
+                        app.set_status(format!("❌ Contrib load error: {}", e));
+                    } else {
+                        app.set_status("✅ Contrib reloaded.".to_string());
+                    }
+                }
                 PendingTask::LoadBodyForSelected => {
                     if let Some(pr) = app.get_selected_pr().cloned() {
                         let _ = app.load_body(&pr).await;

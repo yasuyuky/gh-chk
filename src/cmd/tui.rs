@@ -457,6 +457,22 @@ struct ContribTotals {
     days: usize,
 }
 
+impl ContribTotals {
+    fn add(&mut self, count: usize) {
+        self.total += count;
+        self.days += 1;
+    }
+
+    fn avg(&self) -> f64 {
+        if self.days == 0 {
+            0.0
+        } else {
+            self.total as f64 / self.days as f64
+        }
+    }
+}
+
+
 fn make_commit_graph_text(entries: &[CommitGraphEntry]) -> Text<'static> {
     if entries.is_empty() {
         return Text::from("No commits found.");

@@ -368,87 +368,128 @@ impl App {
         let weeks = &cal.weeks;
         let mut lines: Vec<Line> = Vec::new();
         self.contrib_title = format!("Contributions: total {}", cal.total_contributions);
-        let mut year_to_date = (0usize, 0usize);
-        let mut month_to_date = (0usize, 0usize);
-        let mut week_to_date = (0usize, 0usize);
         // Use the current date to avoid padded future days skewing YTD/MTD.
         let today_date = OffsetDateTime::now_utc().date();
-        let today = today_date.to_string();
-        let today_year = &today[..4];
-        let today_month = &today[..7];
-        let days_from_sunday = today_date.weekday().number_from_sunday() - 1;
-        let week_start = (today_date - time::Duration::days(days_from_sunday as i64)).to_string();
+        let window = ContribWindow::new(today_date);
+        let mut year_to_date = ContribTotals::default();
+        let mut month_to_date = ContribTotals::default();
+        let mut week_to_date = ContribTotals::default();
         for day in 0..7 {
             let mut spans: Vec<Span> = Vec::new();
             for w in weeks {
                 if let Some(d) = w.contribution_days.get(day) {
-                    let (r, g, b) = styling::hex_to_rgb(&d.color);
-                    let fg = styling::contrast_fg(r, g, b);
-                    let cnt = d.contribution_count;
-                    if d.date.as_str() <= today.as_str() {
-                        if d.date.starts_with(today_year) {
-                            year_to_date.0 += d.contribution_count;
-                            year_to_date.1 += 1;
-                        }
-                        if d.date.starts_with(today_month) {
-                            month_to_date.0 += d.contribution_count;
-                            month_to_date.1 += 1;
-                        }
-                        if d.date.as_str() >= week_start.as_str()
-                            && d.date.as_str() <= today.as_str()
-                        {
-                            week_to_date.0 += d.contribution_count;
-                            week_to_date.1 += 1;
-                        }
-                    }
-                    let txt = if cnt >= 100 {
-                        String::from("++")
-                    } else {
-                        format!("{:>2}", cnt)
-                    };
-                    spans.push(Span::styled(
-                        txt,
-                        Style::default().bg(Color::Rgb(r, g, b)).fg(fg),
-                    ));
+                    window.update_totals(
+                        &d.date,
+                        d.contribution_count,
+                        &mut year_to_date,
+                        &mut month_to_date,
+                        &mut week_to_date,
+                    );
+                    spans.push(contrib_span(d.contribution_count, &d.color));
                 } else {
                     spans.push(Span::raw("  "));
                 }
             }
             lines.push(Line::from(spans));
         }
-        let yavg = if year_to_date.1 == 0 {
-            0.0
-        } else {
-            year_to_date.0 as f64 / year_to_date.1 as f64
-        };
-        let wavg = if week_to_date.1 == 0 {
-            0.0
-        } else {
-            week_to_date.0 as f64 / week_to_date.1 as f64
-        };
-        let mavg = if month_to_date.1 == 0 {
-            0.0
-        } else {
-            month_to_date.0 as f64 / month_to_date.1 as f64
-        };
         let stats = vec![
             Line::from(format!(
                 "# year to date:  {:4} {:>5.2}",
-                year_to_date.0, yavg
+                year_to_date.total,
+                year_to_date.avg()
             )),
             Line::from(format!(
                 "# month to date: {:4} {:>5.2}",
-                month_to_date.0, mavg
+                month_to_date.total,
+                month_to_date.avg()
             )),
             Line::from(format!(
                 "# week to date:  {:4} {:>5.2}",
-                week_to_date.0, wavg
+                week_to_date.total,
+                week_to_date.avg()
             )),
         ];
         self.contrib_lines = Some(lines);
         self.contrib_stats = Some(stats);
         Ok(())
     }
+}
+
+#[derive(Default)]
+struct ContribTotals {
+    total: usize,
+    days: usize,
+}
+
+impl ContribTotals {
+    fn add(&mut self, count: usize) {
+        self.total += count;
+        self.days += 1;
+    }
+
+    fn avg(&self) -> f64 {
+        if self.days == 0 {
+            0.0
+        } else {
+            self.total as f64 / self.days as f64
+        }
+    }
+}
+
+struct ContribWindow {
+    today: String,
+    today_year: String,
+    today_month: String,
+    week_start: String,
+}
+
+impl ContribWindow {
+    fn new(today_date: time::Date) -> Self {
+        let today = today_date.to_string();
+        let today_year = today[..4].to_string();
+        let today_month = today[..7].to_string();
+        let days_from_sunday = today_date.weekday().number_from_sunday() - 1;
+        let week_start = (today_date - time::Duration::days(days_from_sunday as i64)).to_string();
+        Self {
+            today,
+            today_year,
+            today_month,
+            week_start,
+        }
+    }
+
+    fn update_totals(
+        &self,
+        date: &str,
+        count: usize,
+        year: &mut ContribTotals,
+        month: &mut ContribTotals,
+        week: &mut ContribTotals,
+    ) {
+        if date > self.today.as_str() {
+            return;
+        }
+        if date.starts_with(&self.today_year) {
+            year.add(count);
+        }
+        if date.starts_with(&self.today_month) {
+            month.add(count);
+        }
+        if date >= self.week_start.as_str() {
+            week.add(count);
+        }
+    }
+}
+
+fn contrib_span(count: usize, color: &str) -> Span<'static> {
+    let (r, g, b) = styling::hex_to_rgb(color);
+    let fg = styling::contrast_fg(r, g, b);
+    let txt = if count >= 100 {
+        String::from("++")
+    } else {
+        format!("{:>2}", count)
+    };
+    Span::styled(txt, Style::default().bg(Color::Rgb(r, g, b)).fg(fg))
 }
 
 fn make_commit_graph_text(entries: &[CommitGraphEntry]) -> Text<'static> {

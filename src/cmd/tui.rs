@@ -472,6 +472,12 @@ impl ContribTotals {
     }
 }
 
+struct ContribWindow {
+    today: String,
+    today_year: String,
+    today_month: String,
+    week_start: String,
+}
 
 fn make_commit_graph_text(entries: &[CommitGraphEntry]) -> Text<'static> {
     if entries.is_empty() {

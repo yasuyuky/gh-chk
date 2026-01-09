@@ -517,6 +517,16 @@ impl ContribWindow {
     }
 }
 
+fn contrib_span(count: usize, color: &str) -> Span<'static> {
+    let (r, g, b) = styling::hex_to_rgb(color);
+    let fg = styling::contrast_fg(r, g, b);
+    let txt = if count >= 100 {
+        String::from("++")
+    } else {
+        format!("{:>2}", count)
+    };
+    Span::styled(txt, Style::default().bg(Color::Rgb(r, g, b)).fg(fg))
+}
 
 fn make_commit_graph_text(entries: &[CommitGraphEntry]) -> Text<'static> {
     if entries.is_empty() {

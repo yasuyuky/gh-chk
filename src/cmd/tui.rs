@@ -451,6 +451,12 @@ impl App {
     }
 }
 
+#[derive(Default)]
+struct ContribTotals {
+    total: usize,
+    days: usize,
+}
+
 fn make_commit_graph_text(entries: &[CommitGraphEntry]) -> Text<'static> {
     if entries.is_empty() {
         return Text::from("No commits found.");

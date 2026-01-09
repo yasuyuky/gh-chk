@@ -479,6 +479,45 @@ struct ContribWindow {
     week_start: String,
 }
 
+impl ContribWindow {
+    fn new(today_date: time::Date) -> Self {
+        let today = today_date.to_string();
+        let today_year = today[..4].to_string();
+        let today_month = today[..7].to_string();
+        let days_from_sunday = today_date.weekday().number_from_sunday() - 1;
+        let week_start = (today_date - time::Duration::days(days_from_sunday as i64)).to_string();
+        Self {
+            today,
+            today_year,
+            today_month,
+            week_start,
+        }
+    }
+
+    fn update_totals(
+        &self,
+        date: &str,
+        count: usize,
+        year: &mut ContribTotals,
+        month: &mut ContribTotals,
+        week: &mut ContribTotals,
+    ) {
+        if date > self.today.as_str() {
+            return;
+        }
+        if date.starts_with(&self.today_year) {
+            year.add(count);
+        }
+        if date.starts_with(&self.today_month) {
+            month.add(count);
+        }
+        if date >= self.week_start.as_str() {
+            week.add(count);
+        }
+    }
+}
+
+
 fn make_commit_graph_text(entries: &[CommitGraphEntry]) -> Text<'static> {
     if entries.is_empty() {
         return Text::from("No commits found.");

@@ -849,6 +849,37 @@ fn render_help(f: &mut Frame, app: &App, area: Rect) {
     f.render_widget(help, area);
 }
 
+fn render_search_input(f: &mut Frame, app: &App, area: Rect) {
+    let title = if app.search.owner.is_empty() {
+        "Search".to_string()
+    } else {
+        format!("Search (user:{})", app.search.owner)
+    };
+    let cursor = if app.search.focus == SearchFocus::Input {
+        "|"
+    } else {
+        ""
+    };
+    let input = format!("{}{}", app.search.query, cursor);
+    let search = Paragraph::new(input)
+        .block(Block::default().borders(Borders::ALL).title(title))
+        .wrap(Wrap { trim: true });
+    f.render_widget(search, area);
+}
+
+fn render_search_list(f: &mut Frame, app: &mut App, area: Rect) {
+    let list = build_search_list(app);
+    f.render_stateful_widget(list, area, &mut app.search.list_state);
+}
+
+fn render_search_preview(f: &mut Frame, app: &mut App, area: Rect) {
+    let preview_text = build_search_preview(app);
+    let preview = Paragraph::new(preview_text)
+        .block(Block::default().borders(Borders::ALL).title("Preview"))
+        .wrap(Wrap { trim: false });
+    f.render_widget(preview, area);
+}
+
 fn ui(f: &mut Frame, app: &mut App) {
     let outer = layout_outer(f.area(), app.contrib_height);
     let main_chunks = layout_main_chunks(outer[0], app.preview.mode);

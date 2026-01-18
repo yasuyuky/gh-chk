@@ -679,6 +679,55 @@ fn build_preview_text(app: &App) -> Text<'static> {
     }
 }
 
+fn build_search_list(app: &App) -> List<'static> {
+    let mut items: Vec<ListItem> = Vec::new();
+    for item in &app.search.results {
+        let repo = Span::styled(item.repo.clone(), Style::default().fg(Color::Cyan));
+        let path = Span::styled(item.path.clone(), Style::default().fg(Color::Yellow));
+        let line = Line::from(vec![repo, Span::raw(" "), path]);
+        items.push(ListItem::new(line));
+    }
+    let title = if app.search.owner.is_empty() {
+        "Search Results".to_string()
+    } else {
+        format!("Search Results: user {}", app.search.owner)
+    };
+    let block = Block::default().borders(Borders::ALL).title(title);
+    let highlight_style = Style::default().add_modifier(Modifier::BOLD);
+    List::new(items)
+        .block(block)
+        .highlight_style(highlight_style)
+        .highlight_symbol(">> ")
+}
+
+fn build_search_preview(app: &App) -> Text<'static> {
+    let Some(idx) = app.search.list_state.selected() else {
+        return Text::from("No selection");
+    };
+    let Some(item) = app.search.results.get(idx) else {
+        return Text::from("No selection");
+    };
+    let mut text = Text::default();
+    text.lines.push(Line::from(vec![
+        Span::styled(item.repo.clone(), Style::default().fg(Color::Cyan)),
+        Span::raw(" "),
+        Span::styled(item.path.clone(), Style::default().fg(Color::Yellow)),
+    ]));
+    text.lines.push(Line::from(Span::raw(item.html_url.clone())));
+    if item.matches.is_empty() {
+        text.lines.push(Line::from("No preview available."));
+        return text;
+    }
+    text.lines.push(Line::from(Span::raw("")));
+    for fragment in &item.matches {
+        for line in fragment.lines() {
+            text.lines.push(Line::from(line.to_string()));
+        }
+        text.lines.push(Line::from(Span::raw("")));
+    }
+    text
+}
+
 fn render_pr_list(f: &mut Frame, app: &mut App, area: Rect) {
     let list = build_pr_list(app);
     f.render_stateful_widget(list, area, &mut app.list_state);

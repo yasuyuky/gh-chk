@@ -1,4 +1,5 @@
 use crate::cmd::prs::{self, Commit, CommitGraphEntry, MergeStateStatus, approve_pr, fetch_prs};
+use crate::cmd::search::{SearchItem, search_code};
 use crate::{slug::Slug, styling};
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, MouseEventKind},
@@ -63,7 +64,7 @@ impl std::fmt::Display for PreviewMode {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 enum PendingTask {
     MergeSelected,
     ApproveSelected,
@@ -73,6 +74,58 @@ enum PendingTask {
     LoadBodyForSelected,
     LoadDiffForSelected,
     LoadCommitsForSelected,
+    SearchCode { owner: String, query: String },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AppMode {
+    Prs,
+    Search,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SearchFocus {
+    Input,
+    Results,
+}
+
+struct SearchState {
+    owner: String,
+    query: String,
+    results: Vec<SearchItem>,
+    list_state: ListState,
+    focus: SearchFocus,
+    preview_open: bool,
+}
+
+impl SearchState {
+    fn new(owner: String) -> Self {
+        Self {
+            owner,
+            query: String::default(),
+            results: Vec::new(),
+            list_state: ListState::default(),
+            focus: SearchFocus::Input,
+            preview_open: false,
+        }
+    }
+
+    fn navigate(&mut self, d: isize) {
+        if self.results.is_empty() {
+            return;
+        }
+        let len = self.results.len() as isize;
+        let i = (self.list_state.selected().unwrap_or(0) as isize + d).rem_euclid(len);
+        self.list_state.select(Some(i as usize));
+    }
+
+    fn select_first(&mut self) {
+        if self.results.is_empty() {
+            self.list_state.select(None);
+        } else {
+            self.list_state.select(Some(0));
+        }
+    }
 }
 
 struct App {
@@ -89,6 +142,8 @@ struct App {
     contrib_height: u16,
     contrib_title: String,
     pending_task: Option<PendingTask>,
+    mode: AppMode,
+    search: SearchState,
 }
 
 impl App {
@@ -98,6 +153,7 @@ impl App {
         if !prs.is_empty() {
             list_state.select(Some(0));
         }
+        let search_owner = App::default_search_owner(&specs);
         App {
             prs,
             list_state,
@@ -112,7 +168,19 @@ impl App {
             contrib_height: 9,
             contrib_title: "Contributions".to_string(),
             pending_task: None,
+            mode: AppMode::Prs,
+            search: SearchState::new(search_owner),
         }
+    }
+
+    fn default_search_owner(specs: &[Slug]) -> String {
+        specs
+            .first()
+            .map(|slug| match slug {
+                Slug::Owner(owner) => owner.clone(),
+                Slug::Repo { owner, .. } => owner.clone(),
+            })
+            .unwrap_or_default()
     }
 
     fn navigate(&mut self, d: isize) {
@@ -611,6 +679,56 @@ fn build_preview_text(app: &App) -> Text<'static> {
     }
 }
 
+fn build_search_list(app: &App) -> List<'static> {
+    let mut items: Vec<ListItem> = Vec::new();
+    for item in &app.search.results {
+        let repo = Span::styled(item.repo.clone(), Style::default().fg(Color::Cyan));
+        let path = Span::styled(item.path.clone(), Style::default().fg(Color::Yellow));
+        let line = Line::from(vec![repo, Span::raw(" "), path]);
+        items.push(ListItem::new(line));
+    }
+    let title = if app.search.owner.is_empty() {
+        "Search Results".to_string()
+    } else {
+        format!("Search Results: user {}", app.search.owner)
+    };
+    let block = Block::default().borders(Borders::ALL).title(title);
+    let highlight_style = Style::default().add_modifier(Modifier::BOLD);
+    List::new(items)
+        .block(block)
+        .highlight_style(highlight_style)
+        .highlight_symbol(">> ")
+}
+
+fn build_search_preview(app: &App) -> Text<'static> {
+    let Some(idx) = app.search.list_state.selected() else {
+        return Text::from("No selection");
+    };
+    let Some(item) = app.search.results.get(idx) else {
+        return Text::from("No selection");
+    };
+    let mut text = Text::default();
+    text.lines.push(Line::from(vec![
+        Span::styled(item.repo.clone(), Style::default().fg(Color::Cyan)),
+        Span::raw(" "),
+        Span::styled(item.path.clone(), Style::default().fg(Color::Yellow)),
+    ]));
+    text.lines
+        .push(Line::from(Span::raw(item.html_url.clone())));
+    if item.matches.is_empty() {
+        text.lines.push(Line::from("No preview available."));
+        return text;
+    }
+    text.lines.push(Line::from(Span::raw("")));
+    for fragment in &item.matches {
+        for line in fragment.lines() {
+            text.lines.push(Line::from(line.to_string()));
+        }
+        text.lines.push(Line::from(Span::raw("")));
+    }
+    text
+}
+
 fn render_pr_list(f: &mut Frame, app: &mut App, area: Rect) {
     let list = build_pr_list(app);
     f.render_stateful_widget(list, area, &mut app.list_state);
@@ -711,16 +829,29 @@ fn build_help_text(app: &App) -> String {
     if let Some(ref msg) = app.status_message {
         msg.clone()
     } else {
-        let base = "q:quit • ?:help • Enter/o:open • m:merge • a:approve • r:reload PR • R:reload all • c:reload contrib • ←/→:list/body/diff/graph";
-        let nav = if app.preview.mode.is_some() {
-            "↑/↓/wheel:scroll"
-        } else {
-            "↑/↓:navigate"
-        };
-        app.preview.mode.map_or_else(
-            || format!("{} • {}", base, nav),
-            |mode| format!("{} • {} • mode:{}", base, nav, mode),
-        )
+        match app.mode {
+            AppMode::Prs => {
+                let base = "q:quit • s:search • ?:help • Enter/o:open • m:merge • a:approve • r:reload PR • R:reload all • c:reload contrib • ←/→:list/body/diff/graph";
+                let nav = if app.preview.mode.is_some() {
+                    "↑/↓/wheel:scroll"
+                } else {
+                    "↑/↓:navigate"
+                };
+                app.preview.mode.map_or_else(
+                    || format!("{} • {}", base, nav),
+                    |mode| format!("{} • {} • mode:{}", base, nav, mode),
+                )
+            }
+            AppMode::Search => {
+                let base = "q:quit • Enter:open/search • p:back • →:preview • ←:close preview";
+                let nav = if app.search.focus == SearchFocus::Results {
+                    "↑/↓:navigate"
+                } else {
+                    "type to search"
+                };
+                format!("{} • {}", base, nav)
+            }
+        }
     }
 }
 
@@ -732,18 +863,71 @@ fn render_help(f: &mut Frame, app: &App, area: Rect) {
     f.render_widget(help, area);
 }
 
+fn render_search_input(f: &mut Frame, app: &App, area: Rect) {
+    let title = if app.search.owner.is_empty() {
+        "Search".to_string()
+    } else {
+        format!("Search (user:{})", app.search.owner)
+    };
+    let cursor = if app.search.focus == SearchFocus::Input {
+        "|"
+    } else {
+        ""
+    };
+    let input = format!("{}{}", app.search.query, cursor);
+    let search = Paragraph::new(input)
+        .block(Block::default().borders(Borders::ALL).title(title))
+        .wrap(Wrap { trim: true });
+    f.render_widget(search, area);
+}
+
+fn render_search_list(f: &mut Frame, app: &mut App, area: Rect) {
+    let list = build_search_list(app);
+    f.render_stateful_widget(list, area, &mut app.search.list_state);
+}
+
+fn render_search_preview(f: &mut Frame, app: &mut App, area: Rect) {
+    let preview_text = build_search_preview(app);
+    let preview = Paragraph::new(preview_text)
+        .block(Block::default().borders(Borders::ALL).title("Preview"))
+        .wrap(Wrap { trim: false });
+    f.render_widget(preview, area);
+}
+
 fn ui(f: &mut Frame, app: &mut App) {
     let outer = layout_outer(f.area(), app.contrib_height);
-    let main_chunks = layout_main_chunks(outer[0], app.preview.mode);
-
-    render_pr_list(f, app, main_chunks[0]);
-    if app.preview.mode.is_some() {
-        let area = if main_chunks.len() > 1 {
-            main_chunks[1]
-        } else {
-            outer[0]
-        };
-        render_preview(f, app, area);
+    match app.mode {
+        AppMode::Prs => {
+            let main_chunks = layout_main_chunks(outer[0], app.preview.mode);
+            render_pr_list(f, app, main_chunks[0]);
+            if app.preview.mode.is_some() {
+                let area = if main_chunks.len() > 1 {
+                    main_chunks[1]
+                } else {
+                    outer[0]
+                };
+                render_preview(f, app, area);
+            }
+        }
+        AppMode::Search => {
+            let search_chunks = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([Constraint::Length(3), Constraint::Min(0)].as_ref())
+                .split(outer[0]);
+            render_search_input(f, app, search_chunks[0]);
+            let result_chunks = if app.search.preview_open {
+                Layout::default()
+                    .direction(Direction::Horizontal)
+                    .constraints([Constraint::Percentage(50), Constraint::Percentage(50)].as_ref())
+                    .split(search_chunks[1])
+            } else {
+                vec![search_chunks[1]].into()
+            };
+            render_search_list(f, app, result_chunks[0]);
+            if app.search.preview_open && result_chunks.len() > 1 {
+                render_search_preview(f, app, result_chunks[1]);
+            }
+        }
     }
     render_contributions(f, app, outer[1]);
     render_help(f, app, outer[2]);
@@ -845,8 +1029,16 @@ async fn run_tui(specs: Vec<Slug>) -> Result<(), Box<dyn std::error::Error>> {
 
 impl App {
     async fn handle_key(&mut self, code: KeyCode) {
+        match self.mode {
+            AppMode::Prs => self.handle_key_prs(code).await,
+            AppMode::Search => self.handle_key_search(code).await,
+        }
+    }
+
+    async fn handle_key_prs(&mut self, code: KeyCode) {
         match code {
             KeyCode::Char('q') => self.on_quit(),
+            KeyCode::Char('s') => self.enter_search_mode(),
             KeyCode::Down | KeyCode::Char('j') => self.on_down().await,
             KeyCode::Up | KeyCode::Char('k') => self.on_up().await,
             KeyCode::Enter | KeyCode::Char('o') => self.on_open(),
@@ -862,7 +1054,35 @@ impl App {
         }
     }
 
+    async fn handle_key_search(&mut self, code: KeyCode) {
+        match self.search.focus {
+            SearchFocus::Input => match code {
+                KeyCode::Enter => self.on_search_submit(),
+                KeyCode::Backspace => {
+                    self.search.query.pop();
+                }
+                KeyCode::Char(ch) => {
+                    self.search.query.push(ch);
+                }
+                _ => {}
+            },
+            SearchFocus::Results => match code {
+                KeyCode::Char('q') => self.on_quit(),
+                KeyCode::Char('p') => self.exit_search_mode(),
+                KeyCode::Enter => self.open_search_result(),
+                KeyCode::Right => self.search.preview_open = true,
+                KeyCode::Left => self.search.preview_open = false,
+                KeyCode::Up | KeyCode::Char('k') => self.search.navigate(-1),
+                KeyCode::Down | KeyCode::Char('j') => self.search.navigate(1),
+                _ => {}
+            },
+        }
+    }
+
     fn handle_mouse(&mut self, kind: MouseEventKind) {
+        if self.mode != AppMode::Prs {
+            return;
+        }
         match kind {
             MouseEventKind::ScrollDown => self.scroll_preview_down(3),
             MouseEventKind::ScrollUp => self.scroll_preview_up(3),
@@ -891,6 +1111,18 @@ impl App {
 
     fn on_open(&mut self) {
         self.open_url();
+    }
+
+    fn open_search_result(&mut self) {
+        let Some(idx) = self.search.list_state.selected() else {
+            return;
+        };
+        let Some(item) = self.search.results.get(idx) else {
+            return;
+        };
+        if let Err(e) = open::that(&item.html_url) {
+            eprintln!("Failed to open URL: {}", e);
+        }
     }
 
     fn on_merge_key(&mut self) {
@@ -978,6 +1210,57 @@ impl App {
             None => {}
         }
     }
+
+    fn enter_search_mode(&mut self) {
+        if self.search.owner.is_empty() {
+            self.search.owner = Self::default_search_owner(&self.specs);
+        }
+        self.search.focus = SearchFocus::Input;
+        self.search.preview_open = false;
+        self.mode = AppMode::Search;
+        self.set_status(format!(
+            "Search user:{} (Enter to search)",
+            self.search.owner
+        ));
+    }
+
+    fn exit_search_mode(&mut self) {
+        self.mode = AppMode::Prs;
+        self.search.preview_open = false;
+        self.search.focus = SearchFocus::Input;
+        self.status_message = None;
+        self.status_clear_at = None;
+    }
+
+    fn on_search_submit(&mut self) {
+        let query = self.search.query.trim();
+        if query.is_empty() {
+            self.set_status("Enter search terms.".to_string());
+            return;
+        }
+        let owner = self.search.owner.clone();
+        let query = query.to_string();
+        self.set_status_persistent(format!("🔎 Searching code for user:{}...", owner));
+        self.pending_task = Some(PendingTask::SearchCode { owner, query });
+    }
+
+    async fn run_search(&mut self, owner: String, query: String) {
+        match search_code(&owner, &query).await {
+            Ok(items) => {
+                self.search.results = items;
+                self.search.select_first();
+                self.search.focus = SearchFocus::Results;
+                self.search.preview_open = false;
+                self.set_status(format!(
+                    "✅ Search done. {} results.",
+                    self.search.results.len()
+                ));
+            }
+            Err(e) => {
+                self.set_status(format!("❌ Search error: {}", e));
+            }
+        }
+    }
 }
 
 async fn run_app(
@@ -1025,6 +1308,9 @@ async fn run_app(
                     if let Some(pr) = app.get_selected_pr().cloned() {
                         let _ = app.load_commits(&pr).await;
                     }
+                }
+                PendingTask::SearchCode { owner, query } => {
+                    app.run_search(owner, query).await;
                 }
             }
         }

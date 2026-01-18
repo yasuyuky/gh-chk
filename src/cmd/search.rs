@@ -22,6 +22,14 @@ nestruct::nest! {
 
 }
 
+#[derive(Debug, Clone)]
+pub struct SearchItem {
+    pub repo: String,
+    pub path: String,
+    pub html_url: String,
+    pub matches: Vec<String>,
+}
+
 #[derive(Debug, clap::Parser, serde::Serialize)]
 pub struct Query {
     q: String,
@@ -61,6 +69,29 @@ struct ApiQuery {
     per_page: u8,
 }
 
+#[derive(Debug, serde::Deserialize)]
+struct SearchResultWithMatches {
+    items: Vec<SearchItemWithMatches>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct SearchItemWithMatches {
+    path: String,
+    html_url: String,
+    repository: SearchRepo,
+    text_matches: Option<Vec<SearchTextMatch>>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct SearchRepo {
+    full_name: String,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct SearchTextMatch {
+    fragment: String,
+}
+
 pub async fn search(q: &Query) -> surf::Result<()> {
     let mut res = surf::get("https://api.github.com/search/code")
         .header("Authorization", format!("token {}", *TOKEN))
@@ -74,6 +105,47 @@ pub async fn search(q: &Query) -> surf::Result<()> {
         _ => print_text(&search_result),
     }
     Ok(())
+}
+
+pub async fn search_code(owner: &str, query: &str) -> surf::Result<Vec<SearchItem>> {
+    let q = build_query(owner, query);
+    let mut res = surf::get("https://api.github.com/search/code")
+        .header("Authorization", format!("token {}", *TOKEN))
+        .header("Accept", "application/vnd.github.v3.text-match+json")
+        .query(&ApiQuery {
+            q,
+            page: 0,
+            per_page: 100,
+        })?
+        .await?;
+    let search_result = res.body_json::<SearchResultWithMatches>().await?;
+    let items = search_result
+        .items
+        .into_iter()
+        .map(|item| SearchItem {
+            repo: item.repository.full_name,
+            path: item.path,
+            html_url: item.html_url,
+            matches: item
+                .text_matches
+                .unwrap_or_default()
+                .into_iter()
+                .map(|m| m.fragment)
+                .collect(),
+        })
+        .collect();
+    Ok(items)
+}
+
+fn build_query(owner: &str, query: &str) -> String {
+    let trimmed = query.trim();
+    if owner.is_empty() {
+        return trimmed.to_string();
+    }
+    if trimmed.is_empty() {
+        return format!("user:{}", owner);
+    }
+    format!("{} user:{}", trimmed, owner)
 }
 
 fn print_text(res: &search::Search) {

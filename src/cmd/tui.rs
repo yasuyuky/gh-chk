@@ -102,7 +102,7 @@ impl SearchState {
     fn new(owner: String) -> Self {
         Self {
             owner,
-            query: String::new(),
+            query: String::default(),
             results: Vec::new(),
             list_state: ListState::default(),
             focus: SearchFocus::Input,

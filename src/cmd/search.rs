@@ -107,6 +107,17 @@ pub async fn search(q: &Query) -> surf::Result<()> {
     Ok(())
 }
 
+fn build_query(owner: &str, query: &str) -> String {
+    let trimmed = query.trim();
+    if owner.is_empty() {
+        return trimmed.to_string();
+    }
+    if trimmed.is_empty() {
+        return format!("user:{}", owner);
+    }
+    format!("{} user:{}", trimmed, owner)
+}
+
 fn print_text(res: &search::Search) {
     for n in &res.items {
         println!(

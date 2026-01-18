@@ -1055,38 +1055,27 @@ impl App {
     }
 
     async fn handle_key_search(&mut self, code: KeyCode) {
-        match code {
-            KeyCode::Char('q') => self.on_quit(),
-            KeyCode::Char('p') if self.search.focus == SearchFocus::Results => {
-                self.exit_search_mode()
-            }
-            KeyCode::Enter => match self.search.focus {
-                SearchFocus::Input => self.on_search_submit(),
-                SearchFocus::Results => self.open_search_result(),
-            },
-            KeyCode::Right => self.search.preview_open = true,
-            KeyCode::Left => self.search.preview_open = false,
-            KeyCode::Up | KeyCode::Char('k') => {
-                if self.search.focus == SearchFocus::Results {
-                    self.search.navigate(-1);
-                }
-            }
-            KeyCode::Down | KeyCode::Char('j') => {
-                if self.search.focus == SearchFocus::Results {
-                    self.search.navigate(1);
-                }
-            }
-            KeyCode::Backspace => {
-                if self.search.focus == SearchFocus::Input {
+        match self.search.focus {
+            SearchFocus::Input => match code {
+                KeyCode::Enter => self.on_search_submit(),
+                KeyCode::Backspace => {
                     self.search.query.pop();
                 }
-            }
-            KeyCode::Char(ch) => {
-                if self.search.focus == SearchFocus::Input {
+                KeyCode::Char(ch) => {
                     self.search.query.push(ch);
                 }
-            }
-            _ => {}
+                _ => {}
+            },
+            SearchFocus::Results => match code {
+                KeyCode::Char('q') => self.on_quit(),
+                KeyCode::Char('p') => self.exit_search_mode(),
+                KeyCode::Enter => self.open_search_result(),
+                KeyCode::Right => self.search.preview_open = true,
+                KeyCode::Left => self.search.preview_open = false,
+                KeyCode::Up | KeyCode::Char('k') => self.search.navigate(-1),
+                KeyCode::Down | KeyCode::Char('j') => self.search.navigate(1),
+                _ => {}
+            },
         }
     }
 

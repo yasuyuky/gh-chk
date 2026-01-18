@@ -1138,6 +1138,57 @@ impl App {
             None => {}
         }
     }
+
+    fn enter_search_mode(&mut self) {
+        if self.search.owner.is_empty() {
+            self.search.owner = Self::default_search_owner(&self.specs);
+        }
+        self.search.focus = SearchFocus::Input;
+        self.search.preview_open = false;
+        self.mode = AppMode::Search;
+        self.set_status(format!(
+            "Search user:{} (Enter to search)",
+            self.search.owner
+        ));
+    }
+
+    fn exit_search_mode(&mut self) {
+        self.mode = AppMode::Prs;
+        self.search.preview_open = false;
+        self.search.focus = SearchFocus::Input;
+        self.status_message = None;
+        self.status_clear_at = None;
+    }
+
+    fn on_search_submit(&mut self) {
+        let query = self.search.query.trim();
+        if query.is_empty() {
+            self.set_status("Enter search terms.".to_string());
+            return;
+        }
+        let owner = self.search.owner.clone();
+        let query = query.to_string();
+        self.set_status_persistent(format!("🔎 Searching code for user:{}...", owner));
+        self.pending_task = Some(PendingTask::SearchCode { owner, query });
+    }
+
+    async fn run_search(&mut self, owner: String, query: String) {
+        match search_code(&owner, &query).await {
+            Ok(items) => {
+                self.search.results = items;
+                self.search.select_first();
+                self.search.focus = SearchFocus::Results;
+                self.search.preview_open = false;
+                self.set_status(format!(
+                    "✅ Search done. {} results.",
+                    self.search.results.len()
+                ));
+            }
+            Err(e) => {
+                self.set_status(format!("❌ Search error: {}", e));
+            }
+        }
+    }
 }
 
 async fn run_app(
@@ -1185,6 +1236,9 @@ async fn run_app(
                     if let Some(pr) = app.get_selected_pr().cloned() {
                         let _ = app.load_commits(&pr).await;
                     }
+                }
+                PendingTask::SearchCode { owner, query } => {
+                    app.run_search(owner, query).await;
                 }
             }
         }

@@ -114,8 +114,8 @@ impl SearchState {
         if self.results.is_empty() {
             return;
         }
-        let i = (self.list_state.selected().unwrap_or(0) as isize + d)
-            % self.results.len() as isize;
+        let i =
+            (self.list_state.selected().unwrap_or(0) as isize + d) % self.results.len() as isize;
         self.list_state.select(Some(i as usize));
     }
 
@@ -713,7 +713,8 @@ fn build_search_preview(app: &App) -> Text<'static> {
         Span::raw(" "),
         Span::styled(item.path.clone(), Style::default().fg(Color::Yellow)),
     ]));
-    text.lines.push(Line::from(Span::raw(item.html_url.clone())));
+    text.lines
+        .push(Line::from(Span::raw(item.html_url.clone())));
     if item.matches.is_empty() {
         text.lines.push(Line::from("No preview available."));
         return text;

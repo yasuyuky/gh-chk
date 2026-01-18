@@ -114,8 +114,8 @@ impl SearchState {
         if self.results.is_empty() {
             return;
         }
-        let i =
-            (self.list_state.selected().unwrap_or(0) as isize + d) % self.results.len() as isize;
+        let len = self.results.len() as isize;
+        let i = (self.list_state.selected().unwrap_or(0) as isize + d).rem_euclid(len);
         self.list_state.select(Some(i as usize));
     }
 

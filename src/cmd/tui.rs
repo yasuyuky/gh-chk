@@ -993,8 +993,16 @@ async fn run_tui(specs: Vec<Slug>) -> Result<(), Box<dyn std::error::Error>> {
 
 impl App {
     async fn handle_key(&mut self, code: KeyCode) {
+        match self.mode {
+            AppMode::Prs => self.handle_key_prs(code).await,
+            AppMode::Search => self.handle_key_search(code).await,
+        }
+    }
+
+    async fn handle_key_prs(&mut self, code: KeyCode) {
         match code {
             KeyCode::Char('q') => self.on_quit(),
+            KeyCode::Char('s') => self.enter_search_mode(),
             KeyCode::Down | KeyCode::Char('j') => self.on_down().await,
             KeyCode::Up | KeyCode::Char('k') => self.on_up().await,
             KeyCode::Enter | KeyCode::Char('o') => self.on_open(),
@@ -1010,7 +1018,46 @@ impl App {
         }
     }
 
+    async fn handle_key_search(&mut self, code: KeyCode) {
+        match code {
+            KeyCode::Char('q') => self.on_quit(),
+            KeyCode::Char('p') if self.search.focus == SearchFocus::Results => {
+                self.exit_search_mode()
+            }
+            KeyCode::Enter => match self.search.focus {
+                SearchFocus::Input => self.on_search_submit(),
+                SearchFocus::Results => self.open_search_result(),
+            },
+            KeyCode::Right => self.search.preview_open = true,
+            KeyCode::Left => self.search.preview_open = false,
+            KeyCode::Up | KeyCode::Char('k') => {
+                if self.search.focus == SearchFocus::Results {
+                    self.search.navigate(-1);
+                }
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                if self.search.focus == SearchFocus::Results {
+                    self.search.navigate(1);
+                }
+            }
+            KeyCode::Backspace => {
+                if self.search.focus == SearchFocus::Input {
+                    self.search.query.pop();
+                }
+            }
+            KeyCode::Char(ch) => {
+                if self.search.focus == SearchFocus::Input {
+                    self.search.query.push(ch);
+                }
+            }
+            _ => {}
+        }
+    }
+
     fn handle_mouse(&mut self, kind: MouseEventKind) {
+        if self.mode != AppMode::Prs {
+            return;
+        }
         match kind {
             MouseEventKind::ScrollDown => self.scroll_preview_down(3),
             MouseEventKind::ScrollUp => self.scroll_preview_up(3),

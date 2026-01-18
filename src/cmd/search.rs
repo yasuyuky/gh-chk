@@ -69,6 +69,25 @@ struct ApiQuery {
     per_page: u8,
 }
 
+#[derive(Debug, serde::Deserialize)]
+struct SearchResultWithMatches {
+    items: Vec<SearchItemWithMatches>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct SearchItemWithMatches {
+    path: String,
+    html_url: String,
+    repository: SearchRepo,
+    text_matches: Option<Vec<SearchTextMatch>>,
+}
+
+
+#[derive(Debug, serde::Deserialize)]
+struct SearchTextMatch {
+    fragment: String,
+}
+
 pub async fn search(q: &Query) -> surf::Result<()> {
     let mut res = surf::get("https://api.github.com/search/code")
         .header("Authorization", format!("token {}", *TOKEN))

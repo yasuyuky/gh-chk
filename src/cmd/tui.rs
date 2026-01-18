@@ -1,4 +1,5 @@
 use crate::cmd::prs::{self, Commit, CommitGraphEntry, MergeStateStatus, approve_pr, fetch_prs};
+use crate::cmd::search::{SearchItem, search_code};
 use crate::{slug::Slug, styling};
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, MouseEventKind},

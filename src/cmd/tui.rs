@@ -1041,6 +1041,18 @@ impl App {
         self.open_url();
     }
 
+    fn open_search_result(&mut self) {
+        let Some(idx) = self.search.list_state.selected() else {
+            return;
+        };
+        let Some(item) = self.search.results.get(idx) else {
+            return;
+        };
+        if let Err(e) = open::that(&item.html_url) {
+            eprintln!("Failed to open URL: {}", e);
+        }
+    }
+
     fn on_merge_key(&mut self) {
         if let Some(pr) = self.get_selected_pr() {
             self.set_status_persistent(format!("Merging PR {}...", pr.numslug()));

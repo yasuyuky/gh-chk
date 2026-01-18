@@ -82,6 +82,10 @@ struct SearchItemWithMatches {
     text_matches: Option<Vec<SearchTextMatch>>,
 }
 
+#[derive(Debug, serde::Deserialize)]
+struct SearchRepo {
+    full_name: String,
+}
 
 #[derive(Debug, serde::Deserialize)]
 struct SearchTextMatch {

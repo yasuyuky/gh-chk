@@ -828,16 +828,29 @@ fn build_help_text(app: &App) -> String {
     if let Some(ref msg) = app.status_message {
         msg.clone()
     } else {
-        let base = "q:quit • ?:help • Enter/o:open • m:merge • a:approve • r:reload PR • R:reload all • c:reload contrib • ←/→:list/body/diff/graph";
-        let nav = if app.preview.mode.is_some() {
-            "↑/↓/wheel:scroll"
-        } else {
-            "↑/↓:navigate"
-        };
-        app.preview.mode.map_or_else(
-            || format!("{} • {}", base, nav),
-            |mode| format!("{} • {} • mode:{}", base, nav, mode),
-        )
+        match app.mode {
+            AppMode::Prs => {
+                let base = "q:quit • s:search • ?:help • Enter/o:open • m:merge • a:approve • r:reload PR • R:reload all • c:reload contrib • ←/→:list/body/diff/graph";
+                let nav = if app.preview.mode.is_some() {
+                    "↑/↓/wheel:scroll"
+                } else {
+                    "↑/↓:navigate"
+                };
+                app.preview.mode.map_or_else(
+                    || format!("{} • {}", base, nav),
+                    |mode| format!("{} • {} • mode:{}", base, nav, mode),
+                )
+            }
+            AppMode::Search => {
+                let base = "q:quit • Enter:open/search • p:back • →:preview • ←:close preview";
+                let nav = if app.search.focus == SearchFocus::Results {
+                    "↑/↓:navigate"
+                } else {
+                    "type to search"
+                };
+                format!("{} • {}", base, nav)
+            }
+        }
     }
 }
 
@@ -882,16 +895,38 @@ fn render_search_preview(f: &mut Frame, app: &mut App, area: Rect) {
 
 fn ui(f: &mut Frame, app: &mut App) {
     let outer = layout_outer(f.area(), app.contrib_height);
-    let main_chunks = layout_main_chunks(outer[0], app.preview.mode);
-
-    render_pr_list(f, app, main_chunks[0]);
-    if app.preview.mode.is_some() {
-        let area = if main_chunks.len() > 1 {
-            main_chunks[1]
-        } else {
-            outer[0]
-        };
-        render_preview(f, app, area);
+    match app.mode {
+        AppMode::Prs => {
+            let main_chunks = layout_main_chunks(outer[0], app.preview.mode);
+            render_pr_list(f, app, main_chunks[0]);
+            if app.preview.mode.is_some() {
+                let area = if main_chunks.len() > 1 {
+                    main_chunks[1]
+                } else {
+                    outer[0]
+                };
+                render_preview(f, app, area);
+            }
+        }
+        AppMode::Search => {
+            let search_chunks = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([Constraint::Length(3), Constraint::Min(0)].as_ref())
+                .split(outer[0]);
+            render_search_input(f, app, search_chunks[0]);
+            let result_chunks = if app.search.preview_open {
+                Layout::default()
+                    .direction(Direction::Horizontal)
+                    .constraints([Constraint::Percentage(50), Constraint::Percentage(50)].as_ref())
+                    .split(search_chunks[1])
+            } else {
+                vec![search_chunks[1]].into()
+            };
+            render_search_list(f, app, result_chunks[0]);
+            if app.search.preview_open && result_chunks.len() > 1 {
+                render_search_preview(f, app, result_chunks[1]);
+            }
+        }
     }
     render_contributions(f, app, outer[1]);
     render_help(f, app, outer[2]);

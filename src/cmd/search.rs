@@ -107,6 +107,36 @@ pub async fn search(q: &Query) -> surf::Result<()> {
     Ok(())
 }
 
+pub async fn search_code(owner: &str, query: &str) -> surf::Result<Vec<SearchItem>> {
+    let q = build_query(owner, query);
+    let mut res = surf::get("https://api.github.com/search/code")
+        .header("Authorization", format!("token {}", *TOKEN))
+        .header("Accept", "application/vnd.github.v3.text-match+json")
+        .query(&ApiQuery {
+            q,
+            page: 0,
+            per_page: 100,
+        })?
+        .await?;
+    let search_result = res.body_json::<SearchResultWithMatches>().await?;
+    let items = search_result
+        .items
+        .into_iter()
+        .map(|item| SearchItem {
+            repo: item.repository.full_name,
+            path: item.path,
+            html_url: item.html_url,
+            matches: item
+                .text_matches
+                .unwrap_or_default()
+                .into_iter()
+                .map(|m| m.fragment)
+                .collect(),
+        })
+        .collect();
+    Ok(items)
+}
+
 fn build_query(owner: &str, query: &str) -> String {
     let trimmed = query.trim();
     if owner.is_empty() {

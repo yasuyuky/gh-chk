@@ -22,6 +22,14 @@ nestruct::nest! {
 
 }
 
+#[derive(Debug, Clone)]
+pub struct SearchItem {
+    pub repo: String,
+    pub path: String,
+    pub html_url: String,
+    pub matches: Vec<String>,
+}
+
 #[derive(Debug, clap::Parser, serde::Serialize)]
 pub struct Query {
     q: String,

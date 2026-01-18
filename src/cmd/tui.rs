@@ -64,7 +64,7 @@ impl std::fmt::Display for PreviewMode {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 enum PendingTask {
     MergeSelected,
     ApproveSelected,
@@ -74,6 +74,58 @@ enum PendingTask {
     LoadBodyForSelected,
     LoadDiffForSelected,
     LoadCommitsForSelected,
+    SearchCode { owner: String, query: String },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AppMode {
+    Prs,
+    Search,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SearchFocus {
+    Input,
+    Results,
+}
+
+struct SearchState {
+    owner: String,
+    query: String,
+    results: Vec<SearchItem>,
+    list_state: ListState,
+    focus: SearchFocus,
+    preview_open: bool,
+}
+
+impl SearchState {
+    fn new(owner: String) -> Self {
+        Self {
+            owner,
+            query: String::new(),
+            results: Vec::new(),
+            list_state: ListState::default(),
+            focus: SearchFocus::Input,
+            preview_open: false,
+        }
+    }
+
+    fn navigate(&mut self, d: isize) {
+        if self.results.is_empty() {
+            return;
+        }
+        let i = (self.list_state.selected().unwrap_or(0) as isize + d)
+            % self.results.len() as isize;
+        self.list_state.select(Some(i as usize));
+    }
+
+    fn select_first(&mut self) {
+        if self.results.is_empty() {
+            self.list_state.select(None);
+        } else {
+            self.list_state.select(Some(0));
+        }
+    }
 }
 
 struct App {
@@ -90,6 +142,8 @@ struct App {
     contrib_height: u16,
     contrib_title: String,
     pending_task: Option<PendingTask>,
+    mode: AppMode,
+    search: SearchState,
 }
 
 impl App {
@@ -99,6 +153,7 @@ impl App {
         if !prs.is_empty() {
             list_state.select(Some(0));
         }
+        let search_owner = App::default_search_owner(&specs);
         App {
             prs,
             list_state,
@@ -113,7 +168,19 @@ impl App {
             contrib_height: 9,
             contrib_title: "Contributions".to_string(),
             pending_task: None,
+            mode: AppMode::Prs,
+            search: SearchState::new(search_owner),
         }
+    }
+
+    fn default_search_owner(specs: &[Slug]) -> String {
+        specs
+            .first()
+            .map(|slug| match slug {
+                Slug::Owner(owner) => owner.clone(),
+                Slug::Repo { owner, .. } => owner.clone(),
+            })
+            .unwrap_or_default()
     }
 
     fn navigate(&mut self, d: isize) {

@@ -1068,7 +1068,7 @@ impl App {
             },
             SearchFocus::Results => match code {
                 KeyCode::Char('q') => self.on_quit(),
-                KeyCode::Char('p') => self.exit_search_mode(),
+                KeyCode::Esc => self.exit_search_mode(),
                 KeyCode::Enter => self.open_search_result(),
                 KeyCode::Right => self.search.preview_open = true,
                 KeyCode::Left => self.search.preview_open = false,

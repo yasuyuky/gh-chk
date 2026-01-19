@@ -845,7 +845,7 @@ fn build_help_text(app: &App) -> String {
             AppMode::Search => {
                 let base = "q:quit • Enter:open/search • Esc:back • →:preview • ←:close preview";
                 let nav = if app.search.focus == SearchFocus::Results {
-                    "↑/↓:navigate"
+                    "↑/↓:navigate • Tab:focus input"
                 } else {
                     "type to search"
                 };

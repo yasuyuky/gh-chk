@@ -843,9 +843,9 @@ fn build_help_text(app: &App) -> String {
                 )
             }
             AppMode::Search => {
-                let base = "q:quit • Enter:open/search • p:back • →:preview • ←:close preview";
+                let base = "q:quit • Enter:open/search • Esc:back • →:preview • ←:close preview";
                 let nav = if app.search.focus == SearchFocus::Results {
-                    "↑/↓:navigate"
+                    "↑/↓:navigate • Tab:focus input"
                 } else {
                     "type to search"
                 };
@@ -1068,8 +1068,12 @@ impl App {
             },
             SearchFocus::Results => match code {
                 KeyCode::Char('q') => self.on_quit(),
-                KeyCode::Char('p') => self.exit_search_mode(),
+                KeyCode::Esc => self.exit_search_mode(),
                 KeyCode::Enter => self.open_search_result(),
+                KeyCode::Tab => {
+                    self.search.focus = SearchFocus::Input;
+                    self.search.preview_open = false;
+                }
                 KeyCode::Right => self.search.preview_open = true,
                 KeyCode::Left => self.search.preview_open = false,
                 KeyCode::Up | KeyCode::Char('k') => self.search.navigate(-1),

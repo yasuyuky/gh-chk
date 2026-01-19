@@ -1070,6 +1070,10 @@ impl App {
                 KeyCode::Char('q') => self.on_quit(),
                 KeyCode::Esc => self.exit_search_mode(),
                 KeyCode::Enter => self.open_search_result(),
+                KeyCode::Tab => {
+                    self.search.focus = SearchFocus::Input;
+                    self.search.preview_open = false;
+                }
                 KeyCode::Right => self.search.preview_open = true,
                 KeyCode::Left => self.search.preview_open = false,
                 KeyCode::Up | KeyCode::Char('k') => self.search.navigate(-1),

@@ -1057,6 +1057,7 @@ impl App {
     async fn handle_key_search(&mut self, code: KeyCode) {
         match self.search.focus {
             SearchFocus::Input => match code {
+                KeyCode::Esc => self.exit_search_mode(),
                 KeyCode::Enter => self.on_search_submit(),
                 KeyCode::Backspace => {
                     self.search.query.pop();

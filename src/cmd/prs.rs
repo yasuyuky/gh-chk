@@ -220,6 +220,26 @@ impl MergeStateStatus {
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum CiState {
+    Error,
+    Expected,
+    Failure,
+    Pending,
+    Success,
+}
+
+impl CiState {
+    fn badge(&self) -> &'static str {
+        match self {
+            Self::Error | Self::Failure => "❌",
+            Self::Expected | Self::Pending => "⏳",
+            Self::Success => "✅",
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum ReviewDecision {
     Approved,
     ChangesRequested,

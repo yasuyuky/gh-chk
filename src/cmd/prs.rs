@@ -86,6 +86,20 @@ impl pull_request::PullRequest {
             None => String::default(),
         }
     }
+    pub fn ci_status(&self) -> String {
+        let label = match self
+            .commits
+            .as_ref()
+            .and_then(|commits| commits.nodes.first())
+            .and_then(|node| node.commit.as_ref())
+            .and_then(|commit| commit.status_check_rollup.as_ref())
+            .map(|rollup| rollup.state.badge())
+        {
+            Some(badge) => badge,
+            None => "-",
+        };
+        format!("[ci: {}]", label)
+    }
     fn colorized_string(&self) -> String {
         format!(
             "{:>6} {} {} {} {} {} {}",

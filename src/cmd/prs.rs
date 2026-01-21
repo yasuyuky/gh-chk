@@ -40,6 +40,15 @@ nestruct::nest! {
         created_at: String,
         merge_state_status: crate::cmd::prs::MergeStateStatus,
         review_decision: crate::cmd::prs::ReviewDecision?,
+        commits: {
+            nodes: [{
+                commit: {
+                    status_check_rollup: {
+                        state: crate::cmd::prs::CiState,
+                    }?
+                }?
+            }]
+        }?,
         review_requests: {
             nodes: [{
                 requested_reviewer: crate::cmd::prs::RequestedReviewer?,
@@ -74,6 +83,19 @@ impl pull_request::PullRequest {
     fn review_status(&self) -> String {
         match &self.review_decision {
             Some(rd) => format!("[{}]", rd),
+            None => String::default(),
+        }
+    }
+    pub fn ci_status(&self) -> String {
+        match self
+            .commits
+            .as_ref()
+            .and_then(|commits| commits.nodes.first())
+            .and_then(|node| node.commit.as_ref())
+            .and_then(|commit| commit.status_check_rollup.as_ref())
+            .map(|rollup| rollup.state.badge())
+        {
+            Some(badge) => format!("[ci: {}]", badge),
             None => String::default(),
         }
     }
@@ -206,6 +228,28 @@ impl MergeStateStatus {
             Self::Unstable => s.yellow(),
         }
         .to_string()
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum CiState {
+    Error,
+    Expected,
+    Failure,
+    Pending,
+    Success,
+}
+
+impl CiState {
+    fn badge(&self) -> &'static str {
+        match self {
+            Self::Error => "🛑",
+            Self::Expected => "🕒",
+            Self::Failure => "❌",
+            Self::Pending => "⏳",
+            Self::Success => "✅",
+        }
     }
 }
 

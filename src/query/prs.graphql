@@ -13,6 +13,15 @@ fragment Prs on PullRequestConnection {
     createdAt
     mergeStateStatus
     reviewDecision
+    commits(last: 1) {
+      nodes {
+        commit {
+          statusCheckRollup {
+            state
+          }
+        }
+      }
+    }
     reviewRequests(first: 10) {
       nodes {
         requestedReviewer {

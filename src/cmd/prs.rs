@@ -40,6 +40,15 @@ nestruct::nest! {
         created_at: String,
         merge_state_status: crate::cmd::prs::MergeStateStatus,
         review_decision: crate::cmd::prs::ReviewDecision?,
+        commits: {
+            nodes: [{
+                commit: {
+                    status_check_rollup: {
+                        state: crate::cmd::prs::CiState,
+                    }?
+                }?
+            }]
+        }?,
         review_requests: {
             nodes: [{
                 requested_reviewer: crate::cmd::prs::RequestedReviewer?,

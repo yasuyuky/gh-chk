@@ -245,8 +245,10 @@ pub enum CiState {
 impl CiState {
     fn badge(&self) -> &'static str {
         match self {
-            Self::Error | Self::Failure => "❌",
-            Self::Expected | Self::Pending => "⏳",
+            Self::Error => "🛑",
+            Self::Expected => "🕒",
+            Self::Failure => "❌",
+            Self::Pending => "⏳",
             Self::Success => "✅",
         }
     }

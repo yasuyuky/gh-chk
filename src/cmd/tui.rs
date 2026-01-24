@@ -651,7 +651,7 @@ fn layout_main_chunks(area: Rect, preview_mode: Option<PreviewMode>) -> Rc<[Rect
 fn build_pr_list(app: &App) -> List<'static> {
     let mut items: Vec<ListItem> = Vec::new();
     for pr in &app.prs {
-        let line = format!("{} {}", pr.to_string(), pr.ci_status());
+        let line = format!("{} {}", pr, pr.ci_status());
         let styled = Span::styled(line, Style::default().fg(pr.merge_state_status.to_color()));
         items.push(ListItem::new(Line::from(styled)));
     }

@@ -456,7 +456,7 @@ async fn fetch_prs_for_spec(spec: Slug) -> surf::Result<Vec<PullRequest>> {
     }
 }
 
-pub async fn fetch_prs(specs: &Vec<Slug>) -> surf::Result<Vec<PullRequest>> {
+pub async fn fetch_prs(specs: &[Slug]) -> surf::Result<Vec<PullRequest>> {
     let mut all_prs: Vec<PullRequest> = Vec::new();
     let mut handles = Vec::with_capacity(specs.len());
     for spec in specs.iter().cloned() {

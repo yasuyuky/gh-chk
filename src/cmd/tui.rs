@@ -1071,7 +1071,7 @@ impl App {
                 KeyCode::Char('q') => self.on_quit(),
                 KeyCode::Esc => self.exit_search_mode(),
                 KeyCode::Enter => self.open_search_result(),
-                KeyCode::Tab => {
+                KeyCode::Tab | KeyCode::Backspace => {
                     self.search.focus = SearchFocus::Input;
                     self.search.preview_open = false;
                 }

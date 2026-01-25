@@ -44,7 +44,7 @@ For more usage information, you can run `gh-chk help <COMMAND>` to get details o
 gh chk prs owner/repo
 gh chk -f json issues owner/repo
 gh chk track-assignees owner/repo 10
-gh chk search --query "language:rust stars:>1000"
+gh chk search "language:rust stars:>1000"
 ```
 
 ## TUI

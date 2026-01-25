@@ -34,6 +34,11 @@ gh chk [OPTIONS] <COMMAND>
 
 For more usage information, you can run `gh-chk help <COMMAND>` to get details on how to use each command.
 
+## Authentication
+
+`gh-chk` reads tokens from `~/.config/gh/hosts.yml`, `GITHUB_TOKEN`, or `~/.config/gh-chk/config.toml`.
+
+
 ## TUI
 
 ```

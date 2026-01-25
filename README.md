@@ -36,7 +36,7 @@ For more usage information, you can run `gh-chk help <COMMAND>` to get details o
 
 ## Authentication
 
-`gh-chk` reads tokens from `~/.config/gh/hosts.yml`, `GITHUB_TOKEN`, or `~/.config/gh-chk/config.toml`.
+`gh-chk` reads tokens from `~/.config/gh/hosts.yml`, falling back to `~/.config/gh-chk/config.toml`, then the `GITHUB_TOKEN` environment variable if needed.
 
 ## Examples
 

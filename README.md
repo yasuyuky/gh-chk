@@ -17,6 +17,7 @@ gh chk [OPTIONS] <COMMAND>
 ## Commands
 
 - `prs` - Show pull requests of the repository or user.
+- `tui` - Interactive TUI for pull requests.
 - `issues` - Show issues of the repository or user.
 - `contributions` - Show contributions of the user.
 - `notifications` - Show notifications of the user.
@@ -31,3 +32,14 @@ gh chk [OPTIONS] <COMMAND>
 - `-h, --help` - Print help.
 
 For more usage information, you can run `gh-chk help <COMMAND>` to get details on how to use each command.
+
+## TUI
+
+```
+gh chk tui [<owner>[/<repo>]]
+```
+
+Basic keys:
+- `q` - Quit.
+- Arrow keys or `j`/`k` - Move selection.
+- `Enter` or `o` - Open the selected pull request in browser.

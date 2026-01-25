@@ -22,7 +22,7 @@ gh chk [OPTIONS] <COMMAND>
 - `contributions` - Show contributions of the user.
 - `notifications` - Show notifications of the user.
 - `track-assignees` - Track assignees of the issues or pull requests.
-- `search` - Search repositories.
+- `search` - Search code.
 - `login` - Login to GitHub.
 - `logout` - Logout from GitHub.
 - `help` - Print this message or the help of the given subcommand(s).
@@ -44,7 +44,7 @@ For more usage information, you can run `gh-chk help <COMMAND>` to get details o
 gh chk prs owner/repo
 gh chk -f json issues owner/repo
 gh chk track-assignees owner/repo 10
-gh chk search "language:rust stars:>1000"
+gh chk search "language:rust repo:owner/repo"
 ```
 
 ## TUI

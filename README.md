@@ -38,6 +38,14 @@ For more usage information, you can run `gh-chk help <COMMAND>` to get details o
 
 `gh-chk` reads tokens from `~/.config/gh/hosts.yml`, `GITHUB_TOKEN`, or `~/.config/gh-chk/config.toml`.
 
+## Examples
+
+```
+gh chk prs owner/repo
+gh chk -f json issues owner/repo
+gh chk track-assignees owner/repo 10
+gh chk search --query "language:rust stars:>1000"
+```
 
 ## TUI
 

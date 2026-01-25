@@ -22,6 +22,7 @@ gh chk [OPTIONS] <COMMAND>
 - `contributions` - Show contributions of the user.
 - `notifications` - Show notifications of the user.
 - `track-assignees` - Track assignees of the issues or pull requests.
+- `search` - Search repositories.
 - `login` - Login to GitHub.
 - `logout` - Logout from GitHub.
 - `help` - Print this message or the help of the given subcommand(s).

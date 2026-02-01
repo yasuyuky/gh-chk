@@ -473,9 +473,6 @@ async fn search_prs(query: &str) -> surf::Result<Vec<PullRequest>> {
 
         if res.data.search.page_info.has_next_page {
             after = res.data.search.page_info.end_cursor;
-            if after.is_none() {
-                break;
-            }
         } else {
             break;
         }

@@ -1,36 +1,30 @@
 {
   "data": {
-    "repositoryOwner": {
-      "login": "owner1",
-      "repositories": {
-        "nodes": [
-          {
+    "search": {
+      "nodes": [
+        {
+          "id": "PRID1",
+          "repository": {
             "name": "repo1",
-            "pullRequests": {
-              "nodes": [
-                {
-                  "id": "PRID1",
-                  "repository": {
-                    "name": "repo1",
-                    "owner": {
-                      "login": "owner1"
-                    }
-                  },
-                  "number": 1,
-                  "title": "Test PR",
-                  "url": "http://example.com/pr1",
-                  "createdAt": "2024-08-01T12:34:56Z",
-                  "bodyText": "This is a test PR.",
-                  "mergeStateStatus": "CLEAN",
-                  "reviewDecision": "APPROVED",
-                  "reviewRequests": {
-                    "nodes": []
-                  }
-                }
-              ]
+            "owner": {
+              "login": "owner1"
             }
+          },
+          "number": 1,
+          "title": "Test PR",
+          "url": "http://example.com/pr1",
+          "createdAt": "2024-08-01T12:34:56Z",
+          "bodyText": "This is a test PR.",
+          "mergeStateStatus": "CLEAN",
+          "reviewDecision": "APPROVED",
+          "reviewRequests": {
+            "nodes": []
           }
-        ]
+        }
+      ],
+      "pageInfo": {
+        "endCursor": null,
+        "hasNextPage": false
       }
     }
   }

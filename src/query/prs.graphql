@@ -1,64 +1,50 @@
-fragment Prs on PullRequestConnection {
-  nodes {
-    repository {
-      name
-      owner {
-        login
-      }
+fragment PrFields on PullRequest {
+  repository {
+    name
+    owner {
+      login
     }
-    id
-    number
-    title
-    url
-    createdAt
-    mergeStateStatus
-    reviewDecision
-    commits(last: 1) {
-      nodes {
-        commit {
-          statusCheckRollup {
-            state
-          }
+  }
+  id
+  number
+  title
+  url
+  createdAt
+  mergeStateStatus
+  reviewDecision
+  commits(last: 1) {
+    nodes {
+      commit {
+        statusCheckRollup {
+          state
         }
       }
     }
-    reviewRequests(first: 10) {
-      nodes {
-        requestedReviewer {
-          ... on User {
-            login
-          }
-          ... on Team {
-            name
-          }
+  }
+  reviewRequests(first: 10) {
+    nodes {
+      requestedReviewer {
+        ... on User {
+          login
+        }
+        ... on Team {
+          name
         }
       }
     }
   }
 }
 
-query GetOwnerPrs($login: String!) {
-  repositoryOwner(login: $login) {
-    login
-    repositories(first: 100, affiliations: OWNER) {
-      nodes {
-        name
-        pullRequests(first: 100, states: OPEN) {
-          ...Prs
-        }
+query SearchPrs($query: String!, $after: String) {
+  search(type: ISSUE, query: $query, first: 100, after: $after) {
+    nodes {
+      ... on PullRequest {
+        ...PrFields
       }
     }
-  }
-}
-
-query GetRepoPrs($login: String!, $name: String!) {
-  repositoryOwner(login: $login) {
-    login
-    repository(name: $name) {
-      name
-      pullRequests(first: 100, states: OPEN) {
-        ...Prs
-      }
+    pageInfo {
+      endCursor
+      hasNextPage
     }
   }
 }

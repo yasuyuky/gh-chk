@@ -14,7 +14,6 @@
           "title": "Test PR",
           "url": "http://example.com/pr1",
           "createdAt": "2024-08-01T12:34:56Z",
-          "bodyText": "This is a test PR.",
           "mergeStateStatus": "CLEAN",
           "reviewDecision": "APPROVED",
           "reviewRequests": {

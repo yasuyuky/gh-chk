@@ -57,6 +57,15 @@ nestruct::nest! {
     }
 }
 
+nestruct::nest! {
+    #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+    #[serde(rename_all = "camelCase")]
+    PageInfo {
+        end_cursor: String?,
+        has_next_page: bool,
+    }
+}
+
 impl pull_request::PullRequest {
     pub fn slug(&self) -> String {
         format!("{}/{}", self.repository.owner.login, self.repository.name)
@@ -133,39 +142,13 @@ impl Display for pull_request::PullRequest {
 }
 
 nestruct::nest! {
-    #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
-    #[serde(rename_all = "camelCase")]
-    Repository {
-        name: String,
-        pull_requests: {
-            nodes: [ crate::cmd::prs::pull_request::PullRequest ]
-        }
-    }
-}
-
-nestruct::nest! {
     #[derive(serde::Serialize, serde::Deserialize, Debug)]
     #[serde(rename_all = "camelCase")]
-    Res {
+    SearchRes {
         data: {
-            repository_owner: {
-                login: String,
-                repositories: {
-                    nodes: [ crate::cmd::prs::repository::Repository ]
-                }
-            }
-        }
-    }
-}
-
-nestruct::nest! {
-    #[derive(serde::Serialize, serde::Deserialize, Debug)]
-    #[serde(rename_all = "camelCase")]
-    RepoRes {
-        data: {
-            repository_owner: {
-                login: String,
-                repository: crate::cmd::prs::repository::Repository
+            search: {
+                nodes: [ crate::cmd::prs::pull_request::PullRequest ],
+                page_info: crate::cmd::prs::page_info::PageInfo,
             }
         }
     }
@@ -469,21 +452,36 @@ pub async fn fetch_prs(specs: &[Slug]) -> surf::Result<Vec<PullRequest>> {
 }
 
 async fn fetch_owner_prs(owner: &str) -> surf::Result<Vec<PullRequest>> {
-    let v = json!({ "login": owner });
-    let q = json!({ "query": include_str!("../query/prs.graphql"), "operationName": "GetOwnerPrs", "variables": v });
-    let res = graphql::query::<res::Res>(&q).await?;
-    let mut prs = Vec::new();
-    for repo in res.data.repository_owner.repositories.nodes {
-        prs.extend(repo.pull_requests.nodes);
-    }
-    Ok(prs)
+    let query = format!("is:pr is:open user:{}", owner);
+    search_prs(&query).await
 }
 
 pub async fn fetch_repo_prs(owner: &str, name: &str) -> surf::Result<Vec<PullRequest>> {
-    let v = json!({ "login": owner, "name": name });
-    let q = json!({ "query": include_str!("../query/prs.graphql"), "operationName": "GetRepoPrs", "variables": v });
-    let res = graphql::query::<repo_res::RepoRes>(&q).await?;
-    Ok(res.data.repository_owner.repository.pull_requests.nodes)
+    let query = format!("is:pr is:open repo:{}/{}", owner, name);
+    search_prs(&query).await
+}
+
+async fn search_prs(query: &str) -> surf::Result<Vec<PullRequest>> {
+    let mut prs = Vec::new();
+    let mut after: Option<String> = None;
+
+    loop {
+        let v = json!({ "query": query, "after": after });
+        let q = json!({ "query": include_str!("../query/prs.graphql"), "operationName": "SearchPrs", "variables": v });
+        let res = graphql::query::<search_res::SearchRes>(&q).await?;
+        prs.extend(res.data.search.nodes);
+
+        if res.data.search.page_info.has_next_page {
+            after = res.data.search.page_info.end_cursor;
+            if after.is_none() {
+                break;
+            }
+        } else {
+            break;
+        }
+    }
+
+    Ok(prs)
 }
 
 pub async fn approve_pr(pr_id: &str) -> surf::Result<()> {

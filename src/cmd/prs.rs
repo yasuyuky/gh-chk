@@ -477,7 +477,7 @@ async fn search_prs(query: &str) -> surf::Result<Vec<PullRequest>> {
             break;
         }
     }
-
+    prs.sort();
     Ok(prs)
 }
 

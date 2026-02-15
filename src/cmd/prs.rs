@@ -7,7 +7,7 @@ use crate::cmd::prs::pull_request::PullRequest;
 use crate::slug::Slug;
 use crate::{config, graphql};
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(untagged)]
 pub enum RequestedReviewer {
     User { login: String },
@@ -24,7 +24,7 @@ impl std::fmt::Display for RequestedReviewer {
 }
 
 nestruct::nest! {
-    #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+    #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
     #[serde(rename_all = "camelCase")]
     PullRequest {
         repository: {
@@ -170,7 +170,7 @@ nestruct::nest! {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum MergeStateStatus {
     Behind,
@@ -214,7 +214,7 @@ impl MergeStateStatus {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum CiState {
     Error,
@@ -236,7 +236,7 @@ impl CiState {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum ReviewDecision {
     Approved,

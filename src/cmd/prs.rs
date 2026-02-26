@@ -33,8 +33,8 @@ nestruct::nest! {
                 login: String,
             }
         },
-        id: String,
         number: usize,
+        id: String,
         title: String,
         url: String,
         created_at: String,

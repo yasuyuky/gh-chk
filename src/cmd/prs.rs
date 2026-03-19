@@ -472,21 +472,12 @@ pub async fn fetch_repo_prs(owner: &str, name: &str) -> surf::Result<Vec<PullReq
 }
 
 async fn search_prs(query: &str) -> surf::Result<Vec<PullRequest>> {
-    let mut prs = Vec::new();
-    let mut after: Option<String> = None;
-
-    loop {
+    let query_doc = include_str!("../query/prs.graphql");
+    let mut prs: Vec<PullRequest> = graphql::query_all_pages::<search_res::SearchRes>(|after| {
         let v = json!({ "query": query, "after": after });
-        let q = json!({ "query": include_str!("../query/prs.graphql"), "operationName": "SearchPrs", "variables": v });
-        let res = graphql::query::<search_res::SearchRes>(&q).await?;
-        prs.extend(res.data.search.nodes);
-
-        if res.data.search.page_info.has_next_page {
-            after = res.data.search.page_info.end_cursor;
-        } else {
-            break;
-        }
-    }
+        json!({ "query": query_doc, "operationName": "SearchPrs", "variables": v })
+    })
+    .await?;
     prs.sort();
     Ok(prs)
 }

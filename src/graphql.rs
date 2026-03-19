@@ -4,9 +4,50 @@ use serde::de::DeserializeOwned;
 
 const URI: &str = "https://api.github.com/graphql";
 
+fn find_end_cursor(value: &serde_json::Value) -> Option<&str> {
+    match value {
+        serde_json::Value::Object(map) => {
+            if let Some(cursor) = map.get("endCursor").and_then(|v| v.as_str()) {
+                return Some(cursor);
+            }
+            map.values().find_map(find_end_cursor)
+        }
+        serde_json::Value::Array(arr) => arr.iter().find_map(find_end_cursor),
+        _ => None,
+    }
+}
+
 pub async fn query<T: DeserializeOwned>(q: &serde_json::Value) -> surf::Result<T> {
     if let Ok(path) = std::env::var(ENV_GH_CHK_MOCK_FILE) {
         let data = std::fs::read_to_string(path)?;
+        if let Ok(pages) = serde_json::from_str::<Vec<serde_json::Value>>(&data) {
+            let after = q.get("variables").and_then(|v| v.get("after"));
+            let idx = if after.is_none() || after == Some(&serde_json::Value::Null) {
+                0
+            } else {
+                let cursor = after.and_then(|v| v.as_str()).ok_or_else(|| {
+                    surf::Error::from_str(
+                        surf::StatusCode::InternalServerError,
+                        "Mock: cursor 'after' value is not a string",
+                    )
+                })?;
+                let pos = pages.iter().position(|p| find_end_cursor(p) == Some(cursor));
+                pos.map(|i| i + 1).ok_or_else(|| {
+                    surf::Error::from_str(
+                        surf::StatusCode::InternalServerError,
+                        format!("Mock: no page found with endCursor '{cursor}'"),
+                    )
+                })?
+            };
+            let page = pages.get(idx).ok_or_else(|| {
+                surf::Error::from_str(
+                    surf::StatusCode::InternalServerError,
+                    format!("Mock page index {idx} out of bounds"),
+                )
+            })?;
+            let res = serde_json::from_value(page.clone())?;
+            return Ok(res);
+        }
         let res = serde_json::from_str(&data)?;
         return Ok(res);
     }

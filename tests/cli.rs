@@ -26,6 +26,13 @@ fn prs_text_includes_review_status() {
 }
 
 #[test]
+fn prs_pagination() {
+    let out = run_cmd(&["-f", "json", "prs", "foo"], "prs_paginated.json");
+    assert!(out.contains("\"title\": \"Test PR Page 1\""));
+    assert!(out.contains("\"title\": \"Test PR Page 2\""));
+}
+
+#[test]
 fn issues_output() {
     let out = run_cmd(&["-f", "json", "issues", "foo"], "issues.json");
     assert!(out.contains("Test Issue"));

@@ -26,7 +26,7 @@ pub trait PaginatedGraphQLResponse {
 }
 
 pub async fn query_all_pages<T>(
-    mut build_query: impl FnMut(Option<String>) -> serde_json::Value,
+    mut build_query: impl FnMut(Option<&str>) -> serde_json::Value,
 ) -> surf::Result<Vec<T::Item>>
 where
     T: DeserializeOwned + PaginatedGraphQLResponse,
@@ -35,7 +35,7 @@ where
     let mut items: Vec<T::Item> = Vec::new();
 
     loop {
-        let q = build_query(after.clone());
+        let q = build_query(after.as_deref());
         let res = query::<T>(&q).await?;
         let (mut page_items, has_next_page, next_after) = res.split_page();
         items.append(&mut page_items);

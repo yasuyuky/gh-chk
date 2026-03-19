@@ -46,7 +46,10 @@ where
 
         after = next_after;
         if after.is_none() {
-            break;
+            return Err(surf::Error::from_str(
+                surf::StatusCode::InternalServerError,
+                "Inconsistent GraphQL pagination: has_next_page is true but next_after is None",
+            ));
         }
     }
 

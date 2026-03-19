@@ -31,7 +31,9 @@ pub async fn query<T: DeserializeOwned>(q: &serde_json::Value) -> surf::Result<T
                         "Mock: cursor 'after' value is not a string",
                     )
                 })?;
-                let pos = pages.iter().position(|p| find_end_cursor(p) == Some(cursor));
+                let pos = pages
+                    .iter()
+                    .position(|p| find_end_cursor(p) == Some(cursor));
                 pos.map(|i| i + 1).ok_or_else(|| {
                     surf::Error::from_str(
                         surf::StatusCode::InternalServerError,

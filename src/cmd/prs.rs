@@ -57,6 +57,16 @@ nestruct::nest! {
     }
 }
 
+impl crate::graphql::PaginatedGraphQLResponse for search_res::SearchRes {
+    type Item = crate::cmd::prs::pull_request::PullRequest;
+
+    fn split_page(self) -> (Vec<Self::Item>, bool, Option<String>) {
+        let has_next_page = self.data.search.page_info.has_next_page;
+        let end_cursor = self.data.search.page_info.end_cursor;
+        (self.data.search.nodes, has_next_page, end_cursor)
+    }
+}
+
 nestruct::nest! {
     #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
     #[serde(rename_all = "camelCase")]

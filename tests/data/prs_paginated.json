@@ -1,0 +1,62 @@
+[
+  {
+    "data": {
+      "search": {
+        "nodes": [
+          {
+            "id": "PRID1",
+            "repository": {
+              "name": "repo1",
+              "owner": {
+                "login": "owner1"
+              }
+            },
+            "number": 1,
+            "title": "Test PR Page 1",
+            "url": "http://example.com/pr1",
+            "createdAt": "2024-08-01T12:34:56Z",
+            "mergeStateStatus": "CLEAN",
+            "reviewDecision": "APPROVED",
+            "reviewRequests": {
+              "nodes": []
+            }
+          }
+        ],
+        "pageInfo": {
+          "endCursor": "cursor-page-1",
+          "hasNextPage": true
+        }
+      }
+    }
+  },
+  {
+    "data": {
+      "search": {
+        "nodes": [
+          {
+            "id": "PRID2",
+            "repository": {
+              "name": "repo2",
+              "owner": {
+                "login": "owner2"
+              }
+            },
+            "number": 2,
+            "title": "Test PR Page 2",
+            "url": "http://example.com/pr2",
+            "createdAt": "2024-08-02T12:34:56Z",
+            "mergeStateStatus": "BLOCKED",
+            "reviewDecision": null,
+            "reviewRequests": {
+              "nodes": []
+            }
+          }
+        ],
+        "pageInfo": {
+          "endCursor": null,
+          "hasNextPage": false
+        }
+      }
+    }
+  }
+]

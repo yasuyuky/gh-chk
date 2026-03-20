@@ -2,7 +2,6 @@ use crate::config::TOKEN;
 use serde::de::DeserializeOwned;
 use std::collections::HashMap;
 
-const BASE_URI: &str = "https://api.github.com/";
 pub type QueryMap = HashMap<String, String>;
 
 #[allow(dead_code)]
@@ -21,7 +20,7 @@ pub async fn get<T: DeserializeOwned>(
     page: usize,
     q: &QueryMap,
 ) -> surf::Result<Vec<T>> {
-    let uri = BASE_URI.to_owned() + path;
+    let uri = crate::config::github_api_url(path);
     let mut res = get_page(&uri, page, q).await?;
     res.body_json().await
 }
@@ -38,7 +37,7 @@ pub async fn get_page(url: &str, page: usize, q: &QueryMap) -> surf::Result<surf
 }
 
 pub async fn patch(path: &str) -> surf::Result<surf::Response> {
-    let uri = BASE_URI.to_owned() + path;
+    let uri = crate::config::github_api_url(path);
     surf::patch(uri)
         .header("Authorization", format!("token {}", *TOKEN))
         .await

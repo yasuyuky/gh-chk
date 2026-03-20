@@ -98,6 +98,26 @@ pub static TOKEN: Lazy<String> = Lazy::new(|| match GH_CONFIG.entries.get("githu
 
 pub static FORMAT: OnceLock<Format> = OnceLock::new();
 
+fn normalized_env_url(key: &str) -> Option<String> {
+    std::env::var(key)
+        .ok()
+        .map(|url| url.trim_end_matches('/').to_owned())
+        .filter(|url| !url.is_empty())
+}
+
+pub fn github_api_base_url() -> String {
+    normalized_env_url(ENV_GH_CHK_API_BASE_URL).unwrap_or_else(|| "https://api.github.com".into())
+}
+
+pub fn github_api_url(path: &str) -> String {
+    format!("{}/{}", github_api_base_url(), path.trim_start_matches('/'))
+}
+
+pub fn github_graphql_url() -> String {
+    normalized_env_url(ENV_GH_CHK_GRAPHQL_URL)
+        .unwrap_or_else(|| format!("{}/graphql", github_api_base_url()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

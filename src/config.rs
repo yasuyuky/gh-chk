@@ -146,4 +146,32 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn github_urls_can_be_overridden() {
+        let orig_api = std::env::var_os(ENV_GH_CHK_API_BASE_URL);
+        let orig_graphql = std::env::var_os(ENV_GH_CHK_GRAPHQL_URL);
+        unsafe {
+            std::env::set_var(ENV_GH_CHK_API_BASE_URL, "http://localhost:8080/");
+            std::env::set_var(ENV_GH_CHK_GRAPHQL_URL, "http://localhost:8081/graphql/");
+        }
+
+        assert_eq!(github_api_base_url(), "http://localhost:8080");
+        assert_eq!(
+            github_api_url("search/code"),
+            "http://localhost:8080/search/code"
+        );
+        assert_eq!(github_graphql_url(), "http://localhost:8081/graphql");
+
+        unsafe {
+            match orig_api {
+                Some(val) => std::env::set_var(ENV_GH_CHK_API_BASE_URL, val),
+                None => std::env::remove_var(ENV_GH_CHK_API_BASE_URL),
+            }
+            match orig_graphql {
+                Some(val) => std::env::set_var(ENV_GH_CHK_GRAPHQL_URL, val),
+                None => std::env::remove_var(ENV_GH_CHK_GRAPHQL_URL),
+            }
+        }
+    }
 }

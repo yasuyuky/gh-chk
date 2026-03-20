@@ -1,4 +1,7 @@
-use crate::env_keys::{ENV_GITHUB_TOKEN, ENV_HOME, ENV_XDG_CONFIG_HOME};
+use crate::env_keys::{
+    ENV_GH_CHK_API_BASE_URL, ENV_GH_CHK_GRAPHQL_URL, ENV_GITHUB_TOKEN, ENV_HOME,
+    ENV_XDG_CONFIG_HOME,
+};
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

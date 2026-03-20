@@ -5,7 +5,6 @@ import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 DATA_DIR = ROOT / "data"
 
@@ -34,6 +33,7 @@ def response_for(scenario: str, payload: dict):
 
 
 class Handler(BaseHTTPRequestHandler):
+
     def do_GET(self):
         if self.path != "/healthz":
             self.send_error(404)
@@ -50,7 +50,7 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         try:
-            scenario = self.path[len(prefix) :]
+            scenario = self.path[len(prefix):]
             length = int(self.headers.get("Content-Length", "0"))
             payload = json.loads(self.rfile.read(length) or b"{}")
             status, body = response_for(scenario, payload)

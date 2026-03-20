@@ -5,8 +5,16 @@ import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
-DATA_DIR = ROOT / "data"
+
+def resolve_data_dir():
+    script_dir = Path(__file__).resolve().parent
+    for path in [script_dir / "data", script_dir.parent / "data"]:
+        if path.is_dir():
+            return path
+    raise FileNotFoundError(f"fixture directory not found near {script_dir}")
+
+
+DATA_DIR = resolve_data_dir()
 
 
 def load_json(name: str):

@@ -93,7 +93,7 @@ struct SearchTextMatch {
 }
 
 pub async fn search(q: &Query) -> surf::Result<()> {
-    let mut res = surf::get("https://api.github.com/search/code")
+    let mut res = surf::get(crate::config::github_api_url("search/code"))
         .header("Authorization", format!("token {}", *TOKEN))
         .query(&q.to_api())?
         .await?;
@@ -109,7 +109,7 @@ pub async fn search(q: &Query) -> surf::Result<()> {
 
 pub async fn search_code(owner: &str, query: &str) -> surf::Result<Vec<SearchItem>> {
     let q = build_query(owner, query);
-    let mut res = surf::get("https://api.github.com/search/code")
+    let mut res = surf::get(crate::config::github_api_url("search/code"))
         .header("Authorization", format!("token {}", *TOKEN))
         .header("Accept", "application/vnd.github.v3.text-match+json")
         .query(&ApiQuery {

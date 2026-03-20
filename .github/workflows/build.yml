@@ -16,6 +16,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
+      - name: Install test dependencies
+        run: apt-get update && apt-get install -y python3
       - name: Build
         run: cargo build --verbose --locked
       - name: Run tests

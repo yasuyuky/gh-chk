@@ -1,4 +1,7 @@
-use crate::env_keys::{ENV_GITHUB_TOKEN, ENV_HOME, ENV_XDG_CONFIG_HOME};
+use crate::env_keys::{
+    ENV_GH_CHK_API_BASE_URL, ENV_GH_CHK_GRAPHQL_URL, ENV_GITHUB_TOKEN, ENV_HOME,
+    ENV_XDG_CONFIG_HOME,
+};
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -95,6 +98,26 @@ pub static TOKEN: Lazy<String> = Lazy::new(|| match GH_CONFIG.entries.get("githu
 
 pub static FORMAT: OnceLock<Format> = OnceLock::new();
 
+fn normalized_env_url(key: &str) -> Option<String> {
+    std::env::var(key)
+        .ok()
+        .map(|url| url.trim_end_matches('/').to_owned())
+        .filter(|url| !url.is_empty())
+}
+
+pub fn github_api_base_url() -> String {
+    normalized_env_url(ENV_GH_CHK_API_BASE_URL).unwrap_or_else(|| "https://api.github.com".into())
+}
+
+pub fn github_api_url(path: &str) -> String {
+    format!("{}/{}", github_api_base_url(), path.trim_start_matches('/'))
+}
+
+pub fn github_graphql_url() -> String {
+    normalized_env_url(ENV_GH_CHK_GRAPHQL_URL)
+        .unwrap_or_else(|| format!("{}/graphql", github_api_base_url()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -120,6 +143,34 @@ mod tests {
             }
             if let Some(val) = orig_xdg {
                 std::env::set_var(ENV_XDG_CONFIG_HOME, val);
+            }
+        }
+    }
+
+    #[test]
+    fn github_urls_can_be_overridden() {
+        let orig_api = std::env::var_os(ENV_GH_CHK_API_BASE_URL);
+        let orig_graphql = std::env::var_os(ENV_GH_CHK_GRAPHQL_URL);
+        unsafe {
+            std::env::set_var(ENV_GH_CHK_API_BASE_URL, "http://localhost:8080/");
+            std::env::set_var(ENV_GH_CHK_GRAPHQL_URL, "http://localhost:8081/graphql/");
+        }
+
+        assert_eq!(github_api_base_url(), "http://localhost:8080");
+        assert_eq!(
+            github_api_url("search/code"),
+            "http://localhost:8080/search/code"
+        );
+        assert_eq!(github_graphql_url(), "http://localhost:8081/graphql");
+
+        unsafe {
+            match orig_api {
+                Some(val) => std::env::set_var(ENV_GH_CHK_API_BASE_URL, val),
+                None => std::env::remove_var(ENV_GH_CHK_API_BASE_URL),
+            }
+            match orig_graphql {
+                Some(val) => std::env::set_var(ENV_GH_CHK_GRAPHQL_URL, val),
+                None => std::env::remove_var(ENV_GH_CHK_GRAPHQL_URL),
             }
         }
     }

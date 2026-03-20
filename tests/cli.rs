@@ -4,6 +4,8 @@ use std::process::{Child, Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
+const GH_CHK_TEST_STUB_BASE_URL: &str = "GH_CHK_TEST_STUB_BASE_URL";
+
 struct StubServer {
     child: Option<Child>,
     graphql_base_url: String,
@@ -46,7 +48,7 @@ fn stub_script() -> PathBuf {
 }
 
 fn start_stub() -> StubServer {
-    if let Ok(url) = std::env::var("GH_CHK_TEST_STUB_BASE_URL") {
+    if let Ok(url) = std::env::var(GH_CHK_TEST_STUB_BASE_URL) {
         return StubServer {
             child: None,
             graphql_base_url: url.trim_end_matches('/').to_owned(),

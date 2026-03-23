@@ -20,6 +20,7 @@
             "nodes": [
               {
                 "requestedReviewer": {
+                  "__typename": "Bot",
                   "login": "dependabot[bot]"
                 }
               }
@@ -44,6 +45,7 @@
             "nodes": [
               {
                 "requestedReviewer": {
+                  "__typename": "Mannequin",
                   "login": "mannequin-user"
                 }
               }

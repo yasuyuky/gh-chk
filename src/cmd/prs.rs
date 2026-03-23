@@ -8,7 +8,7 @@ use crate::slug::Slug;
 use crate::{config, graphql};
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-#[serde(untagged)]
+#[serde(tag = "__typename")]
 pub enum RequestedReviewer {
     User { login: String },
     Bot { login: String },

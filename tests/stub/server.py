@@ -28,6 +28,9 @@ def response_for(scenario: str, payload: dict):
     if scenario == "prs":
         return 200, load_json("prs.json")
 
+    if scenario == "prs_requested_reviewers":
+        return 200, load_json("prs_requested_reviewers.json")
+
     if scenario == "prs_paginated":
         after = (payload.get("variables") or {}).get("after")
         pages = load_json("prs_paginated.json")

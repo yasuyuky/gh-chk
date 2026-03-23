@@ -1,0 +1,62 @@
+{
+  "data": {
+    "search": {
+      "nodes": [
+        {
+          "id": "PRID-BOT",
+          "repository": {
+            "name": "repo1",
+            "owner": {
+              "login": "owner1"
+            }
+          },
+          "number": 1,
+          "title": "Bot reviewer PR",
+          "url": "http://example.com/pr1",
+          "createdAt": "2024-08-01T12:34:56Z",
+          "mergeStateStatus": "CLEAN",
+          "reviewDecision": "REVIEW_REQUIRED",
+          "reviewRequests": {
+            "nodes": [
+              {
+                "requestedReviewer": {
+                  "__typename": "Bot",
+                  "login": "dependabot[bot]"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "id": "PRID-MANNEQUIN",
+          "repository": {
+            "name": "repo2",
+            "owner": {
+              "login": "owner2"
+            }
+          },
+          "number": 2,
+          "title": "Mannequin reviewer PR",
+          "url": "http://example.com/pr2",
+          "createdAt": "2024-08-02T12:34:56Z",
+          "mergeStateStatus": "CLEAN",
+          "reviewDecision": "REVIEW_REQUIRED",
+          "reviewRequests": {
+            "nodes": [
+              {
+                "requestedReviewer": {
+                  "__typename": "Mannequin",
+                  "login": "mannequin-user"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "pageInfo": {
+        "endCursor": null,
+        "hasNextPage": false
+      }
+    }
+  }
+}

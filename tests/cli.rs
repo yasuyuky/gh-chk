@@ -109,6 +109,13 @@ fn prs_text_includes_review_status() {
 }
 
 #[test]
+fn prs_text_handles_bot_and_mannequin_reviewers() {
+    let out = run_cmd(&["-f", "text", "prs", "foo"], "prs_requested_reviewers");
+    assert!(out.contains("[r: dependabot[bot]]"));
+    assert!(out.contains("[r: mannequin-user]"));
+}
+
+#[test]
 fn prs_pagination() {
     let out = run_cmd(&["-f", "json", "prs", "foo"], "prs_paginated");
     assert!(out.contains("\"title\": \"Test PR Page 1\""));

@@ -11,6 +11,8 @@ use crate::{config, graphql};
 #[serde(untagged)]
 pub enum RequestedReviewer {
     User { login: String },
+    Bot { login: String },
+    Mannequin { login: String },
     Team { name: String },
 }
 
@@ -18,6 +20,8 @@ impl std::fmt::Display for RequestedReviewer {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             RequestedReviewer::User { login } => write!(f, "{}", login),
+            RequestedReviewer::Bot { login } => write!(f, "{}", login),
+            RequestedReviewer::Mannequin { login } => write!(f, "{}", login),
             RequestedReviewer::Team { name } => write!(f, "team:{}", name),
         }
     }

@@ -24,6 +24,12 @@ fragment PrFields on PullRequest {
   reviewRequests(first: 10) {
     nodes {
       requestedReviewer {
+        ... on Bot {
+          login
+        }
+        ... on Mannequin {
+          login
+        }
         ... on User {
           login
         }

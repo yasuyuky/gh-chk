@@ -32,13 +32,16 @@ pub async fn check(slugs: Vec<String>) -> surf::Result<()> {
     };
     let mut handles = Vec::new();
     for slug in slugs {
-        let vs: Vec<String> = slug.split('/').map(String::from).collect();
-        match vs.len() {
-            1 => {
-                let owner = vs[0].clone();
+        match crate::slug::Slug::try_from(slug.as_str())? {
+            crate::slug::Slug::Owner(owner) => {
                 handles.push(async_std::task::spawn(fetch_owner(owner)));
             }
-            _ => panic!("unknown slug format"),
+            crate::slug::Slug::Repo { .. } => {
+                return Err(surf::Error::from_str(
+                    surf::StatusCode::BadRequest,
+                    format!("issues expects owner slug, got: {slug}"),
+                ));
+            }
         }
     }
     for handle in handles {

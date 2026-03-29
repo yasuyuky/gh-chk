@@ -1344,7 +1344,7 @@ pub async fn run(slugs: Vec<String>) -> surf::Result<()> {
 
     let mut specs: Vec<Slug> = Vec::new();
     for slug in slugs {
-        specs.push(Slug::from(slug.as_str()));
+        specs.push(Slug::try_from(slug.as_str())?);
     }
 
     run_tui(specs).await.map_err(|e| {

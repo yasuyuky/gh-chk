@@ -408,7 +408,10 @@ pub async fn check(slugs: Vec<String>, merge: bool) -> surf::Result<()> {
     };
 
     if matches!(config::FORMAT.get(), Some(config::Format::Json)) {
-        let specs: Vec<Slug> = slugs.iter().map(|s| Slug::from(s.as_str())).collect();
+        let specs: Vec<Slug> = slugs
+            .iter()
+            .map(|s| Slug::try_from(s.as_str()))
+            .collect::<Result<_, _>>()?;
         let prs = fetch_prs(&specs).await?;
         println!("{}", serde_json::to_string_pretty(&prs).unwrap());
         return Ok(());
@@ -417,7 +420,7 @@ pub async fn check(slugs: Vec<String>, merge: bool) -> surf::Result<()> {
     if merge {
         for slug in slugs {
             println!("{}", slug.bright_blue());
-            let prs = fetch_prs_for_spec(Slug::from(slug.as_str())).await?;
+            let prs = fetch_prs_for_spec(Slug::try_from(slug.as_str())?).await?;
             for pr in &prs {
                 println!("{}", pr.colorized_string());
                 if pr.merge_state_status == MergeStateStatus::Clean {
@@ -430,7 +433,10 @@ pub async fn check(slugs: Vec<String>, merge: bool) -> surf::Result<()> {
         return Ok(());
     }
 
-    let specs: Vec<Slug> = slugs.iter().map(|s| Slug::from(s.as_str())).collect();
+    let specs: Vec<Slug> = slugs
+        .iter()
+        .map(|s| Slug::try_from(s.as_str()))
+        .collect::<Result<_, _>>()?;
     let mut handles = Vec::with_capacity(specs.len());
     for spec in specs.into_iter() {
         handles.push(async_std::task::spawn(fetch_prs_for_spec(spec)));

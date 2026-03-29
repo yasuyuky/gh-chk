@@ -17,7 +17,7 @@ impl TryFrom<&str> for Slug {
             }),
             _ => Err(surf::Error::from_str(
                 surf::StatusCode::BadRequest,
-                format!("invalid slug spec: {s}"),
+                format!("invalid slug spec: {s}. Expected formats: \"owner\" or \"owner/repo\""),
             )),
         }
     }

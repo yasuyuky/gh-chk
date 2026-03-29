@@ -68,10 +68,12 @@ impl std::fmt::Display for Assignee {
 }
 
 pub async fn track(slug: &str, num: usize) -> surf::Result<()> {
-    let vs: Vec<String> = slug.split('/').map(String::from).collect();
-    match vs.len() {
-        2 => track_issue(&vs[0], &vs[1], num).await,
-        _ => panic!("unknown slug format"),
+    match crate::slug::Slug::try_from(slug)? {
+        crate::slug::Slug::Repo { owner, name } => track_issue(&owner, &name, num).await,
+        crate::slug::Slug::Owner(_) => Err(surf::Error::from_str(
+            surf::StatusCode::BadRequest,
+            format!("track-assignees expects owner/repo slug, got: {slug}"),
+        )),
     }
 }
 

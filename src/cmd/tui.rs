@@ -128,6 +128,13 @@ impl SearchState {
     }
 }
 
+fn is_search_back_key(focus: SearchFocus, code: KeyCode) -> bool {
+    matches!(
+        (focus, code),
+        (SearchFocus::Input, KeyCode::Esc) | (SearchFocus::Results, KeyCode::Char('q'))
+    )
+}
+
 struct App {
     prs: Vec<PrNode>,
     list_state: ListState,
@@ -843,7 +850,10 @@ fn build_help_text(app: &App) -> String {
                 )
             }
             AppMode::Search => {
-                let base = "q:quit • Enter:open/search • Esc:back • →:preview • ←:close preview";
+                let base = match app.search.focus {
+                    SearchFocus::Input => "Enter:search • Esc:back",
+                    SearchFocus::Results => "q:back • Enter:open • →:preview • ←:close preview",
+                };
                 let nav = if app.search.focus == SearchFocus::Results {
                     "↑/↓:navigate • Tab:focus input"
                 } else {
@@ -1055,9 +1065,12 @@ impl App {
     }
 
     async fn handle_key_search(&mut self, code: KeyCode) {
+        if is_search_back_key(self.search.focus, code) {
+            self.exit_search_mode();
+            return;
+        }
         match self.search.focus {
             SearchFocus::Input => match code {
-                KeyCode::Esc => self.exit_search_mode(),
                 KeyCode::Enter => self.on_search_submit(),
                 KeyCode::Backspace => {
                     self.search.query.pop();
@@ -1068,8 +1081,6 @@ impl App {
                 _ => {}
             },
             SearchFocus::Results => match code {
-                KeyCode::Char('q') => self.on_quit(),
-                KeyCode::Esc => self.exit_search_mode(),
                 KeyCode::Enter => self.open_search_result(),
                 KeyCode::Tab | KeyCode::Backspace => {
                     self.search.focus = SearchFocus::Input;

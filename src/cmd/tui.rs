@@ -977,17 +977,23 @@ fn ui(f: &mut Frame, app: &mut App) {
                 .constraints([Constraint::Length(3), Constraint::Min(0)].as_ref())
                 .split(outer[0]);
             render_search_input(f, app, search_chunks[0]);
-            let result_chunks = if app.search.preview_open {
-                Layout::default()
-                    .direction(Direction::Horizontal)
-                    .constraints([Constraint::Percentage(50), Constraint::Percentage(50)].as_ref())
-                    .split(search_chunks[1])
+            if app.search.focus == SearchFocus::Input {
+                render_search_input_help(f, app, search_chunks[1]);
             } else {
-                vec![search_chunks[1]].into()
-            };
-            render_search_list(f, app, result_chunks[0]);
-            if app.search.preview_open && result_chunks.len() > 1 {
-                render_search_preview(f, app, result_chunks[1]);
+                let result_chunks = if app.search.preview_open {
+                    Layout::default()
+                        .direction(Direction::Horizontal)
+                        .constraints(
+                            [Constraint::Percentage(50), Constraint::Percentage(50)].as_ref(),
+                        )
+                        .split(search_chunks[1])
+                } else {
+                    vec![search_chunks[1]].into()
+                };
+                render_search_list(f, app, result_chunks[0]);
+                if app.search.preview_open && result_chunks.len() > 1 {
+                    render_search_preview(f, app, result_chunks[1]);
+                }
             }
         }
     }

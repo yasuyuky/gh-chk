@@ -154,8 +154,7 @@ fn copy_to_clipboard(text: &str) -> io::Result<()> {
     for (program, args) in CLIPBOARD_COMMANDS {
         match run_clipboard_command(program, args, text) {
             Ok(()) => return Ok(()),
-            Err(err) if err.kind() == io::ErrorKind::NotFound => last_error = Some(err),
-            Err(err) => return Err(err),
+            Err(err) => last_error = Some(err),
         }
     }
     Err(last_error

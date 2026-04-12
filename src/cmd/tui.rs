@@ -1187,6 +1187,7 @@ impl App {
             },
             SearchFocus::Results => match code {
                 KeyCode::Enter => self.open_search_result(),
+                KeyCode::Char('c') => self.copy_search_result_repo(),
                 KeyCode::Tab | KeyCode::Backspace => {
                     self.search.focus = SearchFocus::Input;
                     self.search.preview_open = false;
@@ -1235,14 +1236,27 @@ impl App {
     }
 
     fn open_search_result(&mut self) {
-        let Some(idx) = self.search.list_state.selected() else {
-            return;
-        };
-        let Some(item) = self.search.results.get(idx) else {
+        let Some(item) = self.selected_search_result() else {
             return;
         };
         if let Err(e) = open::that(&item.html_url) {
             eprintln!("Failed to open URL: {}", e);
+        }
+    }
+
+    fn selected_search_result(&self) -> Option<&SearchItem> {
+        let idx = self.search.list_state.selected()?;
+        self.search.results.get(idx)
+    }
+
+    fn copy_search_result_repo(&mut self) {
+        let Some(repo) = self.selected_search_result().map(|item| item.repo.clone()) else {
+            self.set_status("No search result selected.");
+            return;
+        };
+        match copy_to_clipboard(&repo) {
+            Ok(()) => self.set_status(format!("Copied repo slug: {}", repo)),
+            Err(e) => self.set_status(format!("❌ Failed to copy repo slug: {}", e)),
         }
     }
 

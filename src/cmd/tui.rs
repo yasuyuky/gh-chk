@@ -1530,4 +1530,44 @@ mod tests {
         assert!(joined.contains("repo:owner/repo"));
         assert!(joined.contains("user:octocat"));
     }
+
+    #[test]
+    fn search_results_help_mentions_copy_slug() {
+        assert!(search_help_base(SearchFocus::Results).contains("c:copy slug"));
+    }
+
+    #[async_std::test]
+    async fn c_without_selection_sets_status_in_search_results() {
+        let mut app = App {
+            prs: Vec::new(),
+            list_state: ListState::default(),
+            should_quit: false,
+            status_message: None,
+            status_clear_at: None,
+            specs: Vec::new(),
+            cache: HashMap::new(),
+            preview: Preview::default(),
+            contrib_lines: None,
+            contrib_stats: None,
+            contrib_height: 9,
+            contrib_title: "Contributions".to_string(),
+            pending_task: None,
+            mode: AppMode::Search,
+            search: SearchState {
+                owner: String::default(),
+                query: String::default(),
+                results: Vec::new(),
+                list_state: ListState::default(),
+                focus: SearchFocus::Results,
+                preview_open: false,
+            },
+        };
+
+        app.handle_key_search(KeyCode::Char('c')).await;
+
+        assert_eq!(
+            app.status_message.as_deref(),
+            Some("No search result selected.")
+        );
+    }
 }

@@ -168,7 +168,8 @@ fn run_clipboard_command(program: &str, args: &[&str], text: &str) -> io::Result
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()?;
-    if let Some(stdin) = child.stdin.as_mut() {
+    if let Some(mut stdin) = child.stdin.take() {
+        // Many clipboard tools read until EOF, so close stdin before wait().
         stdin.write_all(text.as_bytes())?;
     }
     let status = child.wait()?;

@@ -736,6 +736,51 @@ fn build_search_preview(app: &App) -> Text<'static> {
     text
 }
 
+fn build_search_input_help(owner: &str) -> Text<'static> {
+    let mut text = Text::default();
+    text.lines.push(Line::from("Search query tips"));
+    text.lines.push(Line::from(""));
+    text.lines.push(Line::from(vec![
+        Span::styled("extension:yml", Style::default().fg(Color::Yellow)),
+        Span::raw(" filter by extension"),
+    ]));
+    text.lines.push(Line::from(vec![
+        Span::styled("path:.github/workflows", Style::default().fg(Color::Yellow)),
+        Span::raw(" narrow by path"),
+    ]));
+    text.lines.push(Line::from(vec![
+        Span::styled("filename:Dockerfile", Style::default().fg(Color::Yellow)),
+        Span::raw(" match an exact file name"),
+    ]));
+    text.lines.push(Line::from(vec![
+        Span::styled("language:rust", Style::default().fg(Color::Yellow)),
+        Span::raw(" filter by language"),
+    ]));
+    text.lines.push(Line::from(vec![
+        Span::styled("repo:owner/repo", Style::default().fg(Color::Yellow)),
+        Span::raw(" limit to one repository"),
+    ]));
+    text.lines.push(Line::from(""));
+    text.lines.push(Line::from("Example"));
+    text.lines.push(Line::from(vec![Span::styled(
+        "ci extension:yml path:.github/workflows",
+        Style::default().fg(Color::Cyan),
+    )]));
+    text.lines.push(Line::from(""));
+    if owner.is_empty() {
+        text.lines.push(Line::from(
+            "The query is sent as-is because no default user is set.",
+        ));
+    } else {
+        text.lines.push(Line::from(vec![
+            Span::raw("This mode also adds "),
+            Span::styled(format!("user:{}", owner), Style::default().fg(Color::Green)),
+            Span::raw(" automatically."),
+        ]));
+    }
+    text
+}
+
 fn render_pr_list(f: &mut Frame, app: &mut App, area: Rect) {
     let list = build_pr_list(app);
     f.render_stateful_widget(list, area, &mut app.list_state);

@@ -736,6 +736,51 @@ fn build_search_preview(app: &App) -> Text<'static> {
     text
 }
 
+fn build_search_input_help(owner: &str) -> Text<'static> {
+    let mut text = Text::default();
+    text.lines.push(Line::from("Search query tips"));
+    text.lines.push(Line::from(""));
+    text.lines.push(Line::from(vec![
+        Span::styled("extension:yml", Style::default().fg(Color::Yellow)),
+        Span::raw(" filter by extension"),
+    ]));
+    text.lines.push(Line::from(vec![
+        Span::styled("path:.github/workflows", Style::default().fg(Color::Yellow)),
+        Span::raw(" narrow by path"),
+    ]));
+    text.lines.push(Line::from(vec![
+        Span::styled("filename:Dockerfile", Style::default().fg(Color::Yellow)),
+        Span::raw(" match an exact file name"),
+    ]));
+    text.lines.push(Line::from(vec![
+        Span::styled("language:rust", Style::default().fg(Color::Yellow)),
+        Span::raw(" filter by language"),
+    ]));
+    text.lines.push(Line::from(vec![
+        Span::styled("repo:owner/repo", Style::default().fg(Color::Yellow)),
+        Span::raw(" limit to one repository"),
+    ]));
+    text.lines.push(Line::from(""));
+    text.lines.push(Line::from("Example"));
+    text.lines.push(Line::from(vec![Span::styled(
+        "ci extension:yml path:.github/workflows",
+        Style::default().fg(Color::Cyan),
+    )]));
+    text.lines.push(Line::from(""));
+    if owner.is_empty() {
+        text.lines.push(Line::from(
+            "The query is sent as-is because no default user is set.",
+        ));
+    } else {
+        text.lines.push(Line::from(vec![
+            Span::raw("This mode also adds "),
+            Span::styled(format!("user:{}", owner), Style::default().fg(Color::Green)),
+            Span::raw(" automatically."),
+        ]));
+    }
+    text
+}
+
 fn render_pr_list(f: &mut Frame, app: &mut App, area: Rect) {
     let list = build_pr_list(app);
     f.render_stateful_widget(list, area, &mut app.list_state);
@@ -896,6 +941,13 @@ fn render_search_list(f: &mut Frame, app: &mut App, area: Rect) {
     f.render_stateful_widget(list, area, &mut app.search.list_state);
 }
 
+fn render_search_input_help(f: &mut Frame, app: &App, area: Rect) {
+    let help = Paragraph::new(build_search_input_help(&app.search.owner))
+        .block(Block::default().borders(Borders::ALL).title("Search Tips"))
+        .wrap(Wrap { trim: false });
+    f.render_widget(help, area);
+}
+
 fn render_search_preview(f: &mut Frame, app: &mut App, area: Rect) {
     let preview_text = build_search_preview(app);
     let preview = Paragraph::new(preview_text)
@@ -925,17 +977,23 @@ fn ui(f: &mut Frame, app: &mut App) {
                 .constraints([Constraint::Length(3), Constraint::Min(0)].as_ref())
                 .split(outer[0]);
             render_search_input(f, app, search_chunks[0]);
-            let result_chunks = if app.search.preview_open {
-                Layout::default()
-                    .direction(Direction::Horizontal)
-                    .constraints([Constraint::Percentage(50), Constraint::Percentage(50)].as_ref())
-                    .split(search_chunks[1])
+            if app.search.focus == SearchFocus::Input {
+                render_search_input_help(f, app, search_chunks[1]);
             } else {
-                vec![search_chunks[1]].into()
-            };
-            render_search_list(f, app, result_chunks[0]);
-            if app.search.preview_open && result_chunks.len() > 1 {
-                render_search_preview(f, app, result_chunks[1]);
+                let result_chunks = if app.search.preview_open {
+                    Layout::default()
+                        .direction(Direction::Horizontal)
+                        .constraints(
+                            [Constraint::Percentage(50), Constraint::Percentage(50)].as_ref(),
+                        )
+                        .split(search_chunks[1])
+                } else {
+                    vec![search_chunks[1]].into()
+                };
+                render_search_list(f, app, result_chunks[0]);
+                if app.search.preview_open && result_chunks.len() > 1 {
+                    render_search_preview(f, app, result_chunks[1]);
+                }
             }
         }
     }
@@ -1384,5 +1442,27 @@ mod tests {
     #[test]
     fn q_stays_available_in_search_input() {
         assert!(!is_search_back_key(SearchFocus::Input, KeyCode::Char('q')));
+    }
+
+    #[test]
+    fn search_input_help_mentions_common_filters() {
+        let text = build_search_input_help("octocat");
+        let joined = text
+            .lines
+            .iter()
+            .map(|line| {
+                line.spans
+                    .iter()
+                    .map(|span| span.content.as_ref())
+                    .collect::<String>()
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(joined.contains("extension:yml"));
+        assert!(joined.contains("path:.github/workflows"));
+        assert!(joined.contains("filename:Dockerfile"));
+        assert!(joined.contains("language:rust"));
+        assert!(joined.contains("repo:owner/repo"));
+        assert!(joined.contains("user:octocat"));
     }
 }

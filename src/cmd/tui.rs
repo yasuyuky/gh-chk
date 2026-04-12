@@ -16,7 +16,8 @@ use ratatui::{
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap},
 };
 use std::collections::{HashMap, HashSet};
-use std::io;
+use std::io::{self, Write};
+use std::process::{Command, Stdio};
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 use time::OffsetDateTime;
@@ -133,6 +134,52 @@ fn is_search_back_key(focus: SearchFocus, code: KeyCode) -> bool {
         (focus, code),
         (SearchFocus::Input, KeyCode::Esc) | (SearchFocus::Results, KeyCode::Char('q'))
     )
+}
+
+#[cfg(target_os = "macos")]
+const CLIPBOARD_COMMANDS: &[(&str, &[&str])] = &[("pbcopy", &[])];
+
+#[cfg(target_os = "windows")]
+const CLIPBOARD_COMMANDS: &[(&str, &[&str])] = &[("clip", &[])];
+
+#[cfg(all(unix, not(target_os = "macos")))]
+const CLIPBOARD_COMMANDS: &[(&str, &[&str])] = &[
+    ("wl-copy", &[]),
+    ("xclip", &["-selection", "clipboard"]),
+    ("xsel", &["--clipboard", "--input"]),
+];
+
+fn copy_to_clipboard(text: &str) -> io::Result<()> {
+    let mut last_error = None;
+    for (program, args) in CLIPBOARD_COMMANDS {
+        match run_clipboard_command(program, args, text) {
+            Ok(()) => return Ok(()),
+            Err(err) if err.kind() == io::ErrorKind::NotFound => last_error = Some(err),
+            Err(err) => return Err(err),
+        }
+    }
+    Err(last_error
+        .unwrap_or_else(|| io::Error::new(io::ErrorKind::NotFound, "clipboard unavailable")))
+}
+
+fn run_clipboard_command(program: &str, args: &[&str], text: &str) -> io::Result<()> {
+    let mut child = Command::new(program)
+        .args(args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()?;
+    if let Some(stdin) = child.stdin.as_mut() {
+        stdin.write_all(text.as_bytes())?;
+    }
+    let status = child.wait()?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(io::Error::other(format!(
+            "clipboard command failed: {program}"
+        )))
+    }
 }
 
 struct App {

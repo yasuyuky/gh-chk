@@ -16,7 +16,8 @@ use ratatui::{
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap},
 };
 use std::collections::{HashMap, HashSet};
-use std::io;
+use std::io::{self, Write};
+use std::process::{Command, Stdio};
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 use time::OffsetDateTime;
@@ -133,6 +134,52 @@ fn is_search_back_key(focus: SearchFocus, code: KeyCode) -> bool {
         (focus, code),
         (SearchFocus::Input, KeyCode::Esc) | (SearchFocus::Results, KeyCode::Char('q'))
     )
+}
+
+#[cfg(target_os = "macos")]
+const CLIPBOARD_COMMANDS: &[(&str, &[&str])] = &[("pbcopy", &[])];
+
+#[cfg(target_os = "windows")]
+const CLIPBOARD_COMMANDS: &[(&str, &[&str])] = &[("clip", &[])];
+
+#[cfg(all(unix, not(target_os = "macos")))]
+const CLIPBOARD_COMMANDS: &[(&str, &[&str])] = &[
+    ("wl-copy", &[]),
+    ("xclip", &["-selection", "clipboard"]),
+    ("xsel", &["--clipboard", "--input"]),
+];
+
+fn copy_to_clipboard(text: &str) -> io::Result<()> {
+    let mut last_error = None;
+    for (program, args) in CLIPBOARD_COMMANDS {
+        match run_clipboard_command(program, args, text) {
+            Ok(()) => return Ok(()),
+            Err(err) => last_error = Some(err),
+        }
+    }
+    Err(last_error
+        .unwrap_or_else(|| io::Error::new(io::ErrorKind::NotFound, "clipboard unavailable")))
+}
+
+fn run_clipboard_command(program: &str, args: &[&str], text: &str) -> io::Result<()> {
+    let mut child = Command::new(program)
+        .args(args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()?;
+    if let Some(mut stdin) = child.stdin.take() {
+        // Many clipboard tools read until EOF, so close stdin before wait().
+        stdin.write_all(text.as_bytes())?;
+    }
+    let status = child.wait()?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(io::Error::other(format!(
+            "clipboard command failed: {program}"
+        )))
+    }
 }
 
 struct App {
@@ -895,10 +942,7 @@ fn build_help_text(app: &App) -> String {
                 )
             }
             AppMode::Search => {
-                let base = match app.search.focus {
-                    SearchFocus::Input => "Enter:search • Esc:back",
-                    SearchFocus::Results => "q:back • Enter:open • →:preview • ←:close preview",
-                };
+                let base = search_help_base(app.search.focus);
                 let nav = if app.search.focus == SearchFocus::Results {
                     "↑/↓:navigate • Tab:focus input"
                 } else {
@@ -907,6 +951,13 @@ fn build_help_text(app: &App) -> String {
                 format!("{} • {}", base, nav)
             }
         }
+    }
+}
+
+fn search_help_base(focus: SearchFocus) -> &'static str {
+    match focus {
+        SearchFocus::Input => "Enter:search • Esc:back",
+        SearchFocus::Results => "q:back • Enter:open • c:copy slug • →:preview • ←:close preview",
     }
 }
 
@@ -1140,6 +1191,7 @@ impl App {
             },
             SearchFocus::Results => match code {
                 KeyCode::Enter => self.open_search_result(),
+                KeyCode::Char('c') => self.copy_search_result_repo(),
                 KeyCode::Tab | KeyCode::Backspace => {
                     self.search.focus = SearchFocus::Input;
                     self.search.preview_open = false;
@@ -1188,14 +1240,27 @@ impl App {
     }
 
     fn open_search_result(&mut self) {
-        let Some(idx) = self.search.list_state.selected() else {
-            return;
-        };
-        let Some(item) = self.search.results.get(idx) else {
+        let Some(item) = self.selected_search_result() else {
             return;
         };
         if let Err(e) = open::that(&item.html_url) {
             eprintln!("Failed to open URL: {}", e);
+        }
+    }
+
+    fn selected_search_result(&self) -> Option<&SearchItem> {
+        let idx = self.search.list_state.selected()?;
+        self.search.results.get(idx)
+    }
+
+    fn copy_search_result_repo(&mut self) {
+        let Some(repo) = self.selected_search_result().map(|item| item.repo.clone()) else {
+            self.set_status("No search result selected.");
+            return;
+        };
+        match copy_to_clipboard(&repo) {
+            Ok(()) => self.set_status(format!("Copied repo slug: {}", repo)),
+            Err(e) => self.set_status(format!("❌ Failed to copy repo slug: {}", e)),
         }
     }
 
@@ -1464,5 +1529,45 @@ mod tests {
         assert!(joined.contains("language:rust"));
         assert!(joined.contains("repo:owner/repo"));
         assert!(joined.contains("user:octocat"));
+    }
+
+    #[test]
+    fn search_results_help_mentions_copy_slug() {
+        assert!(search_help_base(SearchFocus::Results).contains("c:copy slug"));
+    }
+
+    #[async_std::test]
+    async fn c_without_selection_sets_status_in_search_results() {
+        let mut app = App {
+            prs: Vec::new(),
+            list_state: ListState::default(),
+            should_quit: false,
+            status_message: None,
+            status_clear_at: None,
+            specs: Vec::new(),
+            cache: HashMap::new(),
+            preview: Preview::default(),
+            contrib_lines: None,
+            contrib_stats: None,
+            contrib_height: 9,
+            contrib_title: "Contributions".to_string(),
+            pending_task: None,
+            mode: AppMode::Search,
+            search: SearchState {
+                owner: String::default(),
+                query: String::default(),
+                results: Vec::new(),
+                list_state: ListState::default(),
+                focus: SearchFocus::Results,
+                preview_open: false,
+            },
+        };
+
+        app.handle_key_search(KeyCode::Char('c')).await;
+
+        assert_eq!(
+            app.status_message.as_deref(),
+            Some("No search result selected.")
+        );
     }
 }

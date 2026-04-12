@@ -942,10 +942,7 @@ fn build_help_text(app: &App) -> String {
                 )
             }
             AppMode::Search => {
-                let base = match app.search.focus {
-                    SearchFocus::Input => "Enter:search • Esc:back",
-                    SearchFocus::Results => "q:back • Enter:open • →:preview • ←:close preview",
-                };
+                let base = search_help_base(app.search.focus);
                 let nav = if app.search.focus == SearchFocus::Results {
                     "↑/↓:navigate • Tab:focus input"
                 } else {
@@ -954,6 +951,13 @@ fn build_help_text(app: &App) -> String {
                 format!("{} • {}", base, nav)
             }
         }
+    }
+}
+
+fn search_help_base(focus: SearchFocus) -> &'static str {
+    match focus {
+        SearchFocus::Input => "Enter:search • Esc:back",
+        SearchFocus::Results => "q:back • Enter:open • c:copy slug • →:preview • ←:close preview",
     }
 }
 

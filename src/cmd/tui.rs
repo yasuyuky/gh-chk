@@ -1366,3 +1366,23 @@ pub async fn run(slugs: Vec<String>) -> surf::Result<()> {
     })?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn esc_leaves_search_input() {
+        assert!(is_search_back_key(SearchFocus::Input, KeyCode::Esc));
+    }
+
+    #[test]
+    fn q_leaves_search_results() {
+        assert!(is_search_back_key(SearchFocus::Results, KeyCode::Char('q')));
+    }
+
+    #[test]
+    fn q_stays_available_in_search_input() {
+        assert!(!is_search_back_key(SearchFocus::Input, KeyCode::Char('q')));
+    }
+}

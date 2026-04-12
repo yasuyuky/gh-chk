@@ -1443,4 +1443,26 @@ mod tests {
     fn q_stays_available_in_search_input() {
         assert!(!is_search_back_key(SearchFocus::Input, KeyCode::Char('q')));
     }
+
+    #[test]
+    fn search_input_help_mentions_common_filters() {
+        let text = build_search_input_help("octocat");
+        let joined = text
+            .lines
+            .iter()
+            .map(|line| {
+                line.spans
+                    .iter()
+                    .map(|span| span.content.as_ref())
+                    .collect::<String>()
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(joined.contains("extension:yml"));
+        assert!(joined.contains("path:.github/workflows"));
+        assert!(joined.contains("filename:Dockerfile"));
+        assert!(joined.contains("language:rust"));
+        assert!(joined.contains("repo:owner/repo"));
+        assert!(joined.contains("user:octocat"));
+    }
 }

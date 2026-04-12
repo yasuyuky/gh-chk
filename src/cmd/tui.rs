@@ -941,6 +941,13 @@ fn render_search_list(f: &mut Frame, app: &mut App, area: Rect) {
     f.render_stateful_widget(list, area, &mut app.search.list_state);
 }
 
+fn render_search_input_help(f: &mut Frame, app: &App, area: Rect) {
+    let help = Paragraph::new(build_search_input_help(&app.search.owner))
+        .block(Block::default().borders(Borders::ALL).title("Search Tips"))
+        .wrap(Wrap { trim: false });
+    f.render_widget(help, area);
+}
+
 fn render_search_preview(f: &mut Frame, app: &mut App, area: Rect) {
     let preview_text = build_search_preview(app);
     let preview = Paragraph::new(preview_text)

@@ -3,6 +3,13 @@ use serde::de::DeserializeOwned;
 use serde_json::Value;
 
 pub async fn query<T: DeserializeOwned>(q: &serde_json::Value) -> surf::Result<T> {
+    if TOKEN.is_empty() {
+        return Err(surf::Error::from_str(
+            surf::StatusCode::Unauthorized,
+            "No GitHub token found. Run `gh auth login -h github.com` or set GITHUB_TOKEN.",
+        ));
+    }
+
     let mut res = surf::post(crate::config::github_graphql_url())
         .header("Authorization", format!("bearer {}", *TOKEN))
         .header("Content-Type", "application/json")

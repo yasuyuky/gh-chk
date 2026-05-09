@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::sync::OnceLock;
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
@@ -35,11 +36,11 @@ impl Config {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct TokenEntry {
-    user: String,
-    oauth_token: String,
-    git_protocol: String,
+    user: Option<String>,
+    oauth_token: Option<String>,
+    git_protocol: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
@@ -61,6 +62,12 @@ impl GHConfig {
             Ok(_) => serde_yaml::from_str(&s).unwrap_or_default(),
             Err(_) => Self::new(),
         }
+    }
+
+    fn token_for(&self, host: &str) -> Option<String> {
+        self.entries
+            .get(host)
+            .and_then(|entry| clean_token(entry.oauth_token.clone()))
     }
 }
 
@@ -88,15 +95,36 @@ pub static GH_CONFIG_PATH: Lazy<PathBuf> = Lazy::new(|| {
 
 pub static GH_CONFIG: Lazy<GHConfig> = Lazy::new(|| GHConfig::from_path(&GH_CONFIG_PATH));
 
-pub static TOKEN: Lazy<String> = Lazy::new(|| match GH_CONFIG.entries.get("github.com") {
-    Some(tok_conf) => tok_conf.oauth_token.clone(),
-    None => match CONFIG.token.clone() {
-        Some(tok) => tok,
-        None => std::env::var(ENV_GITHUB_TOKEN).unwrap_or_default(),
-    },
-});
+pub static TOKEN: Lazy<String> = Lazy::new(resolve_token);
 
 pub static FORMAT: OnceLock<Format> = OnceLock::new();
+
+fn clean_token(token: Option<String>) -> Option<String> {
+    token
+        .map(|token| token.trim().to_owned())
+        .filter(|token| !token.is_empty())
+}
+
+fn gh_auth_token(host: &str) -> Option<String> {
+    let output = Command::new("gh")
+        .args(["auth", "token", "-h", host])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+
+    clean_token(Some(String::from_utf8_lossy(&output.stdout).to_string()))
+}
+
+fn resolve_token() -> String {
+    GH_CONFIG
+        .token_for("github.com")
+        .or_else(|| gh_auth_token("github.com"))
+        .or_else(|| clean_token(CONFIG.token.clone()))
+        .or_else(|| clean_token(std::env::var(ENV_GITHUB_TOKEN).ok()))
+        .unwrap_or_default()
+}
 
 fn normalized_env_url(key: &str) -> Option<String> {
     std::env::var(key)
@@ -173,5 +201,36 @@ mod tests {
                 None => std::env::remove_var(ENV_GH_CHK_GRAPHQL_URL),
             }
         }
+    }
+
+    #[test]
+    fn gh_config_reads_plaintext_token() {
+        let conf: GHConfig = serde_yaml::from_str(
+            r#"
+github.com:
+  user: octocat
+  oauth_token: test-token
+  git_protocol: https
+"#,
+        )
+        .unwrap();
+
+        assert_eq!(conf.token_for("github.com"), Some("test-token".to_string()));
+    }
+
+    #[test]
+    fn gh_config_allows_keyring_only_hosts_file() {
+        let conf: GHConfig = serde_yaml::from_str(
+            r#"
+github.com:
+  user: octocat
+  git_protocol: https
+  users:
+    octocat: {}
+"#,
+        )
+        .unwrap();
+
+        assert_eq!(conf.token_for("github.com"), None);
     }
 }

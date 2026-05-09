@@ -201,14 +201,14 @@ struct App {
 }
 
 impl App {
-    async fn new(specs: Vec<Slug>) -> App {
-        let prs = fetch_prs(&specs).await.expect("Failed to fetch PRs");
+    async fn new(specs: Vec<Slug>) -> surf::Result<App> {
+        let prs = fetch_prs(&specs).await?;
         let mut list_state = ListState::default();
         if !prs.is_empty() {
             list_state.select(Some(0));
         }
         let search_owner = App::default_search_owner(&specs);
-        App {
+        Ok(App {
             prs,
             list_state,
             should_quit: false,
@@ -224,7 +224,7 @@ impl App {
             pending_task: None,
             mode: AppMode::Prs,
             search: SearchState::new(search_owner),
-        }
+        })
     }
 
     fn default_search_owner(specs: &[Slug]) -> String {
@@ -1122,14 +1122,15 @@ fn dedup_branches(branches: &mut Vec<String>) {
 }
 
 async fn run_tui(specs: Vec<Slug>) -> Result<(), Box<dyn std::error::Error>> {
+    let mut app = App::new(specs).await?;
+    app.load_contributions().await?;
+
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let mut app = App::new(specs).await;
-    app.load_contributions().await?;
     let res = run_app(&mut terminal, &mut app).await;
 
     disable_raw_mode()?;

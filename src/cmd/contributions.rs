@@ -30,12 +30,27 @@ pub mod model {
     pub use super::res::*;
 }
 
+pub struct CalendarDates<'a> {
+    pub today: &'a str,
+    pub week_start: &'a str,
+}
+
 // Fetch raw contribution calendar result for a given login
 pub async fn fetch_calendar(login: &str) -> surf::Result<model::Res> {
     let var = json!({ "login": login });
     let q = json!({ "query": include_str!("../query/contributions.graphql"), "variables": var });
     let res = crate::graphql::query::<model::Res>(&q).await?;
     Ok(res)
+}
+
+pub fn calendar_dates(res: &model::Res) -> CalendarDates<'_> {
+    let calendar = &res.data.user.contributions_collection.contribution_calendar;
+    let this_week = calendar.weeks.last().unwrap();
+    let today = this_week.contribution_days.last().unwrap();
+    CalendarDates {
+        today: today.date.as_str(),
+        week_start: this_week.first_day.as_str(),
+    }
 }
 
 pub async fn check(user: Option<String>) -> surf::Result<()> {
@@ -51,10 +66,9 @@ pub async fn check(user: Option<String>) -> surf::Result<()> {
 fn print_text(res: &res::Res) -> surf::Result<()> {
     let calendar = &res.data.user.contributions_collection.contribution_calendar;
     let (mut year_to_date, mut month_to_date) = ((0, 0), (0, 0));
-    let this_week = calendar.weeks.last().unwrap();
-    let today = this_week.contribution_days.last().unwrap().date.clone();
-    let today_year = today.chars().take(4).collect::<String>();
-    let today_month = today.chars().take(7).collect::<String>();
+    let dates = calendar_dates(res);
+    let today_year = dates.today.chars().take(4).collect::<String>();
+    let today_month = dates.today.chars().take(7).collect::<String>();
 
     for week in &calendar.weeks {
         print!("{}: ", week.first_day);
@@ -85,4 +99,38 @@ fn print_text(res: &res::Res) -> surf::Result<()> {
     println!("# year to date:        {:4} {:>5.2}", year_to_date.0, yavg);
     println!("# month to date:       {:4} {:>5.2}", month_to_date.0, mavg);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn calendar_dates_use_last_contribution_day() {
+        let res = serde_json::from_value(json!({
+            "data": {
+                "user": {
+                    "contributionsCollection": {
+                        "contributionCalendar": {
+                            "totalContributions": 3,
+                            "weeks": [{
+                                "firstDay": "2026-05-10",
+                                "contributionDays": [{
+                                    "color": "#40c463",
+                                    "contributionCount": 3,
+                                    "date": "2026-05-10"
+                                }]
+                            }]
+                        }
+                    }
+                }
+            }
+        }))
+        .expect("deserialize contribution calendar");
+
+        let dates = calendar_dates(&res);
+
+        assert_eq!(dates.today, "2026-05-10");
+        assert_eq!(dates.week_start, "2026-05-10");
+    }
 }

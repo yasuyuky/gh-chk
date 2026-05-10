@@ -20,7 +20,6 @@ use std::io::{self, Write};
 use std::process::{Command, Stdio};
 use std::rc::Rc;
 use std::time::{Duration, Instant};
-use time::OffsetDateTime;
 
 // Type alias for GraphQL PR node for brevity (reuse prs module types)
 type PrNode = prs::pull_request::PullRequest;
@@ -490,9 +489,8 @@ impl App {
         let weeks = &cal.weeks;
         let mut lines: Vec<Line> = Vec::new();
         self.contrib_title = format!("Contributions: total {}", cal.total_contributions);
-        // Use the current date to avoid padded future days skewing YTD/MTD.
-        let today_date = OffsetDateTime::now_utc().date();
-        let window = ContribWindow::new(today_date);
+        let dates = crate::cmd::contributions::calendar_dates(&res);
+        let window = ContribWindow::new(dates.today, dates.week_start);
         let mut year_to_date = ContribTotals::default();
         let mut month_to_date = ContribTotals::default();
         let mut week_to_date = ContribTotals::default();
@@ -566,17 +564,14 @@ struct ContribWindow {
 }
 
 impl ContribWindow {
-    fn new(today_date: time::Date) -> Self {
-        let today = today_date.to_string();
+    fn new(today: &str, week_start: &str) -> Self {
         let today_year = today[..4].to_string();
         let today_month = today[..7].to_string();
-        let days_from_sunday = today_date.weekday().number_from_sunday() - 1;
-        let week_start = (today_date - time::Duration::days(days_from_sunday as i64)).to_string();
         Self {
-            today,
+            today: today.to_string(),
             today_year,
             today_month,
-            week_start,
+            week_start: week_start.to_string(),
         }
     }
 
@@ -1535,6 +1530,20 @@ mod tests {
     #[test]
     fn search_results_help_mentions_copy_slug() {
         assert!(search_help_base(SearchFocus::Results).contains("c:copy slug"));
+    }
+
+    #[test]
+    fn contrib_window_includes_calendar_today() {
+        let window = ContribWindow::new("2026-05-10", "2026-05-10");
+        let mut year = ContribTotals::default();
+        let mut month = ContribTotals::default();
+        let mut week = ContribTotals::default();
+
+        window.update_totals("2026-05-10", 3, &mut year, &mut month, &mut week);
+
+        assert_eq!(year.total, 3);
+        assert_eq!(month.total, 3);
+        assert_eq!(week.total, 3);
     }
 
     #[async_std::test]

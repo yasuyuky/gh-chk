@@ -16,13 +16,16 @@ use ratatui::{
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap},
 };
 use std::collections::{HashMap, HashSet};
+use std::fs;
 use std::io::{self, Write};
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 // Type alias for GraphQL PR node for brevity (reuse prs module types)
 type PrNode = prs::pull_request::PullRequest;
+const SEARCH_HISTORY_LIMIT: usize = 100;
 
 impl MergeStateStatus {
     fn to_color(&self) -> Color {
@@ -132,6 +135,88 @@ impl SearchState {
             self.list_state.select(Some(0));
         }
     }
+
+    fn remember_query(&mut self, query: &str) -> bool {
+        let changed = push_search_history(&mut self.history, query);
+        self.history_index = None;
+        self.history_draft.clear();
+        changed
+    }
+
+    fn reset_history_nav(&mut self) {
+        self.history_index = None;
+        self.history_draft.clear();
+    }
+
+    fn navigate_history(&mut self, d: isize) {
+        if self.history.is_empty() {
+            return;
+        }
+        let next = match (self.history_index, d) {
+            (None, -1) => {
+                self.history_draft = self.query.clone();
+                Some(self.history.len() - 1)
+            }
+            (None, 1) => None,
+            (Some(0), -1) => Some(0),
+            (Some(i), -1) => Some(i - 1),
+            (Some(i), 1) if i + 1 < self.history.len() => Some(i + 1),
+            (Some(_), 1) => {
+                self.history_index = None;
+                self.query = std::mem::take(&mut self.history_draft);
+                return;
+            }
+            (current, _) => current,
+        };
+        let Some(next) = next else {
+            return;
+        };
+        self.history_index = Some(next);
+        self.query = self.history[next].clone();
+    }
+}
+
+fn search_history_path() -> PathBuf {
+    let mut path = crate::config::CONFIG_PATH.clone();
+    path.set_file_name("search_history");
+    path
+}
+
+fn load_search_history(path: &Path) -> Vec<String> {
+    let Ok(content) = fs::read_to_string(path) else {
+        return Vec::new();
+    };
+    let mut history = Vec::new();
+    for line in content.lines() {
+        push_search_history(&mut history, line);
+    }
+    history
+}
+
+fn save_search_history(path: &Path, history: &[String]) -> io::Result<()> {
+    if let Some(dir) = path.parent() {
+        fs::create_dir_all(dir)?;
+    }
+    let mut content = history.join("\n");
+    if !content.is_empty() {
+        content.push('\n');
+    }
+    fs::write(path, content)
+}
+
+fn push_search_history(history: &mut Vec<String>, query: &str) -> bool {
+    let query = query.trim();
+    if query.is_empty() {
+        return false;
+    }
+    let before = history.clone();
+    history.retain(|item| item != query);
+    history.push(query.to_string());
+    let excess = history.len().saturating_sub(SEARCH_HISTORY_LIMIT);
+    if excess > 0 {
+        history.drain(0..excess);
+    }
+    *history != before
 }
 
 fn is_search_back_key(focus: SearchFocus, code: KeyCode) -> bool {
@@ -213,6 +298,7 @@ impl App {
             list_state.select(Some(0));
         }
         let search_owner = App::default_search_owner(&specs);
+        let search_history = load_search_history(&search_history_path());
         Ok(App {
             prs,
             list_state,
@@ -228,7 +314,7 @@ impl App {
             contrib_title: "Contributions".to_string(),
             pending_task: None,
             mode: AppMode::Prs,
-            search: SearchState::new(search_owner),
+            search: SearchState::new(search_owner, search_history),
         })
     }
 

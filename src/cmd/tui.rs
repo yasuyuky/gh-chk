@@ -154,7 +154,7 @@ impl SearchState {
         }
         let next = match (self.history_index, d) {
             (None, -1) => {
-                self.history_draft = self.query.clone();
+                self.history_draft = std::mem::take(&mut self.query);
                 Some(self.history.len() - 1)
             }
             (None, 1) => None,
@@ -172,7 +172,7 @@ impl SearchState {
             return;
         };
         self.history_index = Some(next);
-        self.query = self.history[next].clone();
+        self.query.clone_from(&self.history[next]);
     }
 }
 

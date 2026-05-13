@@ -1632,6 +1632,65 @@ mod tests {
     }
 
     #[test]
+    fn search_input_help_mentions_history() {
+        assert!(search_help_base(SearchFocus::Input).contains("history"));
+    }
+
+    #[test]
+    fn search_history_keeps_latest_unique_queries() {
+        let mut history = Vec::new();
+        assert!(push_search_history(&mut history, " first "));
+        assert!(push_search_history(&mut history, "second"));
+        assert!(push_search_history(&mut history, "first"));
+
+        assert_eq!(history, vec!["second".to_string(), "first".to_string()]);
+    }
+
+    #[test]
+    fn search_history_navigation_restores_draft() {
+        let mut state = SearchState::new(
+            String::default(),
+            vec!["first".to_string(), "second".to_string()],
+        );
+        state.query = "draft".to_string();
+
+        state.navigate_history(-1);
+        assert_eq!(state.query, "second");
+        state.navigate_history(-1);
+        assert_eq!(state.query, "first");
+        state.navigate_history(1);
+        assert_eq!(state.query, "second");
+        state.navigate_history(1);
+        assert_eq!(state.query, "draft");
+        state.navigate_history(1);
+        assert_eq!(state.query, "draft");
+    }
+
+    #[test]
+    fn search_history_down_without_selection_keeps_query() {
+        let mut state = SearchState::new(String::default(), vec!["first".to_string()]);
+        state.query = "draft".to_string();
+
+        state.navigate_history(1);
+
+        assert_eq!(state.query, "draft");
+    }
+
+    #[test]
+    fn search_history_round_trips_file() -> io::Result<()> {
+        let path =
+            std::env::temp_dir().join(format!("gh-chk-search-history-{}", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let history = vec!["first".to_string(), "second".to_string()];
+
+        save_search_history(&path, &history)?;
+
+        assert_eq!(load_search_history(&path), history);
+        std::fs::remove_file(path)?;
+        Ok(())
+    }
+
+    #[test]
     fn contrib_window_includes_calendar_today() {
         let window = ContribWindow::new("2026-05-10", "2026-05-10");
         let mut year = ContribTotals::default();
@@ -1665,6 +1724,9 @@ mod tests {
             search: SearchState {
                 owner: String::default(),
                 query: String::default(),
+                history: Vec::new(),
+                history_index: None,
+                history_draft: String::default(),
                 results: Vec::new(),
                 list_state: ListState::default(),
                 focus: SearchFocus::Results,

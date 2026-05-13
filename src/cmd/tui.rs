@@ -92,6 +92,9 @@ enum SearchFocus {
 struct SearchState {
     owner: String,
     query: String,
+    history: Vec<String>,
+    history_index: Option<usize>,
+    history_draft: String,
     results: Vec<SearchItem>,
     list_state: ListState,
     focus: SearchFocus,
@@ -99,10 +102,13 @@ struct SearchState {
 }
 
 impl SearchState {
-    fn new(owner: String) -> Self {
+    fn new(owner: String, history: Vec<String>) -> Self {
         Self {
             owner,
             query: String::default(),
+            history,
+            history_index: None,
+            history_draft: String::default(),
             results: Vec::new(),
             list_state: ListState::default(),
             focus: SearchFocus::Input,

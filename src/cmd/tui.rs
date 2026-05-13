@@ -16,13 +16,16 @@ use ratatui::{
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap},
 };
 use std::collections::{HashMap, HashSet};
+use std::fs;
 use std::io::{self, Write};
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 // Type alias for GraphQL PR node for brevity (reuse prs module types)
 type PrNode = prs::pull_request::PullRequest;
+const SEARCH_HISTORY_LIMIT: usize = 100;
 
 impl MergeStateStatus {
     fn to_color(&self) -> Color {
@@ -92,6 +95,9 @@ enum SearchFocus {
 struct SearchState {
     owner: String,
     query: String,
+    history: Vec<String>,
+    history_index: Option<usize>,
+    history_draft: String,
     results: Vec<SearchItem>,
     list_state: ListState,
     focus: SearchFocus,
@@ -99,10 +105,13 @@ struct SearchState {
 }
 
 impl SearchState {
-    fn new(owner: String) -> Self {
+    fn new(owner: String, history: Vec<String>) -> Self {
         Self {
             owner,
             query: String::default(),
+            history,
+            history_index: None,
+            history_draft: String::default(),
             results: Vec::new(),
             list_state: ListState::default(),
             focus: SearchFocus::Input,
@@ -126,6 +135,88 @@ impl SearchState {
             self.list_state.select(Some(0));
         }
     }
+
+    fn remember_query(&mut self, query: &str) -> bool {
+        let changed = push_search_history(&mut self.history, query);
+        self.history_index = None;
+        self.history_draft.clear();
+        changed
+    }
+
+    fn reset_history_nav(&mut self) {
+        self.history_index = None;
+        self.history_draft.clear();
+    }
+
+    fn navigate_history(&mut self, d: isize) {
+        if self.history.is_empty() {
+            return;
+        }
+        let next = match (self.history_index, d) {
+            (None, -1) => {
+                self.history_draft = std::mem::take(&mut self.query);
+                Some(self.history.len() - 1)
+            }
+            (None, 1) => None,
+            (Some(0), -1) => Some(0),
+            (Some(i), -1) => Some(i - 1),
+            (Some(i), 1) if i + 1 < self.history.len() => Some(i + 1),
+            (Some(_), 1) => {
+                self.history_index = None;
+                self.query = std::mem::take(&mut self.history_draft);
+                return;
+            }
+            (current, _) => current,
+        };
+        let Some(next) = next else {
+            return;
+        };
+        self.history_index = Some(next);
+        self.query.clone_from(&self.history[next]);
+    }
+}
+
+fn search_history_path() -> PathBuf {
+    let mut path = crate::config::CONFIG_PATH.clone();
+    path.set_file_name("search_history");
+    path
+}
+
+fn load_search_history(path: &Path) -> Vec<String> {
+    let Ok(content) = fs::read_to_string(path) else {
+        return Vec::new();
+    };
+    let mut history = Vec::new();
+    for line in content.lines() {
+        push_search_history(&mut history, line);
+    }
+    history
+}
+
+fn save_search_history(path: &Path, history: &[String]) -> io::Result<()> {
+    if let Some(dir) = path.parent() {
+        fs::create_dir_all(dir)?;
+    }
+    let mut content = history.join("\n");
+    if !content.is_empty() {
+        content.push('\n');
+    }
+    fs::write(path, content)
+}
+
+fn push_search_history(history: &mut Vec<String>, query: &str) -> bool {
+    let query = query.trim();
+    if query.is_empty() {
+        return false;
+    }
+    let before = history.clone();
+    history.retain(|item| item != query);
+    history.push(query.to_string());
+    let excess = history.len().saturating_sub(SEARCH_HISTORY_LIMIT);
+    if excess > 0 {
+        history.drain(0..excess);
+    }
+    *history != before
 }
 
 fn is_search_back_key(focus: SearchFocus, code: KeyCode) -> bool {
@@ -207,6 +298,7 @@ impl App {
             list_state.select(Some(0));
         }
         let search_owner = App::default_search_owner(&specs);
+        let search_history = load_search_history(&search_history_path());
         Ok(App {
             prs,
             list_state,
@@ -222,7 +314,7 @@ impl App {
             contrib_title: "Contributions".to_string(),
             pending_task: None,
             mode: AppMode::Prs,
-            search: SearchState::new(search_owner),
+            search: SearchState::new(search_owner, search_history),
         })
     }
 
@@ -951,7 +1043,7 @@ fn build_help_text(app: &App) -> String {
 
 fn search_help_base(focus: SearchFocus) -> &'static str {
     match focus {
-        SearchFocus::Input => "Enter:search • Esc:back",
+        SearchFocus::Input => "Enter:search • ↑/↓:history • Esc:back",
         SearchFocus::Results => "q:back • Enter:open • c:copy slug • →:preview • ←:close preview",
     }
 }
@@ -1177,10 +1269,14 @@ impl App {
         match self.search.focus {
             SearchFocus::Input => match code {
                 KeyCode::Enter => self.on_search_submit(),
+                KeyCode::Up => self.search.navigate_history(-1),
+                KeyCode::Down => self.search.navigate_history(1),
                 KeyCode::Backspace => {
+                    self.search.reset_history_nav();
                     self.search.query.pop();
                 }
                 KeyCode::Char(ch) => {
+                    self.search.reset_history_nav();
                     self.search.query.push(ch);
                 }
                 _ => {}
@@ -1375,6 +1471,9 @@ impl App {
         }
         let owner = self.search.owner.clone();
         let query = query.to_string();
+        if self.search.remember_query(&query) {
+            let _ = save_search_history(&search_history_path(), &self.search.history);
+        }
         self.set_status_persistent(format!("🔎 Searching code for user:{}...", owner));
         self.pending_task = Some(PendingTask::SearchCode { owner, query });
     }
@@ -1533,6 +1632,65 @@ mod tests {
     }
 
     #[test]
+    fn search_input_help_mentions_history() {
+        assert!(search_help_base(SearchFocus::Input).contains("history"));
+    }
+
+    #[test]
+    fn search_history_keeps_latest_unique_queries() {
+        let mut history = Vec::new();
+        assert!(push_search_history(&mut history, " first "));
+        assert!(push_search_history(&mut history, "second"));
+        assert!(push_search_history(&mut history, "first"));
+
+        assert_eq!(history, vec!["second".to_string(), "first".to_string()]);
+    }
+
+    #[test]
+    fn search_history_navigation_restores_draft() {
+        let mut state = SearchState::new(
+            String::default(),
+            vec!["first".to_string(), "second".to_string()],
+        );
+        state.query = "draft".to_string();
+
+        state.navigate_history(-1);
+        assert_eq!(state.query, "second");
+        state.navigate_history(-1);
+        assert_eq!(state.query, "first");
+        state.navigate_history(1);
+        assert_eq!(state.query, "second");
+        state.navigate_history(1);
+        assert_eq!(state.query, "draft");
+        state.navigate_history(1);
+        assert_eq!(state.query, "draft");
+    }
+
+    #[test]
+    fn search_history_down_without_selection_keeps_query() {
+        let mut state = SearchState::new(String::default(), vec!["first".to_string()]);
+        state.query = "draft".to_string();
+
+        state.navigate_history(1);
+
+        assert_eq!(state.query, "draft");
+    }
+
+    #[test]
+    fn search_history_round_trips_file() -> io::Result<()> {
+        let path =
+            std::env::temp_dir().join(format!("gh-chk-search-history-{}", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let history = vec!["first".to_string(), "second".to_string()];
+
+        save_search_history(&path, &history)?;
+
+        assert_eq!(load_search_history(&path), history);
+        std::fs::remove_file(path)?;
+        Ok(())
+    }
+
+    #[test]
     fn contrib_window_includes_calendar_today() {
         let window = ContribWindow::new("2026-05-10", "2026-05-10");
         let mut year = ContribTotals::default();
@@ -1566,6 +1724,9 @@ mod tests {
             search: SearchState {
                 owner: String::default(),
                 query: String::default(),
+                history: Vec::new(),
+                history_index: None,
+                history_draft: String::default(),
                 results: Vec::new(),
                 list_state: ListState::default(),
                 focus: SearchFocus::Results,

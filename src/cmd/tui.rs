@@ -1043,7 +1043,7 @@ fn build_help_text(app: &App) -> String {
 
 fn search_help_base(focus: SearchFocus) -> &'static str {
     match focus {
-        SearchFocus::Input => "Enter:search • Esc:back",
+        SearchFocus::Input => "Enter:search • ↑/↓:history • Esc:back",
         SearchFocus::Results => "q:back • Enter:open • c:copy slug • →:preview • ←:close preview",
     }
 }
@@ -1269,10 +1269,14 @@ impl App {
         match self.search.focus {
             SearchFocus::Input => match code {
                 KeyCode::Enter => self.on_search_submit(),
+                KeyCode::Up => self.search.navigate_history(-1),
+                KeyCode::Down => self.search.navigate_history(1),
                 KeyCode::Backspace => {
+                    self.search.reset_history_nav();
                     self.search.query.pop();
                 }
                 KeyCode::Char(ch) => {
+                    self.search.reset_history_nav();
                     self.search.query.push(ch);
                 }
                 _ => {}
@@ -1467,6 +1471,9 @@ impl App {
         }
         let owner = self.search.owner.clone();
         let query = query.to_string();
+        if self.search.remember_query(&query) {
+            let _ = save_search_history(&search_history_path(), &self.search.history);
+        }
         self.set_status_persistent(format!("🔎 Searching code for user:{}...", owner));
         self.pending_task = Some(PendingTask::SearchCode { owner, query });
     }

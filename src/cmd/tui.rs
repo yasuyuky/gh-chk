@@ -1659,6 +1659,16 @@ mod tests {
     }
 
     #[test]
+    fn prs_help_mentions_profile_shortcut() {
+        assert!(prs_help_base().contains("p:profile"));
+    }
+
+    #[test]
+    fn profile_url_uses_viewer_login() {
+        assert_eq!(profile_url("octocat"), "https://github.com/octocat");
+    }
+
+    #[test]
     fn search_history_keeps_latest_unique_queries() {
         let mut history = Vec::new();
         assert!(push_search_history(&mut history, " first "));

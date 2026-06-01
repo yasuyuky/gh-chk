@@ -226,6 +226,10 @@ fn is_search_back_key(focus: SearchFocus, code: KeyCode) -> bool {
     )
 }
 
+fn profile_url(login: &str) -> String {
+    format!("https://github.com/{login}")
+}
+
 #[cfg(target_os = "macos")]
 const CLIPBOARD_COMMANDS: &[(&str, &[&str])] = &[("pbcopy", &[])];
 

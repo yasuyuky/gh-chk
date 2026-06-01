@@ -289,6 +289,7 @@ struct App {
     contrib_stats: Option<Vec<Line<'static>>>,
     contrib_height: u16,
     contrib_title: String,
+    viewer_login: Option<String>,
     pending_task: Option<PendingTask>,
     mode: AppMode,
     search: SearchState,
@@ -316,6 +317,7 @@ impl App {
             contrib_stats: None,
             contrib_height: 9,
             contrib_title: "Contributions".to_string(),
+            viewer_login: None,
             pending_task: None,
             mode: AppMode::Prs,
             search: SearchState::new(search_owner, search_history),
@@ -580,6 +582,7 @@ impl App {
 
     async fn load_contributions(&mut self) -> surf::Result<()> {
         let login = crate::cmd::viewer::get().await?;
+        self.viewer_login = Some(login.clone());
         let res = crate::cmd::contributions::fetch_calendar(&login).await?;
         let cal = &res.data.user.contributions_collection.contribution_calendar;
         let weeks = &cal.weeks;
@@ -1733,6 +1736,7 @@ mod tests {
             contrib_stats: None,
             contrib_height: 9,
             contrib_title: "Contributions".to_string(),
+            viewer_login: None,
             pending_task: None,
             mode: AppMode::Search,
             search: SearchState {

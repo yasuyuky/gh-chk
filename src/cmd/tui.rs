@@ -1024,7 +1024,7 @@ fn build_help_text(app: &App) -> String {
     } else {
         match app.mode {
             AppMode::Prs => {
-                let base = "q:quit • s:search • ?:help • Enter/o:open • m:merge • a:approve • r:reload PR • R:reload all • c:reload contrib • ←/→:list/body/diff/graph";
+                let base = prs_help_base();
                 let nav = if app.preview.mode.is_some() {
                     "↑/↓/wheel:scroll"
                 } else {
@@ -1046,6 +1046,10 @@ fn build_help_text(app: &App) -> String {
             }
         }
     }
+}
+
+fn prs_help_base() -> &'static str {
+    "q:quit • s:search • ?:help • Enter/o:open • p:profile • m:merge • a:approve • r:reload PR • R:reload all • c:reload contrib • ←/→:list/body/diff/graph"
 }
 
 fn search_help_base(focus: SearchFocus) -> &'static str {

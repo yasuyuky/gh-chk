@@ -1331,6 +1331,16 @@ impl App {
         self.open_url();
     }
 
+    fn on_open_profile(&mut self) {
+        let Some(login) = self.viewer_login.clone() else {
+            self.set_status("No viewer profile loaded.");
+            return;
+        };
+        if let Err(e) = open::that(profile_url(&login)) {
+            self.set_status(format!("❌ Failed to open profile for {}: {}", login, e));
+        }
+    }
+
     fn open_search_result(&mut self) {
         let Some(item) = self.selected_search_result() else {
             return;

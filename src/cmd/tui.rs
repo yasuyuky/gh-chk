@@ -226,10 +226,6 @@ fn is_search_back_key(focus: SearchFocus, code: KeyCode) -> bool {
     )
 }
 
-fn profile_url(login: &str) -> String {
-    format!("https://github.com/{login}")
-}
-
 #[cfg(target_os = "macos")]
 const CLIPBOARD_COMMANDS: &[(&str, &[&str])] = &[("pbcopy", &[])];
 
@@ -289,7 +285,7 @@ struct App {
     contrib_stats: Option<Vec<Line<'static>>>,
     contrib_height: u16,
     contrib_title: String,
-    viewer_login: Option<String>,
+    viewer_profile_url: Option<String>,
     pending_task: Option<PendingTask>,
     mode: AppMode,
     search: SearchState,
@@ -317,7 +313,7 @@ impl App {
             contrib_stats: None,
             contrib_height: 9,
             contrib_title: "Contributions".to_string(),
-            viewer_login: None,
+            viewer_profile_url: None,
             pending_task: None,
             mode: AppMode::Prs,
             search: SearchState::new(search_owner, search_history),
@@ -581,9 +577,9 @@ impl App {
     }
 
     async fn load_contributions(&mut self) -> surf::Result<()> {
-        let login = crate::cmd::viewer::get().await?;
-        self.viewer_login = Some(login.clone());
-        let res = crate::cmd::contributions::fetch_calendar(&login).await?;
+        let profile = crate::cmd::viewer::get_profile().await?;
+        self.viewer_profile_url = Some(profile.url);
+        let res = crate::cmd::contributions::fetch_calendar(&profile.login).await?;
         let cal = &res.data.user.contributions_collection.contribution_calendar;
         let weeks = &cal.weeks;
         let mut lines: Vec<Line> = Vec::new();
@@ -1344,12 +1340,12 @@ impl App {
     }
 
     fn on_open_profile(&mut self) {
-        let Some(login) = self.viewer_login.clone() else {
+        let Some(url) = self.viewer_profile_url.as_deref() else {
             self.set_status("No viewer profile loaded.");
             return;
         };
-        if let Err(e) = open::that(profile_url(&login)) {
-            self.set_status(format!("❌ Failed to open profile for {}: {}", login, e));
+        if let Err(e) = open::that(url) {
+            self.set_status(format!("❌ Failed to open profile: {}", e));
         }
     }
 
@@ -1664,11 +1660,6 @@ mod tests {
     }
 
     #[test]
-    fn profile_url_uses_viewer_login() {
-        assert_eq!(profile_url("octocat"), "https://github.com/octocat");
-    }
-
-    #[test]
     fn search_history_keeps_latest_unique_queries() {
         let mut history = Vec::new();
         assert!(push_search_history(&mut history, " first "));
@@ -1751,7 +1742,7 @@ mod tests {
             contrib_stats: None,
             contrib_height: 9,
             contrib_title: "Contributions".to_string(),
-            viewer_login: None,
+            viewer_profile_url: None,
             pending_task: None,
             mode: AppMode::Search,
             search: SearchState {

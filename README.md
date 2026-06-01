@@ -57,4 +57,5 @@ Basic keys:
 - `q` - Quit.
 - Arrow keys or `j`/`k` - Move selection.
 - `Enter` or `o` - Open the selected pull request in browser.
+- `p` - Open your GitHub profile in browser.
 - `s` - Search code. In the search input, use `Up`/`Down` to browse search history.

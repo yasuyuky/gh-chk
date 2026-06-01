@@ -285,6 +285,7 @@ struct App {
     contrib_stats: Option<Vec<Line<'static>>>,
     contrib_height: u16,
     contrib_title: String,
+    viewer_profile_url: Option<String>,
     pending_task: Option<PendingTask>,
     mode: AppMode,
     search: SearchState,
@@ -312,6 +313,7 @@ impl App {
             contrib_stats: None,
             contrib_height: 9,
             contrib_title: "Contributions".to_string(),
+            viewer_profile_url: None,
             pending_task: None,
             mode: AppMode::Prs,
             search: SearchState::new(search_owner, search_history),
@@ -575,8 +577,9 @@ impl App {
     }
 
     async fn load_contributions(&mut self) -> surf::Result<()> {
-        let login = crate::cmd::viewer::get().await?;
-        let res = crate::cmd::contributions::fetch_calendar(&login).await?;
+        let profile = crate::cmd::viewer::get_profile().await?;
+        self.viewer_profile_url = Some(profile.url);
+        let res = crate::cmd::contributions::fetch_calendar(&profile.login).await?;
         let cal = &res.data.user.contributions_collection.contribution_calendar;
         let weeks = &cal.weeks;
         let mut lines: Vec<Line> = Vec::new();
@@ -1017,7 +1020,7 @@ fn build_help_text(app: &App) -> String {
     } else {
         match app.mode {
             AppMode::Prs => {
-                let base = "q:quit • s:search • ?:help • Enter/o:open • m:merge • a:approve • r:reload PR • R:reload all • c:reload contrib • ←/→:list/body/diff/graph";
+                let base = prs_help_base();
                 let nav = if app.preview.mode.is_some() {
                     "↑/↓/wheel:scroll"
                 } else {
@@ -1039,6 +1042,10 @@ fn build_help_text(app: &App) -> String {
             }
         }
     }
+}
+
+fn prs_help_base() -> &'static str {
+    "q:quit • s:search • ?:help • Enter/o:open • p:profile • m:merge • a:approve • r:reload PR • R:reload all • c:reload contrib • ←/→:list/body/diff/graph"
 }
 
 fn search_help_base(focus: SearchFocus) -> &'static str {
@@ -1249,6 +1256,7 @@ impl App {
             KeyCode::Down | KeyCode::Char('j') => self.on_down().await,
             KeyCode::Up | KeyCode::Char('k') => self.on_up().await,
             KeyCode::Enter | KeyCode::Char('o') => self.on_open(),
+            KeyCode::Char('p') => self.on_open_profile(),
             KeyCode::Char('m') => self.on_merge_key(),
             KeyCode::Char('a') => self.on_approve_key(),
             KeyCode::Char('r') => self.on_reload_key(),
@@ -1329,6 +1337,16 @@ impl App {
 
     fn on_open(&mut self) {
         self.open_url();
+    }
+
+    fn on_open_profile(&mut self) {
+        let Some(url) = self.viewer_profile_url.as_deref() else {
+            self.set_status("No viewer profile loaded.");
+            return;
+        };
+        if let Err(e) = open::that(url) {
+            self.set_status(format!("❌ Failed to open profile: {}", e));
+        }
     }
 
     fn open_search_result(&mut self) {
@@ -1637,6 +1655,11 @@ mod tests {
     }
 
     #[test]
+    fn prs_help_mentions_profile_shortcut() {
+        assert!(prs_help_base().contains("p:profile"));
+    }
+
+    #[test]
     fn search_history_keeps_latest_unique_queries() {
         let mut history = Vec::new();
         assert!(push_search_history(&mut history, " first "));
@@ -1719,6 +1742,7 @@ mod tests {
             contrib_stats: None,
             contrib_height: 9,
             contrib_title: "Contributions".to_string(),
+            viewer_profile_url: None,
             pending_task: None,
             mode: AppMode::Search,
             search: SearchState {

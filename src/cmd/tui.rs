@@ -1260,6 +1260,7 @@ impl App {
             KeyCode::Down | KeyCode::Char('j') => self.on_down().await,
             KeyCode::Up | KeyCode::Char('k') => self.on_up().await,
             KeyCode::Enter | KeyCode::Char('o') => self.on_open(),
+            KeyCode::Char('p') => self.on_open_profile(),
             KeyCode::Char('m') => self.on_merge_key(),
             KeyCode::Char('a') => self.on_approve_key(),
             KeyCode::Char('r') => self.on_reload_key(),

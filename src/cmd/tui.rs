@@ -566,7 +566,8 @@ impl App {
             Ok(prs) => {
                 let count = prs.len();
                 self.apply_pr_list_and_restore_selection(prs);
-                if show_status {
+                let queued_preview = show_status && self.queue_preview_if_needed();
+                if show_status && !queued_preview {
                     self.set_status(format!("✅ Auto reloaded. {} PRs.", count));
                 }
             }
@@ -607,6 +608,16 @@ impl App {
         if auto_reload.in_flight {
             auto_reload.ignore_before_id = auto_reload.next_id;
         }
+    }
+
+    fn queue_preview_if_needed(&mut self) -> bool {
+        let Some(mode) = self.preview.mode else {
+            return false;
+        };
+        if self.pending_task.is_some() {
+            return false;
+        }
+        self.queue_mode_if_needed(mode)
     }
 
     async fn refresh_preview(&mut self) {
@@ -1540,7 +1551,7 @@ impl App {
         self.status_clear_at = None;
     }
 
-    fn queue_mode_if_needed(&mut self, mode: PreviewMode) {
+    fn queue_mode_if_needed(&mut self, mode: PreviewMode) -> bool {
         if let Some(pr) = self.get_selected_pr().cloned() {
             let has_cache = self.cache.contains_key(&(mode, pr.id.clone()));
             let pending = match mode {
@@ -1551,8 +1562,10 @@ impl App {
             if !has_cache {
                 self.set_status_persistent(format!("🔎 Loading {} for #{}...", mode, pr.number));
                 self.pending_task = Some(pending);
+                return true;
             }
         }
+        false
     }
 
     fn on_right(&mut self) {

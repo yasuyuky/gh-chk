@@ -127,6 +127,11 @@ impl AutoReload {
     }
 }
 
+fn mark_auto_reload_complete(auto_reload: &mut AutoReload) {
+    auto_reload.in_flight = false;
+    auto_reload.next_at = Instant::now() + auto_reload.interval;
+}
+
 struct SearchState {
     owner: String,
     query: String,
@@ -537,7 +542,6 @@ impl App {
         let id = auto_reload.next_id;
         auto_reload.next_id += 1;
         auto_reload.in_flight = true;
-        auto_reload.next_at = now + auto_reload.interval;
 
         let specs = self.specs.clone();
         let tx = auto_reload.tx.clone();
@@ -578,12 +582,12 @@ impl App {
         let auto_reload = self.auto_reload.as_mut()?;
         match auto_reload.rx.try_recv() {
             Ok(event) => {
-                auto_reload.in_flight = false;
+                mark_auto_reload_complete(auto_reload);
                 Some(event)
             }
             Err(TryRecvError::Empty) => None,
             Err(TryRecvError::Closed) => {
-                auto_reload.in_flight = false;
+                mark_auto_reload_complete(auto_reload);
                 None
             }
         }

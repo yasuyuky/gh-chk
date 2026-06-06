@@ -1931,6 +1931,31 @@ mod tests {
     }
 
     #[test]
+    fn auto_reload_queues_preview_for_fallback_selection() {
+        let mut app = empty_app(AppMode::Prs);
+        app.prs = vec![test_pr("one", 1)];
+        app.list_state.select(Some(0));
+        app.preview.mode = Some(PreviewMode::Body);
+
+        let mut auto_reload = AutoReload::new(Duration::from_secs(60));
+        auto_reload.in_flight = true;
+        async_std::task::block_on(auto_reload.tx.send(AutoReloadEvent {
+            id: 1,
+            result: Ok(vec![test_pr("two", 2)]),
+        }))
+        .expect("send auto-reload event");
+        app.auto_reload = Some(auto_reload);
+
+        app.finish_auto_reload();
+
+        assert_eq!(app.get_selected_pr().map(|pr| pr.id.as_str()), Some("two"));
+        assert!(matches!(
+            app.pending_task,
+            Some(PendingTask::LoadBodyForSelected)
+        ));
+    }
+
+    #[test]
     fn auto_reload_waits_interval_after_completion() {
         let mut app = empty_app(AppMode::Prs);
         let mut auto_reload = AutoReload::new(Duration::from_secs(60));

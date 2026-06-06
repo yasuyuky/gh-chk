@@ -1682,72 +1682,97 @@ async fn run_app(
     loop {
         terminal.draw(|f| ui(f, app))?;
 
-        if event::poll(std::time::Duration::from_millis(100))? {
-            match event::read()? {
-                Event::Key(key) => app.handle_key(key.code).await,
-                Event::Mouse(m) => app.handle_mouse(m.kind),
-                _ => {}
-            }
-        }
-
+        handle_terminal_events(app).await?;
         app.finish_auto_reload();
         app.start_auto_reload();
-
-        // If a long-running task is queued, redraw once to show the status
-        // immediately, then execute the task.
-        if let Some(task) = app.pending_task.take() {
-            let supersedes_auto_reload = task.supersedes_auto_reload();
-            terminal.draw(|f| ui(f, app))?;
-            match task {
-                PendingTask::MergeSelected => app.merge_selected().await,
-                PendingTask::ApproveSelected => app.approve_selected().await,
-                PendingTask::Reload => app.reload().await,
-                PendingTask::ReloadSelected => app.reload_selected_pr().await,
-                PendingTask::ReloadContrib => {
-                    if let Err(e) = app.load_contributions().await {
-                        app.set_status(format!("❌ Contrib load error: {}", e));
-                    } else {
-                        app.set_status("✅ Contrib reloaded.".to_string());
-                    }
-                }
-                PendingTask::LoadBodyForSelected => {
-                    if let Some(pr) = app.get_selected_pr().cloned() {
-                        let _ = app.load_body(&pr).await;
-                    }
-                }
-                PendingTask::LoadDiffForSelected => {
-                    if let Some(pr) = app.get_selected_pr().cloned() {
-                        let _ = app.load_diff(&pr).await;
-                    }
-                }
-                PendingTask::LoadCommitsForSelected => {
-                    if let Some(pr) = app.get_selected_pr().cloned() {
-                        let _ = app.load_commits(&pr).await;
-                    }
-                }
-                PendingTask::SearchCode { owner, query } => {
-                    app.run_search(owner, query).await;
-                }
-            }
-            app.defer_auto_reload();
-            if supersedes_auto_reload {
-                app.ignore_auto_reload_result();
-            }
-        }
-
-        // Auto-clear status messages when their timer expires.
-        if let Some(clear_at) = app.status_clear_at
-            && Instant::now() >= clear_at
-        {
-            app.status_message = None;
-            app.status_clear_at = None;
-        }
+        run_pending_task(terminal, app).await?;
+        clear_expired_status(app);
 
         if app.should_quit {
             break;
         }
     }
     Ok(())
+}
+
+async fn handle_terminal_events(app: &mut App) -> io::Result<()> {
+    if !event::poll(std::time::Duration::from_millis(100))? {
+        return Ok(());
+    }
+
+    match event::read()? {
+        Event::Key(key) => app.handle_key(key.code).await,
+        Event::Mouse(m) => app.handle_mouse(m.kind),
+        _ => {}
+    }
+    Ok(())
+}
+
+async fn run_pending_task(
+    terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
+    app: &mut App,
+) -> io::Result<()> {
+    let Some(task) = app.pending_task.take() else {
+        return Ok(());
+    };
+
+    let supersedes_auto_reload = task.supersedes_auto_reload();
+    terminal.draw(|f| ui(f, app))?;
+    run_task(app, task).await;
+    app.defer_auto_reload();
+    if supersedes_auto_reload {
+        app.ignore_auto_reload_result();
+    }
+    Ok(())
+}
+
+async fn run_task(app: &mut App, task: PendingTask) {
+    match task {
+        PendingTask::MergeSelected => app.merge_selected().await,
+        PendingTask::ApproveSelected => app.approve_selected().await,
+        PendingTask::Reload => app.reload().await,
+        PendingTask::ReloadSelected => app.reload_selected_pr().await,
+        PendingTask::ReloadContrib => reload_contributions(app).await,
+        PendingTask::LoadBodyForSelected => load_body_for_selected(app).await,
+        PendingTask::LoadDiffForSelected => load_diff_for_selected(app).await,
+        PendingTask::LoadCommitsForSelected => load_commits_for_selected(app).await,
+        PendingTask::SearchCode { owner, query } => app.run_search(owner, query).await,
+    }
+}
+
+async fn reload_contributions(app: &mut App) {
+    if let Err(e) = app.load_contributions().await {
+        app.set_status(format!("❌ Contrib load error: {}", e));
+    } else {
+        app.set_status("✅ Contrib reloaded.".to_string());
+    }
+}
+
+async fn load_body_for_selected(app: &mut App) {
+    if let Some(pr) = app.get_selected_pr().cloned() {
+        let _ = app.load_body(&pr).await;
+    }
+}
+
+async fn load_diff_for_selected(app: &mut App) {
+    if let Some(pr) = app.get_selected_pr().cloned() {
+        let _ = app.load_diff(&pr).await;
+    }
+}
+
+async fn load_commits_for_selected(app: &mut App) {
+    if let Some(pr) = app.get_selected_pr().cloned() {
+        let _ = app.load_commits(&pr).await;
+    }
+}
+
+fn clear_expired_status(app: &mut App) {
+    if let Some(clear_at) = app.status_clear_at
+        && Instant::now() >= clear_at
+    {
+        app.status_message = None;
+        app.status_clear_at = None;
+    }
 }
 
 pub async fn run(slugs: Vec<String>, auto_reload_secs: Option<u64>) -> surf::Result<()> {

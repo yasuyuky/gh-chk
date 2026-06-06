@@ -1639,6 +1639,7 @@ impl App {
         self.search.focus = SearchFocus::Input;
         self.status_message = None;
         self.status_clear_at = None;
+        self.queue_preview_if_needed();
     }
 
     fn on_search_submit(&mut self) {
@@ -2023,6 +2024,24 @@ mod tests {
 
         app.finish_auto_reload();
 
+        assert_eq!(app.get_selected_pr().map(|pr| pr.id.as_str()), Some("two"));
+        assert!(matches!(
+            app.pending_task,
+            Some(PendingTask::LoadBodyForSelected)
+        ));
+    }
+
+    #[test]
+    fn leaving_search_queues_preview_after_auto_reload() {
+        let mut app = empty_app(AppMode::Search);
+        app.prs = vec![test_pr("one", 1)];
+        app.list_state.select(Some(0));
+        app.preview.mode = Some(PreviewMode::Body);
+
+        app.apply_pr_list_and_restore_selection(vec![test_pr("two", 2)]);
+        app.exit_search_mode();
+
+        assert_eq!(app.mode, AppMode::Prs);
         assert_eq!(app.get_selected_pr().map(|pr| pr.id.as_str()), Some("two"));
         assert!(matches!(
             app.pending_task,

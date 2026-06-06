@@ -82,6 +82,15 @@ enum PendingTask {
     SearchCode { owner: String, query: String },
 }
 
+impl PendingTask {
+    fn supersedes_auto_reload(&self) -> bool {
+        matches!(
+            self,
+            Self::MergeSelected | Self::ApproveSelected | Self::Reload | Self::ReloadSelected
+        )
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum AppMode {
     Prs,
@@ -605,6 +614,12 @@ impl App {
             return;
         };
         auto_reload.next_at = Instant::now() + auto_reload.interval;
+    }
+
+    fn ignore_auto_reload_result(&mut self) {
+        let Some(auto_reload) = &mut self.auto_reload else {
+            return;
+        };
         if auto_reload.in_flight {
             auto_reload.ignore_before_id = auto_reload.next_id;
         }
@@ -1681,6 +1696,7 @@ async fn run_app(
         // If a long-running task is queued, redraw once to show the status
         // immediately, then execute the task.
         if let Some(task) = app.pending_task.take() {
+            let supersedes_auto_reload = task.supersedes_auto_reload();
             terminal.draw(|f| ui(f, app))?;
             match task {
                 PendingTask::MergeSelected => app.merge_selected().await,
@@ -1714,6 +1730,9 @@ async fn run_app(
                 }
             }
             app.defer_auto_reload();
+            if supersedes_auto_reload {
+                app.ignore_auto_reload_result();
+            }
         }
 
         // Auto-clear status messages when their timer expires.
@@ -1928,6 +1947,37 @@ mod tests {
 
         assert_eq!(app.list_state.selected(), Some(0));
         assert_eq!(app.get_selected_pr().map(|pr| pr.id.as_str()), Some("two"));
+    }
+
+    #[test]
+    fn only_pr_list_tasks_supersede_auto_reload() {
+        assert!(PendingTask::Reload.supersedes_auto_reload());
+        assert!(PendingTask::ReloadSelected.supersedes_auto_reload());
+        assert!(PendingTask::MergeSelected.supersedes_auto_reload());
+        assert!(PendingTask::ApproveSelected.supersedes_auto_reload());
+        assert!(!PendingTask::ReloadContrib.supersedes_auto_reload());
+        assert!(!PendingTask::LoadBodyForSelected.supersedes_auto_reload());
+        assert!(!PendingTask::LoadDiffForSelected.supersedes_auto_reload());
+        assert!(!PendingTask::LoadCommitsForSelected.supersedes_auto_reload());
+        let search = PendingTask::SearchCode {
+            owner: String::default(),
+            query: String::default(),
+        };
+        assert!(!search.supersedes_auto_reload());
+    }
+
+    #[test]
+    fn deferring_auto_reload_keeps_in_flight_result_current() {
+        let mut app = empty_app(AppMode::Prs);
+        let mut auto_reload = AutoReload::new(Duration::from_secs(60));
+        auto_reload.in_flight = true;
+        auto_reload.next_id = 2;
+        app.auto_reload = Some(auto_reload);
+
+        app.defer_auto_reload();
+
+        let auto_reload = app.auto_reload.as_ref().expect("auto-reload");
+        assert_eq!(auto_reload.ignore_before_id, 0);
     }
 
     #[test]

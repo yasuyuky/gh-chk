@@ -1,6 +1,7 @@
 use crate::cmd::prs::{self, Commit, CommitGraphEntry, MergeStateStatus, approve_pr, fetch_prs};
 use crate::cmd::search::{SearchItem, search_code};
 use crate::{slug::Slug, styling};
+use async_std::channel::{Receiver, Sender};
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, MouseEventKind},
     execute,
@@ -26,6 +27,7 @@ use std::time::{Duration, Instant};
 // Type alias for GraphQL PR node for brevity (reuse prs module types)
 type PrNode = prs::pull_request::PullRequest;
 const SEARCH_HISTORY_LIMIT: usize = 100;
+pub const AUTO_RELOAD_MIN_SECS: u64 = 60;
 
 impl MergeStateStatus {
     fn to_color(&self) -> Color {
@@ -90,6 +92,39 @@ enum AppMode {
 enum SearchFocus {
     Input,
     Results,
+}
+
+type AutoReloadSender = Sender<AutoReloadEvent>;
+type AutoReloadReceiver = Receiver<AutoReloadEvent>;
+
+struct AutoReloadEvent {
+    id: u64,
+    result: surf::Result<Vec<PrNode>>,
+}
+
+struct AutoReload {
+    interval: Duration,
+    next_at: Instant,
+    in_flight: bool,
+    next_id: u64,
+    ignore_before_id: u64,
+    tx: AutoReloadSender,
+    rx: AutoReloadReceiver,
+}
+
+impl AutoReload {
+    fn new(interval: Duration) -> Self {
+        let (tx, rx) = async_std::channel::unbounded();
+        Self {
+            interval,
+            next_at: Instant::now() + interval,
+            in_flight: false,
+            next_id: 1,
+            ignore_before_id: 0,
+            tx,
+            rx,
+        }
+    }
 }
 
 struct SearchState {
@@ -287,12 +322,13 @@ struct App {
     contrib_title: String,
     viewer_profile_url: Option<String>,
     pending_task: Option<PendingTask>,
+    auto_reload: Option<AutoReload>,
     mode: AppMode,
     search: SearchState,
 }
 
 impl App {
-    async fn new(specs: Vec<Slug>) -> surf::Result<App> {
+    async fn new(specs: Vec<Slug>, auto_reload: Option<Duration>) -> surf::Result<App> {
         let prs = fetch_prs(&specs).await?;
         let mut list_state = ListState::default();
         if !prs.is_empty() {
@@ -315,6 +351,7 @@ impl App {
             contrib_title: "Contributions".to_string(),
             viewer_profile_url: None,
             pending_task: None,
+            auto_reload: auto_reload.map(AutoReload::new),
             mode: AppMode::Prs,
             search: SearchState::new(search_owner, search_history),
         })
@@ -1215,8 +1252,11 @@ fn dedup_branches(branches: &mut Vec<String>) {
     branches.retain(|sha| seen.insert(sha.clone()));
 }
 
-async fn run_tui(specs: Vec<Slug>) -> Result<(), Box<dyn std::error::Error>> {
-    let mut app = App::new(specs).await?;
+async fn run_tui(
+    specs: Vec<Slug>,
+    auto_reload: Option<Duration>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut app = App::new(specs, auto_reload).await?;
     app.load_contributions().await?;
 
     enable_raw_mode()?;
@@ -1582,7 +1622,7 @@ async fn run_app(
     Ok(())
 }
 
-pub async fn run(slugs: Vec<String>) -> surf::Result<()> {
+pub async fn run(slugs: Vec<String>, auto_reload_secs: Option<u64>) -> surf::Result<()> {
     let slugs = if slugs.is_empty() {
         vec![crate::cmd::viewer::get().await?]
     } else {
@@ -1594,7 +1634,8 @@ pub async fn run(slugs: Vec<String>) -> surf::Result<()> {
         specs.push(Slug::try_from(slug.as_str())?);
     }
 
-    run_tui(specs).await.map_err(|e| {
+    let auto_reload = auto_reload_secs.map(Duration::from_secs);
+    run_tui(specs, auto_reload).await.map_err(|e| {
         surf::Error::from_str(
             surf::StatusCode::InternalServerError,
             format!("TUI error: {}", e),

@@ -115,7 +115,8 @@ mod tests {
 
     #[test]
     fn tui_auto_reload_flag_uses_default_interval() {
-        let opt = Opt::parse_from(["gh-chk", "tui", "--auto-reload", "foo"]);
+        let opt =
+            Opt::try_parse_from(["gh-chk", "tui", "--auto-reload", "foo"]).expect("parse args");
         match opt.command {
             Command::Tui { slug, auto_reload } => {
                 assert_eq!(slug, vec!["foo".to_string()]);
@@ -127,7 +128,8 @@ mod tests {
 
     #[test]
     fn tui_auto_reload_accepts_explicit_interval() {
-        let opt = Opt::parse_from(["gh-chk", "tui", "--auto-reload=60", "foo"]);
+        let opt =
+            Opt::try_parse_from(["gh-chk", "tui", "--auto-reload=60", "foo"]).expect("parse args");
         match opt.command {
             Command::Tui { slug, auto_reload } => {
                 assert_eq!(slug, vec!["foo".to_string()]);

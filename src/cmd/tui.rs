@@ -1917,6 +1917,26 @@ mod tests {
         assert_eq!(app.get_selected_pr().map(|pr| pr.id.as_str()), Some("two"));
     }
 
+    #[test]
+    fn auto_reload_waits_interval_after_completion() {
+        let mut app = empty_app(AppMode::Prs);
+        let mut auto_reload = AutoReload::new(Duration::from_secs(60));
+        auto_reload.in_flight = true;
+        auto_reload.next_at = Instant::now() - Duration::from_secs(1);
+        async_std::task::block_on(auto_reload.tx.send(AutoReloadEvent {
+            id: 1,
+            result: Ok(Vec::new()),
+        }))
+        .expect("send auto-reload event");
+        app.auto_reload = Some(auto_reload);
+
+        app.finish_auto_reload();
+
+        let auto_reload = app.auto_reload.as_ref().expect("auto-reload");
+        assert!(!auto_reload.in_flight);
+        assert!(auto_reload.next_at > Instant::now());
+    }
+
     #[async_std::test]
     async fn c_without_selection_sets_status_in_search_results() {
         let mut app = empty_app(AppMode::Search);

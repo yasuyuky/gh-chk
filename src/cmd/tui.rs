@@ -922,9 +922,11 @@ fn build_pr_list(app: &App) -> List<'static> {
         let styled = Span::styled(line, Style::default().fg(pr.merge_state_status.to_color()));
         items.push(ListItem::new(Line::from(styled)));
     }
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .title(format!("Pull Requests: total {}", app.prs.len()));
+    let mut title = format!("Pull Requests: total {}", app.prs.len());
+    if let Some(auto_reload) = &app.auto_reload {
+        title.push_str(&format!(" • auto {}s", auto_reload.interval.as_secs()));
+    }
+    let block = Block::default().borders(Borders::ALL).title(title);
     let highlight_style = Style::default().add_modifier(Modifier::BOLD);
     List::new(items)
         .block(block)
@@ -1738,6 +1740,47 @@ pub async fn run(slugs: Vec<String>, auto_reload_secs: Option<u64>) -> surf::Res
 mod tests {
     use super::*;
 
+    fn test_pr(id: &str, number: usize) -> PrNode {
+        serde_json::from_value(serde_json::json!({
+            "repository": {
+                "name": "repo",
+                "owner": { "login": "owner" }
+            },
+            "number": number,
+            "id": id,
+            "title": format!("PR {number}"),
+            "url": format!("https://github.com/owner/repo/pull/{number}"),
+            "createdAt": "2026-01-01T00:00:00Z",
+            "mergeStateStatus": "CLEAN",
+            "reviewDecision": null,
+            "commits": null,
+            "reviewRequests": { "nodes": [] }
+        }))
+        .expect("test PR")
+    }
+
+    fn empty_app(mode: AppMode) -> App {
+        App {
+            prs: Vec::new(),
+            list_state: ListState::default(),
+            should_quit: false,
+            status_message: None,
+            status_clear_at: None,
+            specs: Vec::new(),
+            cache: HashMap::new(),
+            preview: Preview::default(),
+            contrib_lines: None,
+            contrib_stats: None,
+            contrib_height: 9,
+            contrib_title: "Contributions".to_string(),
+            viewer_profile_url: None,
+            pending_task: None,
+            auto_reload: None,
+            mode,
+            search: SearchState::new(String::default(), Vec::new()),
+        }
+    }
+
     #[test]
     fn esc_leaves_search_input() {
         assert!(is_search_back_key(SearchFocus::Input, KeyCode::Esc));
@@ -1858,36 +1901,22 @@ mod tests {
         assert_eq!(week.total, 3);
     }
 
+    #[test]
+    fn reloading_preserves_selected_pr_by_id() {
+        let mut app = empty_app(AppMode::Prs);
+        app.prs = vec![test_pr("one", 1), test_pr("two", 2)];
+        app.list_state.select(Some(1));
+
+        app.apply_pr_list_and_restore_selection(vec![test_pr("two", 2), test_pr("one", 1)]);
+
+        assert_eq!(app.list_state.selected(), Some(0));
+        assert_eq!(app.get_selected_pr().map(|pr| pr.id.as_str()), Some("two"));
+    }
+
     #[async_std::test]
     async fn c_without_selection_sets_status_in_search_results() {
-        let mut app = App {
-            prs: Vec::new(),
-            list_state: ListState::default(),
-            should_quit: false,
-            status_message: None,
-            status_clear_at: None,
-            specs: Vec::new(),
-            cache: HashMap::new(),
-            preview: Preview::default(),
-            contrib_lines: None,
-            contrib_stats: None,
-            contrib_height: 9,
-            contrib_title: "Contributions".to_string(),
-            viewer_profile_url: None,
-            pending_task: None,
-            mode: AppMode::Search,
-            search: SearchState {
-                owner: String::default(),
-                query: String::default(),
-                history: Vec::new(),
-                history_index: None,
-                history_draft: String::default(),
-                results: Vec::new(),
-                list_state: ListState::default(),
-                focus: SearchFocus::Results,
-                preview_open: false,
-            },
-        };
+        let mut app = empty_app(AppMode::Search);
+        app.search.focus = SearchFocus::Results;
 
         app.handle_key_search(KeyCode::Char('c')).await;
 

@@ -108,3 +108,37 @@ async fn main() -> surf::Result<()> {
     };
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tui_auto_reload_flag_uses_default_interval() {
+        let opt = Opt::parse_from(["gh-chk", "tui", "--auto-reload", "foo"]);
+        match opt.command {
+            Command::Tui { slug, auto_reload } => {
+                assert_eq!(slug, vec!["foo".to_string()]);
+                assert_eq!(auto_reload, Some(300));
+            }
+            _ => panic!("expected tui command"),
+        }
+    }
+
+    #[test]
+    fn tui_auto_reload_accepts_explicit_interval() {
+        let opt = Opt::parse_from(["gh-chk", "tui", "--auto-reload=60", "foo"]);
+        match opt.command {
+            Command::Tui { slug, auto_reload } => {
+                assert_eq!(slug, vec!["foo".to_string()]);
+                assert_eq!(auto_reload, Some(60));
+            }
+            _ => panic!("expected tui command"),
+        }
+    }
+
+    #[test]
+    fn tui_auto_reload_rejects_short_interval() {
+        assert!(Opt::try_parse_from(["gh-chk", "tui", "--auto-reload=59"]).is_err());
+    }
+}

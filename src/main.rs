@@ -28,7 +28,19 @@ enum Command {
         merge: bool,
     },
     /// Interactive TUI for pull requests
-    Tui { slug: Vec<String> },
+    Tui {
+        #[clap(
+            long = "auto-reload",
+            value_name = "SECONDS",
+            num_args = 0..=1,
+            require_equals = true,
+            default_missing_value = "300",
+            value_parser = clap::value_parser!(u64).range(cmd::tui::AUTO_RELOAD_MIN_SECS..),
+            help = "Auto-reload the PR list every SECONDS (default: 300, min: 60)"
+        )]
+        auto_reload: Option<u64>,
+        slug: Vec<String>,
+    },
     /// Show issues of the repository or user
     Issues { slug: Vec<String> },
     /// Show contriburions of the user
@@ -85,7 +97,7 @@ async fn main() -> surf::Result<()> {
     config::FORMAT.set(opt.format).expect("set format");
     match opt.command {
         Command::Prs { slug, merge } => cmd::prs::check(slug, merge).await?,
-        Command::Tui { slug } => cmd::tui::run(slug).await?,
+        Command::Tui { slug, auto_reload } => cmd::tui::run(slug, auto_reload).await?,
         Command::Issues { slug } => cmd::issues::check(slug).await?,
         Command::Contributions { user } => cmd::contributions::check(user).await?,
         Command::Notifications { read } => cmd::notifications::list(read).await?,

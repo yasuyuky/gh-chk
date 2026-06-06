@@ -1960,7 +1960,7 @@ mod tests {
         let mut app = empty_app(AppMode::Prs);
         let mut auto_reload = AutoReload::new(Duration::from_secs(60));
         auto_reload.in_flight = true;
-        auto_reload.next_at = Duration::from_secs(1).elapsed();
+        auto_reload.next_at = Instant::now();
         async_std::task::block_on(auto_reload.tx.send(AutoReloadEvent {
             id: 1,
             result: Ok(Vec::new()),

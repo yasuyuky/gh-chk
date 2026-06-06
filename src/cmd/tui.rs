@@ -1,7 +1,7 @@
 use crate::cmd::prs::{self, Commit, CommitGraphEntry, MergeStateStatus, approve_pr, fetch_prs};
 use crate::cmd::search::{SearchItem, search_code};
 use crate::{slug::Slug, styling};
-use async_std::channel::{Receiver, Sender};
+use async_std::channel::{Receiver, Sender, TryRecvError};
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, MouseEventKind},
     execute,
@@ -520,6 +520,89 @@ impl App {
             self.list_state.select(Some(selection));
         }
         self.prune_cache_to_existing();
+    }
+
+    fn start_auto_reload(&mut self) {
+        if self.mode != AppMode::Prs || self.pending_task.is_some() {
+            return;
+        }
+        let Some(auto_reload) = &mut self.auto_reload else {
+            return;
+        };
+        let now = Instant::now();
+        if auto_reload.in_flight || now < auto_reload.next_at {
+            return;
+        }
+
+        let id = auto_reload.next_id;
+        auto_reload.next_id += 1;
+        auto_reload.in_flight = true;
+        auto_reload.next_at = now + auto_reload.interval;
+
+        let specs = self.specs.clone();
+        let tx = auto_reload.tx.clone();
+        async_std::task::spawn(async move {
+            let result = fetch_prs(&specs).await;
+            let _ = tx.send(AutoReloadEvent { id, result }).await;
+        });
+        self.set_status_persistent("🔄 Auto reloading PRs...");
+    }
+
+    fn finish_auto_reload(&mut self) {
+        let Some(event) = self.take_auto_reload_event() else {
+            return;
+        };
+
+        if self.is_stale_auto_reload(event.id) {
+            return;
+        }
+
+        let show_status = self.mode == AppMode::Prs;
+        match event.result {
+            Ok(prs) => {
+                let count = prs.len();
+                self.apply_pr_list_and_restore_selection(prs);
+                if show_status {
+                    self.set_status(format!("✅ Auto reloaded. {} PRs.", count));
+                }
+            }
+            Err(e) => {
+                if show_status {
+                    self.set_status(format!("❌ Auto reload error: {}", e));
+                }
+            }
+        }
+    }
+
+    fn take_auto_reload_event(&mut self) -> Option<AutoReloadEvent> {
+        let auto_reload = self.auto_reload.as_mut()?;
+        match auto_reload.rx.try_recv() {
+            Ok(event) => {
+                auto_reload.in_flight = false;
+                Some(event)
+            }
+            Err(TryRecvError::Empty) => None,
+            Err(TryRecvError::Closed) => {
+                auto_reload.in_flight = false;
+                None
+            }
+        }
+    }
+
+    fn is_stale_auto_reload(&self, id: u64) -> bool {
+        self.auto_reload
+            .as_ref()
+            .is_some_and(|auto_reload| id < auto_reload.ignore_before_id)
+    }
+
+    fn defer_auto_reload(&mut self) {
+        let Some(auto_reload) = &mut self.auto_reload else {
+            return;
+        };
+        auto_reload.next_at = Instant::now() + auto_reload.interval;
+        if auto_reload.in_flight {
+            auto_reload.ignore_before_id = auto_reload.next_id;
+        }
     }
 
     async fn refresh_preview(&mut self) {
@@ -1573,6 +1656,9 @@ async fn run_app(
             }
         }
 
+        app.finish_auto_reload();
+        app.start_auto_reload();
+
         // If a long-running task is queued, redraw once to show the status
         // immediately, then execute the task.
         if let Some(task) = app.pending_task.take() {
@@ -1608,6 +1694,7 @@ async fn run_app(
                     app.run_search(owner, query).await;
                 }
             }
+            app.defer_auto_reload();
         }
 
         // Auto-clear status messages when their timer expires.

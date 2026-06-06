@@ -509,12 +509,15 @@ impl App {
 
     fn apply_pr_list_and_restore_selection(&mut self, new_list: Vec<PrNode>) {
         let sel = self.list_state.selected().unwrap_or(0);
+        let selected_id = self.get_selected_pr().map(|pr| pr.id.clone());
         self.prs = new_list;
         if self.prs.is_empty() {
             self.list_state.select(None);
         } else {
-            let new_sel = sel.min(self.prs.len().saturating_sub(1));
-            self.list_state.select(Some(new_sel));
+            let selection = selected_id
+                .and_then(|id| self.prs.iter().position(|pr| pr.id == id))
+                .unwrap_or_else(|| sel.min(self.prs.len().saturating_sub(1)));
+            self.list_state.select(Some(selection));
         }
         self.prune_cache_to_existing();
     }

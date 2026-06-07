@@ -27,6 +27,7 @@ use std::time::{Duration, Instant};
 // Type alias for GraphQL PR node for brevity (reuse prs module types)
 type PrNode = prs::pull_request::PullRequest;
 const SEARCH_HISTORY_LIMIT: usize = 100;
+pub const AUTO_RELOAD_DEFAULT_SECS: u64 = 300;
 pub const AUTO_RELOAD_MIN_SECS: u64 = 60;
 
 impl MergeStateStatus {

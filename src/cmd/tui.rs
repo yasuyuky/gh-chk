@@ -1777,7 +1777,7 @@ fn clear_expired_status(app: &mut App) {
     }
 }
 
-pub async fn run(slugs: Vec<String>, auto_reload_secs: Option<u64>) -> surf::Result<()> {
+pub async fn run(slugs: Vec<String>, auto_reload_secs: u64) -> surf::Result<()> {
     let slugs = if slugs.is_empty() {
         vec![crate::cmd::viewer::get().await?]
     } else {
@@ -1789,7 +1789,7 @@ pub async fn run(slugs: Vec<String>, auto_reload_secs: Option<u64>) -> surf::Res
         specs.push(Slug::try_from(slug.as_str())?);
     }
 
-    let auto_reload = auto_reload_secs.map(Duration::from_secs);
+    let auto_reload = Some(Duration::from_secs(auto_reload_secs));
     run_tui(specs, auto_reload).await.map_err(|e| {
         surf::Error::from_str(
             surf::StatusCode::InternalServerError,

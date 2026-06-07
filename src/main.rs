@@ -30,16 +30,12 @@ enum Command {
     /// Interactive TUI for pull requests
     Tui {
         #[clap(
-            long = "auto-reload",
+            long,
             value_name = "SECONDS",
-            num_args = 0..=1,
-            require_equals = true,
-            default_value = "300",
-            default_missing_value = "300",
-            value_parser = clap::value_parser!(u64).range(cmd::tui::AUTO_RELOAD_MIN_SECS..),
-            help = "Auto-reload the PR list every SECONDS (default: 300, min: 60)"
+            default_value_t = cmd::tui::AUTO_RELOAD_DEFAULT_SECS,
+            value_parser = clap::value_parser!(u64).range(cmd::tui::AUTO_RELOAD_MIN_SECS..)
         )]
-        auto_reload: Option<u64>,
+        auto_reload: u64,
         slug: Vec<String>,
     },
     /// Show issues of the repository or user

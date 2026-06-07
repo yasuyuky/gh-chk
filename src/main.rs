@@ -34,6 +34,7 @@ enum Command {
             value_name = "SECONDS",
             num_args = 0..=1,
             require_equals = true,
+            default_value = "300",
             default_missing_value = "300",
             value_parser = clap::value_parser!(u64).range(cmd::tui::AUTO_RELOAD_MIN_SECS..),
             help = "Auto-reload the PR list every SECONDS (default: 300, min: 60)"

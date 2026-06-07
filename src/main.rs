@@ -30,15 +30,12 @@ enum Command {
     /// Interactive TUI for pull requests
     Tui {
         #[clap(
-            long = "auto-reload",
+            long,
             value_name = "SECONDS",
-            num_args = 0..=1,
-            require_equals = true,
-            default_missing_value = "300",
-            value_parser = clap::value_parser!(u64).range(cmd::tui::AUTO_RELOAD_MIN_SECS..),
-            help = "Auto-reload the PR list every SECONDS (default: 300, min: 60)"
+            default_value_t = cmd::tui::AUTO_RELOAD_DEFAULT_SECS,
+            value_parser = clap::value_parser!(u64).range(cmd::tui::AUTO_RELOAD_MIN_SECS..)
         )]
-        auto_reload: Option<u64>,
+        auto_reload: u64,
         slug: Vec<String>,
     },
     /// Show issues of the repository or user
@@ -114,16 +111,21 @@ mod tests {
     use super::*;
 
     #[test]
-    fn tui_auto_reload_flag_uses_default_interval() {
-        let opt =
-            Opt::try_parse_from(["gh-chk", "tui", "--auto-reload", "foo"]).expect("parse args");
+    fn tui_auto_reload_defaults_to_enabled() {
+        let opt = Opt::try_parse_from(["gh-chk", "tui", "foo"]).expect("parse args");
         match opt.command {
             Command::Tui { slug, auto_reload } => {
                 assert_eq!(slug, vec!["foo".to_string()]);
-                assert_eq!(auto_reload, Some(300));
+                assert_eq!(auto_reload, cmd::tui::AUTO_RELOAD_DEFAULT_SECS);
             }
             _ => panic!("expected tui command"),
         }
+    }
+
+    #[test]
+    fn tui_auto_reload_rejects_invalid_interval() {
+        assert!(Opt::try_parse_from(["gh-chk", "tui", "--auto-reload"]).is_err());
+        assert!(Opt::try_parse_from(["gh-chk", "tui", "--auto-reload", "foo"]).is_err());
     }
 
     #[test]
@@ -133,7 +135,7 @@ mod tests {
         match opt.command {
             Command::Tui { slug, auto_reload } => {
                 assert_eq!(slug, vec!["foo".to_string()]);
-                assert_eq!(auto_reload, Some(60));
+                assert_eq!(auto_reload, 60);
             }
             _ => panic!("expected tui command"),
         }

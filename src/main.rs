@@ -123,7 +123,8 @@ mod tests {
     }
 
     #[test]
-    fn tui_auto_reload_requires_explicit_interval_when_present() {
+    fn tui_auto_reload_rejects_invalid_interval() {
+        assert!(Opt::try_parse_from(["gh-chk", "tui", "--auto-reload"]).is_err());
         assert!(Opt::try_parse_from(["gh-chk", "tui", "--auto-reload", "foo"]).is_err());
     }
 

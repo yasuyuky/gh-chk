@@ -116,23 +116,15 @@ mod tests {
         match opt.command {
             Command::Tui { slug, auto_reload } => {
                 assert_eq!(slug, vec!["foo".to_string()]);
-                assert_eq!(auto_reload, Some(300));
+                assert_eq!(auto_reload, cmd::tui::AUTO_RELOAD_DEFAULT_SECS);
             }
             _ => panic!("expected tui command"),
         }
     }
 
     #[test]
-    fn tui_auto_reload_flag_uses_default_interval() {
-        let opt =
-            Opt::try_parse_from(["gh-chk", "tui", "--auto-reload", "foo"]).expect("parse args");
-        match opt.command {
-            Command::Tui { slug, auto_reload } => {
-                assert_eq!(slug, vec!["foo".to_string()]);
-                assert_eq!(auto_reload, Some(300));
-            }
-            _ => panic!("expected tui command"),
-        }
+    fn tui_auto_reload_requires_explicit_interval_when_present() {
+        assert!(Opt::try_parse_from(["gh-chk", "tui", "--auto-reload", "foo"]).is_err());
     }
 
     #[test]
@@ -142,7 +134,7 @@ mod tests {
         match opt.command {
             Command::Tui { slug, auto_reload } => {
                 assert_eq!(slug, vec!["foo".to_string()]);
-                assert_eq!(auto_reload, Some(60));
+                assert_eq!(auto_reload, 60);
             }
             _ => panic!("expected tui command"),
         }

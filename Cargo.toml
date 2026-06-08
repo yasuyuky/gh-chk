@@ -18,7 +18,7 @@ nestruct = "0.1.0"
 time = { version = "0.3.47", features = ["serde", "serde-well-known"] }
 clap = { version = "4.6.1", features = ["derive"] }
 serde_yaml = "0.9.34"
-ratatui = "0.30.0"
+ratatui = "0.30.1"
 crossterm = "0.29.0"
 open = "5.3.5"
 

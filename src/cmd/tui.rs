@@ -1897,6 +1897,29 @@ mod tests {
     }
 
     #[test]
+    fn pr_list_marks_dependabot_alert_origin() {
+        let mut app = empty_app(AppMode::Prs);
+        let mut pr = test_pr("one", 1);
+        pr.dependabot_alert_origin = true;
+        app.prs = vec![pr];
+
+        let mut terminal =
+            Terminal::new(ratatui::backend::TestBackend::new(120, 5)).expect("terminal");
+        terminal
+            .draw(|frame| render_pr_list(frame, &mut app, frame.area()))
+            .expect("draw");
+
+        let rendered = terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect::<String>();
+        assert!(rendered.contains("[dep-alert]"));
+    }
+
+    #[test]
     fn search_history_keeps_latest_unique_queries() {
         let mut history = Vec::new();
         assert!(push_search_history(&mut history, " first "));

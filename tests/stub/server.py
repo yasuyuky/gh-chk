@@ -22,10 +22,18 @@ def load_json(name: str):
 
 
 def response_for(scenario: str, payload: dict):
+    if payload.get("operationName") == "GetDependabotAlertPullRequestIds":
+        if scenario == "prs_dependabot_alert":
+            return 200, load_json("dependabot_alert_prs.json")
+        return 200, load_json("dependabot_alert_prs_empty.json")
+
     if scenario == "issues":
         return 200, load_json("issues.json")
 
     if scenario == "prs":
+        return 200, load_json("prs.json")
+
+    if scenario == "prs_dependabot_alert":
         return 200, load_json("prs.json")
 
     if scenario == "prs_requested_reviewers":

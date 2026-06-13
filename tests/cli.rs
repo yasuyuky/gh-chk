@@ -109,6 +109,12 @@ fn prs_text_includes_review_status() {
 }
 
 #[test]
+fn prs_text_marks_dependabot_alert_origin() {
+    let out = run_cmd(&["-f", "text", "prs", "foo"], "prs_dependabot_alert");
+    assert!(out.contains("[dep-alert]"));
+}
+
+#[test]
 fn prs_text_handles_bot_and_mannequin_reviewers() {
     let out = run_cmd(&["-f", "text", "prs", "foo"], "prs_requested_reviewers");
     assert!(out.contains("[r: dependabot[bot]]"));

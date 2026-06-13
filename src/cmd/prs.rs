@@ -10,6 +10,75 @@ use crate::{config, graphql};
 
 const DEPENDABOT_ALERT_LOOKUP_CONCURRENCY: usize = 8;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DependabotAlertLookupWarning {
+    failed_repos: usize,
+    first_error: String,
+}
+
+impl DependabotAlertLookupWarning {
+    fn from_errors(errors: Vec<String>) -> Option<Self> {
+        let failed_repos = errors.len();
+        let first_error = errors.into_iter().next()?;
+        Some(Self {
+            failed_repos,
+            first_error,
+        })
+    }
+
+    fn merge(&mut self, other: Self) {
+        self.failed_repos += other.failed_repos;
+    }
+
+    pub fn message(&self) -> String {
+        format!(
+            "Dependabot alert lookup failed for {} repo(s); [dep-alert] markers may be incomplete. First error: {}",
+            self.failed_repos, self.first_error
+        )
+    }
+}
+
+impl Display for DependabotAlertLookupWarning {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "warning: {}", self.message())
+    }
+}
+
+pub struct PullRequestFetchResult {
+    pub prs: Vec<PullRequest>,
+    pub warning: Option<DependabotAlertLookupWarning>,
+}
+
+impl PullRequestFetchResult {
+    fn new(prs: Vec<PullRequest>, warning: Option<DependabotAlertLookupWarning>) -> Self {
+        Self { prs, warning }
+    }
+
+    fn extend(&mut self, mut other: Self) {
+        self.prs.append(&mut other.prs);
+        merge_dependabot_alert_warning(&mut self.warning, other.warning);
+    }
+}
+
+fn merge_dependabot_alert_warning(
+    target: &mut Option<DependabotAlertLookupWarning>,
+    incoming: Option<DependabotAlertLookupWarning>,
+) {
+    let Some(incoming) = incoming else {
+        return;
+    };
+    match target {
+        Some(target) => target.merge(incoming),
+        None => *target = Some(incoming),
+    }
+}
+
+fn print_dependabot_alert_warning(warning: Option<&DependabotAlertLookupWarning>) {
+    if let Some(warning) = warning {
+        eprintln!("{}", warning);
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(tag = "__typename")]
 pub enum RequestedReviewer {
@@ -468,15 +537,18 @@ pub async fn check(slugs: Vec<String>, merge: bool) -> surf::Result<()> {
             .iter()
             .map(|s| Slug::try_from(s.as_str()))
             .collect::<Result<_, _>>()?;
-        let prs = fetch_prs(&specs).await?;
-        println!("{}", serde_json::to_string_pretty(&prs).unwrap());
+        let result = fetch_prs_with_warnings(&specs).await?;
+        print_dependabot_alert_warning(result.warning.as_ref());
+        println!("{}", serde_json::to_string_pretty(&result.prs).unwrap());
         return Ok(());
     }
 
     if merge {
         for slug in slugs {
             println!("{}", slug.bright_blue());
-            let prs = fetch_prs_for_spec(Slug::try_from(slug.as_str())?).await?;
+            let result = fetch_prs_for_spec_with_warnings(Slug::try_from(slug.as_str())?).await?;
+            print_dependabot_alert_warning(result.warning.as_ref());
+            let prs = result.prs;
             for pr in &prs {
                 println!("{}", pr.colorized_string());
                 if pr.merge_state_status == MergeStateStatus::Clean {
@@ -495,12 +567,16 @@ pub async fn check(slugs: Vec<String>, merge: bool) -> surf::Result<()> {
         .collect::<Result<_, _>>()?;
     let mut handles = Vec::with_capacity(specs.len());
     for spec in specs.into_iter() {
-        handles.push(async_std::task::spawn(fetch_prs_for_spec(spec)));
+        handles.push(async_std::task::spawn(fetch_prs_for_spec_with_warnings(
+            spec,
+        )));
     }
 
     for (slug, handle) in slugs.into_iter().zip(handles) {
         println!("{}", slug.bright_blue());
-        let prs = handle.await?;
+        let result = handle.await?;
+        print_dependabot_alert_warning(result.warning.as_ref());
+        let prs = result.prs;
         for pr in &prs {
             println!("{}", pr.colorized_string());
         }
@@ -508,48 +584,55 @@ pub async fn check(slugs: Vec<String>, merge: bool) -> surf::Result<()> {
     Ok(())
 }
 
-async fn fetch_prs_for_spec(spec: Slug) -> surf::Result<Vec<PullRequest>> {
+async fn fetch_prs_for_spec_with_warnings(spec: Slug) -> surf::Result<PullRequestFetchResult> {
     match spec {
-        Slug::Owner(owner) => fetch_owner_prs(&owner).await,
-        Slug::Repo { owner, name } => fetch_repo_prs(&owner, &name).await,
+        Slug::Owner(owner) => fetch_owner_prs_with_warnings(&owner).await,
+        Slug::Repo { owner, name } => fetch_repo_prs_with_warnings(&owner, &name).await,
     }
 }
 
-pub async fn fetch_prs(specs: &[Slug]) -> surf::Result<Vec<PullRequest>> {
-    let mut all_prs: Vec<PullRequest> = Vec::new();
+pub async fn fetch_prs_with_warnings(specs: &[Slug]) -> surf::Result<PullRequestFetchResult> {
+    let mut result = PullRequestFetchResult::new(Vec::new(), None);
     let mut handles = Vec::with_capacity(specs.len());
     for spec in specs.iter().cloned() {
-        handles.push(async_std::task::spawn(fetch_prs_for_spec(spec)));
+        handles.push(async_std::task::spawn(fetch_prs_for_spec_with_warnings(
+            spec,
+        )));
     }
     for handle in handles {
-        all_prs.append(&mut handle.await?);
+        result.extend(handle.await?);
     }
-    Ok(all_prs)
+    Ok(result)
 }
 
-async fn fetch_owner_prs(owner: &str) -> surf::Result<Vec<PullRequest>> {
+async fn fetch_owner_prs_with_warnings(owner: &str) -> surf::Result<PullRequestFetchResult> {
     let query = format!("is:pr is:open user:{}", owner);
     search_prs(&query).await
 }
 
-pub async fn fetch_repo_prs(owner: &str, name: &str) -> surf::Result<Vec<PullRequest>> {
+pub async fn fetch_repo_prs_with_warnings(
+    owner: &str,
+    name: &str,
+) -> surf::Result<PullRequestFetchResult> {
     let query = format!("is:pr is:open repo:{}/{}", owner, name);
     search_prs(&query).await
 }
 
-async fn search_prs(query: &str) -> surf::Result<Vec<PullRequest>> {
+async fn search_prs(query: &str) -> surf::Result<PullRequestFetchResult> {
     let query_doc = include_str!("../query/prs.graphql");
     let mut prs: Vec<PullRequest> = graphql::query_all_pages::<search_res::SearchRes>(|after| {
         let v = json!({ "query": query, "after": after });
         json!({ "query": query_doc, "operationName": "SearchPrs", "variables": v })
     })
     .await?;
-    mark_dependabot_alert_origins(&mut prs).await;
+    let warning = mark_dependabot_alert_origins(&mut prs).await;
     prs.sort();
-    Ok(prs)
+    Ok(PullRequestFetchResult::new(prs, warning))
 }
 
-async fn mark_dependabot_alert_origins(prs: &mut [PullRequest]) {
+async fn mark_dependabot_alert_origins(
+    prs: &mut [PullRequest],
+) -> Option<DependabotAlertLookupWarning> {
     let mut repo_pr_ids: HashMap<(String, String), HashSet<String>> = HashMap::new();
     for pr in prs.iter() {
         repo_pr_ids
@@ -584,17 +667,11 @@ async fn mark_dependabot_alert_origins(prs: &mut [PullRequest]) {
         }
     }
 
-    if let Some(first_error) = lookup_errors.first() {
-        eprintln!(
-            "warning: Dependabot alert lookup failed for {} repo(s); [dep-alert] markers may be incomplete. First error: {}",
-            lookup_errors.len(),
-            first_error
-        );
-    }
-
     for pr in prs {
         pr.dependabot_alert_origin = alert_pr_ids.contains(&pr.id);
     }
+
+    DependabotAlertLookupWarning::from_errors(lookup_errors)
 }
 
 async fn fetch_dependabot_alert_pr_ids(

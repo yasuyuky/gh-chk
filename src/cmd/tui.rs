@@ -749,15 +749,15 @@ impl App {
                 self.drop_preview_cache_for(&pr.id);
                 self.refresh_preview().await;
                 let still_present = self.prs.iter().any(|p| p.id == pr.id);
-                let status = if still_present {
-                    format!("✅ Reloaded {}.", pr.numslug())
+                let action = if still_present {
+                    format!("Reloaded {}.", pr.numslug())
                 } else {
-                    format!("✅ Removed {} (no longer open).", pr.numslug())
+                    format!("Removed {} (no longer open).", pr.numslug())
                 };
                 if let Some(warning) = warning {
-                    self.set_status(format!("⚠️ {} {}", status, warning.message()));
+                    self.set_status(format!("⚠️ {} {}", action, warning.message()));
                 } else {
-                    self.set_status(status);
+                    self.set_status(format!("✅ {}", action));
                 }
             }
             Err(e) => self.set_status(format!("❌ Reload error for {}: {}", pr.numslug(), e)),

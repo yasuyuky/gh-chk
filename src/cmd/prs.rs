@@ -563,19 +563,33 @@ async fn mark_dependabot_alert_origins(prs: &mut [PullRequest]) {
         .collect();
 
     let mut alert_pr_ids = HashSet::new();
+    let mut lookup_errors = Vec::new();
     for chunk in repos.chunks(DEPENDABOT_ALERT_LOOKUP_CONCURRENCY) {
         let mut handles = Vec::with_capacity(chunk.len());
         for (owner, name) in chunk.iter().cloned() {
-            handles.push(async_std::task::spawn(async move {
-                fetch_dependabot_alert_pr_ids(&owner, &name).await
-            }));
+            let repo = format!("{}/{}", owner, name);
+            handles.push((
+                repo,
+                async_std::task::spawn(async move {
+                    fetch_dependabot_alert_pr_ids(&owner, &name).await
+                }),
+            ));
         }
 
-        for handle in handles {
-            if let Ok(ids) = handle.await {
-                alert_pr_ids.extend(ids);
+        for (repo, handle) in handles {
+            match handle.await {
+                Ok(ids) => alert_pr_ids.extend(ids),
+                Err(err) => lookup_errors.push(format!("{}: {}", repo, err)),
             }
         }
+    }
+
+    if let Some(first_error) = lookup_errors.first() {
+        eprintln!(
+            "warning: Dependabot alert lookup failed for {} repo(s); [dep-alert] markers may be incomplete. First error: {}",
+            lookup_errors.len(),
+            first_error
+        );
     }
 
     for pr in prs {

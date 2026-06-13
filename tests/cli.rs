@@ -106,6 +106,7 @@ fn prs_output() {
 fn prs_text_includes_review_status() {
     let out = run_cmd(&["-f", "text", "prs", "foo"], "prs");
     assert!(out.contains("[approved]"));
+    assert!(!out.contains("[dep-alert]"));
 }
 
 #[test]

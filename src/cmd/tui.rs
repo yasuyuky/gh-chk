@@ -1,4 +1,6 @@
-use crate::cmd::prs::{self, Commit, CommitGraphEntry, MergeStateStatus, approve_pr, fetch_prs};
+use crate::cmd::prs::{
+    self, Commit, CommitGraphEntry, MergeStateStatus, approve_pr, fetch_prs_with_warnings,
+};
 use crate::cmd::search::{SearchItem, search_code};
 use crate::{slug::Slug, styling};
 use async_std::channel::{Receiver, Sender, TryRecvError};
@@ -109,7 +111,7 @@ type AutoReloadReceiver = Receiver<AutoReloadEvent>;
 
 struct AutoReloadEvent {
     id: u64,
-    result: surf::Result<Vec<PrNode>>,
+    result: surf::Result<prs::PullRequestFetchResult>,
 }
 
 struct AutoReload {
@@ -140,6 +142,10 @@ impl AutoReload {
 fn mark_auto_reload_complete(auto_reload: &mut AutoReload) {
     auto_reload.in_flight = false;
     auto_reload.next_at = Instant::now() + auto_reload.interval;
+}
+
+fn dependabot_warning_status(warning: &prs::DependabotAlertLookupWarning) -> String {
+    format!("⚠️ {}", warning.message())
 }
 
 struct SearchState {
@@ -344,7 +350,12 @@ struct App {
 
 impl App {
     async fn new(specs: Vec<Slug>, auto_reload: Option<Duration>) -> surf::Result<App> {
-        let prs = fetch_prs(&specs).await?;
+        let result = fetch_prs_with_warnings(&specs).await?;
+        let status_message = result.warning.as_ref().map(dependabot_warning_status);
+        let status_clear_at = status_message
+            .as_ref()
+            .map(|_| Instant::now() + Duration::from_millis(3000));
+        let prs = result.prs;
         let mut list_state = ListState::default();
         if !prs.is_empty() {
             list_state.select(Some(0));
@@ -355,8 +366,8 @@ impl App {
             prs,
             list_state,
             should_quit: false,
-            status_message: None,
-            status_clear_at: None,
+            status_message,
+            status_clear_at,
             specs,
             cache: HashMap::new(),
             preview: Preview::default(),
@@ -505,17 +516,26 @@ impl App {
     }
 
     async fn reload(&mut self) {
-        let new_list = match fetch_prs(&self.specs).await {
-            Ok(prs) => prs,
+        let result = match fetch_prs_with_warnings(&self.specs).await {
+            Ok(result) => result,
             Err(e) => {
                 self.set_status(format!("❌ Reload error: {}", e));
                 return;
             }
         };
+        let warning = result.warning;
 
-        self.apply_pr_list_and_restore_selection(new_list);
+        self.apply_pr_list_and_restore_selection(result.prs);
         self.refresh_preview().await;
-        self.set_status(format!("✅ Reloaded. {} PRs.", self.prs.len()));
+        if let Some(warning) = warning {
+            self.set_status(format!(
+                "⚠️ Reloaded. {} PRs. {}",
+                self.prs.len(),
+                warning.message()
+            ));
+        } else {
+            self.set_status(format!("✅ Reloaded. {} PRs.", self.prs.len()));
+        }
 
         if let Err(e) = self.load_contributions().await {
             self.set_status(format!("❌ Contrib load error: {}", e));
@@ -556,7 +576,7 @@ impl App {
         let specs = self.specs.clone();
         let tx = auto_reload.tx.clone();
         async_std::task::spawn(async move {
-            let result = fetch_prs(&specs).await;
+            let result = fetch_prs_with_warnings(&specs).await;
             let _ = tx.send(AutoReloadEvent { id, result }).await;
         });
         self.set_status_persistent("🔄 Auto reloading PRs...");
@@ -573,11 +593,18 @@ impl App {
 
         let show_status = self.mode == AppMode::Prs;
         match event.result {
-            Ok(prs) => {
-                let count = prs.len();
-                self.apply_pr_list_and_restore_selection(prs);
+            Ok(result) => {
+                let count = result.prs.len();
+                let warning = result.warning;
+                self.apply_pr_list_and_restore_selection(result.prs);
                 let queued_preview = show_status && self.queue_preview_if_needed();
-                if show_status && !queued_preview {
+                if show_status && let Some(warning) = warning {
+                    self.set_status(format!(
+                        "⚠️ Auto reloaded. {} PRs. {}",
+                        count,
+                        warning.message()
+                    ));
+                } else if show_status && !queued_preview {
                     self.set_status(format!("✅ Auto reloaded. {} PRs.", count));
                 }
             }
@@ -714,16 +741,23 @@ impl App {
         let owner = pr.repository.owner.login.clone();
         let name = pr.repository.name.clone();
         self.set_status_persistent(format!("🔄 Reloading {}...", pr.numslug()));
-        match prs::fetch_repo_prs(&owner, &name).await {
-            Ok(mut repo_prs) => {
+        match prs::fetch_repo_prs_with_warnings(&owner, &name).await {
+            Ok(result) => {
+                let warning = result.warning;
+                let mut repo_prs = result.prs;
                 self.replace_repo_prs(&owner, &name, &mut repo_prs, Some(pr.id.clone()));
                 self.drop_preview_cache_for(&pr.id);
                 self.refresh_preview().await;
                 let still_present = self.prs.iter().any(|p| p.id == pr.id);
-                if still_present {
-                    self.set_status(format!("✅ Reloaded {}.", pr.numslug()));
+                let status = if still_present {
+                    format!("✅ Reloaded {}.", pr.numslug())
                 } else {
-                    self.set_status(format!("✅ Removed {} (no longer open).", pr.numslug()));
+                    format!("✅ Removed {} (no longer open).", pr.numslug())
+                };
+                if let Some(warning) = warning {
+                    self.set_status(format!("⚠️ {} {}", status, warning.message()));
+                } else {
+                    self.set_status(status);
                 }
             }
             Err(e) => self.set_status(format!("❌ Reload error for {}: {}", pr.numslug(), e)),
@@ -2041,7 +2075,10 @@ mod tests {
         auto_reload.in_flight = true;
         async_std::task::block_on(auto_reload.tx.send(AutoReloadEvent {
             id: 1,
-            result: Ok(vec![test_pr("two", 2)]),
+            result: Ok(prs::PullRequestFetchResult {
+                prs: vec![test_pr("two", 2)],
+                warning: None,
+            }),
         }))
         .expect("send auto-reload event");
         app.auto_reload = Some(auto_reload);
@@ -2081,7 +2118,10 @@ mod tests {
         auto_reload.next_at = Instant::now();
         async_std::task::block_on(auto_reload.tx.send(AutoReloadEvent {
             id: 1,
-            result: Ok(Vec::new()),
+            result: Ok(prs::PullRequestFetchResult {
+                prs: Vec::new(),
+                warning: None,
+            }),
         }))
         .expect("send auto-reload event");
         app.auto_reload = Some(auto_reload);

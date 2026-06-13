@@ -1,6 +1,7 @@
 use colored::Colorize;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::collections::HashSet;
 use std::fmt::{Debug, Display};
 
 use crate::cmd::prs::pull_request::PullRequest;
@@ -41,6 +42,8 @@ nestruct::nest! {
         id: String,
         title: String,
         url: String,
+        #[serde(default)]
+        dependabot_alert_origin: bool,
         created_at: String,
         merge_state_status: crate::cmd::prs::MergeStateStatus,
         review_decision: crate::cmd::prs::ReviewDecision?,
@@ -109,6 +112,13 @@ impl pull_request::PullRequest {
             None => String::default(),
         }
     }
+    fn dependabot_alert_status(&self) -> &'static str {
+        if self.dependabot_alert_origin {
+            "[dep-alert]"
+        } else {
+            ""
+        }
+    }
     pub fn ci_status(&self) -> String {
         match self
             .commits
@@ -124,7 +134,7 @@ impl pull_request::PullRequest {
     }
     fn colorized_string(&self) -> String {
         format!(
-            "{:>6} {} {} {} {} {} {}",
+            "{:>6} {} {} {} {} {} {} {}",
             format!("#{}", self.number).bold(),
             self.merge_state_status.to_emoji(),
             self.merge_state_status.colorize(&self.url),
@@ -133,6 +143,7 @@ impl pull_request::PullRequest {
                 .as_ref()
                 .map(|rd| rd.colorize(&format!("[{}]", rd)))
                 .unwrap_or_default(),
+            self.dependabot_alert_status(),
             self.review_requests(),
             format!("({})", self.created_date()).bright_black()
         )
@@ -143,12 +154,13 @@ impl Display for pull_request::PullRequest {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "#{} {} {} {} {} {} ({})",
+            "#{} {} {} {} {} {} {} ({})",
             self.number,
             self.merge_state_status.to_emoji(),
             self.slug(),
             self.title,
             self.review_status(),
+            self.dependabot_alert_status(),
             self.review_requests(),
             self.created_date()
         )
@@ -166,6 +178,48 @@ nestruct::nest! {
             }
         }
     }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DependabotAlertPullRequestIdsRes {
+    data: DependabotAlertPullRequestIdsData,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DependabotAlertPullRequestIdsData {
+    repository: Option<DependabotAlertRepository>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DependabotAlertRepository {
+    vulnerability_alerts: Option<DependabotAlertConnection>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DependabotAlertConnection {
+    nodes: Option<Vec<Option<DependabotAlert>>>,
+    page_info: page_info::PageInfo,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DependabotAlert {
+    dependabot_update: Option<DependabotUpdate>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DependabotUpdate {
+    pull_request: Option<DependabotAlertPullRequest>,
+}
+
+#[derive(Deserialize)]
+struct DependabotAlertPullRequest {
+    id: String,
 }
 
 nestruct::nest! {
@@ -488,8 +542,87 @@ async fn search_prs(query: &str) -> surf::Result<Vec<PullRequest>> {
         json!({ "query": query_doc, "operationName": "SearchPrs", "variables": v })
     })
     .await?;
+    mark_dependabot_alert_origins(&mut prs).await;
     prs.sort();
     Ok(prs)
+}
+
+async fn mark_dependabot_alert_origins(prs: &mut [PullRequest]) {
+    let repos: HashSet<(String, String)> = prs
+        .iter()
+        .map(|pr| {
+            (
+                pr.repository.owner.login.clone(),
+                pr.repository.name.clone(),
+            )
+        })
+        .collect();
+    let mut handles = Vec::with_capacity(repos.len());
+
+    for (owner, name) in repos {
+        handles.push(async_std::task::spawn(async move {
+            fetch_dependabot_alert_pr_ids(&owner, &name).await
+        }));
+    }
+
+    let mut alert_pr_ids = HashSet::new();
+    for handle in handles {
+        if let Ok(ids) = handle.await {
+            alert_pr_ids.extend(ids);
+        }
+    }
+
+    for pr in prs {
+        pr.dependabot_alert_origin = alert_pr_ids.contains(&pr.id);
+    }
+}
+
+async fn fetch_dependabot_alert_pr_ids(owner: &str, name: &str) -> surf::Result<HashSet<String>> {
+    let query_doc = include_str!("../query/prs.graphql");
+    let mut after: Option<String> = None;
+    let mut ids = HashSet::new();
+
+    loop {
+        let v = json!({ "owner": owner, "name": name, "after": after });
+        let q = json!({
+            "query": query_doc,
+            "operationName": "GetDependabotAlertPullRequestIds",
+            "variables": v,
+        });
+        let res = graphql::query::<DependabotAlertPullRequestIdsRes>(&q).await?;
+        let Some(repository) = res.data.repository else {
+            break;
+        };
+        let Some(alerts) = repository.vulnerability_alerts else {
+            break;
+        };
+        let has_next_page = alerts.page_info.has_next_page;
+        let end_cursor = alerts.page_info.end_cursor;
+
+        if let Some(nodes) = alerts.nodes {
+            for alert in nodes.into_iter().flatten() {
+                if let Some(update) = alert.dependabot_update
+                    && let Some(pr) = update.pull_request
+                {
+                    ids.insert(pr.id);
+                }
+            }
+        }
+
+        if !has_next_page {
+            break;
+        }
+
+        after = end_cursor;
+        if after.is_none() {
+            return Err(surf::Error::from_str(
+                surf::StatusCode::InternalServerError,
+                "Inconsistent GraphQL pagination: has_next_page is true but next_after is None",
+            ));
+        }
+    }
+
+    Ok(ids)
 }
 
 pub async fn approve_pr(pr_id: &str) -> surf::Result<()> {

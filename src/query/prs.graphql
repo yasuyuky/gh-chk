@@ -66,6 +66,28 @@ query GetPrBody($login: String!, $name: String!, $number: Int!) {
   }
 }
 
+query GetDependabotAlertPullRequestIds(
+  $owner: String!
+  $name: String!
+  $after: String
+) {
+  repository(owner: $owner, name: $name) {
+    vulnerabilityAlerts(first: 100, states: [OPEN], after: $after) {
+      nodes {
+        dependabotUpdate {
+          pullRequest {
+            id
+          }
+        }
+      }
+      pageInfo {
+        endCursor
+        hasNextPage
+      }
+    }
+  }
+}
+
 mutation MergePullRequest($pullRequestId: ID!) {
   mergePullRequest(input: { pullRequestId: $pullRequestId }) {
     clientMutationId

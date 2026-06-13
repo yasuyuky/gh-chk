@@ -120,6 +120,20 @@ fn prs_text_marks_dependabot_alert_origin() {
 }
 
 #[test]
+fn prs_text_stops_dependabot_alert_lookup_after_matching_prs() {
+    let output = run_output(
+        &["-f", "text", "prs", "foo"],
+        "prs_dependabot_alert_short_circuit",
+    );
+    assert!(output.status.success(), "command failed: {:?}", output);
+    let out = String::from_utf8_lossy(&output.stdout);
+    let err = String::from_utf8_lossy(&output.stderr);
+
+    assert!(out.contains("[dep-alert]"));
+    assert!(!err.contains("warning: Dependabot alert lookup failed"));
+}
+
+#[test]
 fn prs_text_warns_when_dependabot_alert_lookup_fails() {
     let output = run_output(&["-f", "text", "prs", "foo"], "prs_dependabot_alert_error");
     assert!(output.status.success(), "command failed: {:?}", output);

@@ -1959,6 +1959,7 @@ mod tests {
             .map(|cell| cell.symbol())
             .collect::<String>();
         assert!(rendered.contains("[dep-alert]"));
+        assert_eq!(terminal.backend().buffer()[(1, 1)].fg, Color::Cyan);
     }
 
     #[test]

@@ -623,7 +623,7 @@ async fn fetch_dependabot_alert_pr_ids(owner: &str, name: &str) -> surf::Result<
         if after.is_none() {
             return Err(surf::Error::from_str(
                 surf::StatusCode::InternalServerError,
-                "Inconsistent GraphQL pagination: has_next_page is true but next_after is None",
+                "Inconsistent GraphQL pagination: has_next_page is true but end_cursor is None",
             ));
         }
     }

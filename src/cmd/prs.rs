@@ -1,7 +1,7 @@
 use colored::Colorize;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fmt::{Debug, Display};
 
 use crate::cmd::prs::pull_request::PullRequest;
@@ -550,28 +550,28 @@ async fn search_prs(query: &str) -> surf::Result<Vec<PullRequest>> {
 }
 
 async fn mark_dependabot_alert_origins(prs: &mut [PullRequest]) {
-    let repos: Vec<(String, String)> = prs
-        .iter()
-        .map(|pr| {
-            (
+    let mut repo_pr_ids: HashMap<(String, String), HashSet<String>> = HashMap::new();
+    for pr in prs.iter() {
+        repo_pr_ids
+            .entry((
                 pr.repository.owner.login.clone(),
                 pr.repository.name.clone(),
-            )
-        })
-        .collect::<HashSet<_>>()
-        .into_iter()
-        .collect();
+            ))
+            .or_default()
+            .insert(pr.id.clone());
+    }
+    let repos: Vec<((String, String), HashSet<String>)> = repo_pr_ids.into_iter().collect();
 
     let mut alert_pr_ids = HashSet::new();
     let mut lookup_errors = Vec::new();
     for chunk in repos.chunks(DEPENDABOT_ALERT_LOOKUP_CONCURRENCY) {
         let mut handles = Vec::with_capacity(chunk.len());
-        for (owner, name) in chunk.iter().cloned() {
+        for ((owner, name), target_pr_ids) in chunk.iter().cloned() {
             let repo = format!("{}/{}", owner, name);
             handles.push((
                 repo,
                 async_std::task::spawn(async move {
-                    fetch_dependabot_alert_pr_ids(&owner, &name).await
+                    fetch_dependabot_alert_pr_ids(&owner, &name, &target_pr_ids).await
                 }),
             ));
         }
@@ -597,7 +597,11 @@ async fn mark_dependabot_alert_origins(prs: &mut [PullRequest]) {
     }
 }
 
-async fn fetch_dependabot_alert_pr_ids(owner: &str, name: &str) -> surf::Result<HashSet<String>> {
+async fn fetch_dependabot_alert_pr_ids(
+    owner: &str,
+    name: &str,
+    target_pr_ids: &HashSet<String>,
+) -> surf::Result<HashSet<String>> {
     let query_doc = include_str!("../query/prs.graphql");
     let mut after: Option<String> = None;
     let mut ids = HashSet::new();
@@ -623,10 +627,15 @@ async fn fetch_dependabot_alert_pr_ids(owner: &str, name: &str) -> surf::Result<
             for alert in nodes.into_iter().flatten() {
                 if let Some(update) = alert.dependabot_update
                     && let Some(pr) = update.pull_request
+                    && target_pr_ids.contains(&pr.id)
                 {
                     ids.insert(pr.id);
                 }
             }
+        }
+
+        if ids.len() == target_pr_ids.len() {
+            break;
         }
 
         if !has_next_page {

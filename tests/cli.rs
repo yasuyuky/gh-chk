@@ -1,6 +1,6 @@
 use std::net::{TcpListener, TcpStream};
 use std::path::PathBuf;
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Command, Output, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -78,9 +78,9 @@ fn start_stub() -> StubServer {
     panic!("stub server did not start");
 }
 
-fn run_cmd(args: &[&str], scenario: &str) -> String {
+fn run_output(args: &[&str], scenario: &str) -> Output {
     let stub = start_stub();
-    let output = Command::new("cargo")
+    Command::new("cargo")
         .args(["run", "--quiet", "--"])
         .args(args)
         .env("NO_COLOR", "1")
@@ -90,7 +90,11 @@ fn run_cmd(args: &[&str], scenario: &str) -> String {
             format!("{}/{}", stub.graphql_base_url, scenario),
         )
         .output()
-        .expect("run command");
+        .expect("run command")
+}
+
+fn run_cmd(args: &[&str], scenario: &str) -> String {
+    let output = run_output(args, scenario);
     assert!(output.status.success(), "command failed: {:?}", output);
     String::from_utf8_lossy(&output.stdout).to_string()
 }
@@ -106,6 +110,40 @@ fn prs_output() {
 fn prs_text_includes_review_status() {
     let out = run_cmd(&["-f", "text", "prs", "foo"], "prs");
     assert!(out.contains("[approved]"));
+    assert!(!out.contains("[dep-alert]"));
+}
+
+#[test]
+fn prs_text_marks_dependabot_alert_origin() {
+    let out = run_cmd(&["-f", "text", "prs", "foo"], "prs_dependabot_alert");
+    assert!(out.contains("[dep-alert]"));
+}
+
+#[test]
+fn prs_text_stops_dependabot_alert_lookup_after_matching_prs() {
+    let output = run_output(
+        &["-f", "text", "prs", "foo"],
+        "prs_dependabot_alert_short_circuit",
+    );
+    assert!(output.status.success(), "command failed: {:?}", output);
+    let out = String::from_utf8_lossy(&output.stdout);
+    let err = String::from_utf8_lossy(&output.stderr);
+
+    assert!(out.contains("[dep-alert]"));
+    assert!(!err.contains("warning: Dependabot alert lookup failed"));
+}
+
+#[test]
+fn prs_text_warns_when_dependabot_alert_lookup_fails() {
+    let output = run_output(&["-f", "text", "prs", "foo"], "prs_dependabot_alert_error");
+    assert!(output.status.success(), "command failed: {:?}", output);
+    let out = String::from_utf8_lossy(&output.stdout);
+    let err = String::from_utf8_lossy(&output.stderr);
+
+    assert!(out.contains("Test PR"));
+    assert!(!out.contains("[dep-alert]"));
+    assert!(err.contains("warning: Dependabot alert lookup failed"));
+    assert!(err.contains("[dep-alert] markers may be incomplete"));
 }
 
 #[test]

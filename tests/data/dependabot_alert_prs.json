@@ -1,0 +1,21 @@
+{
+  "data": {
+    "repository": {
+      "vulnerabilityAlerts": {
+        "nodes": [
+          {
+            "dependabotUpdate": {
+              "pullRequest": {
+                "id": "PRID1"
+              }
+            }
+          }
+        ],
+        "pageInfo": {
+          "endCursor": null,
+          "hasNextPage": false
+        }
+      }
+    }
+  }
+}

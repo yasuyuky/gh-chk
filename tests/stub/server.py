@@ -21,11 +21,56 @@ def load_json(name: str):
     return json.loads((DATA_DIR / name).read_text())
 
 
+def dependabot_alert_pr_page(pr_id: str, end_cursor=None, has_next_page=False):
+    return {
+        "data": {
+            "repository": {
+                "vulnerabilityAlerts": {
+                    "nodes": [
+                        {
+                            "dependabotUpdate": {
+                                "pullRequest": {
+                                    "id": pr_id
+                                }
+                            }
+                        }
+                    ],
+                    "pageInfo": {
+                        "endCursor": end_cursor,
+                        "hasNextPage": has_next_page,
+                    },
+                }
+            }
+        }
+    }
+
+
 def response_for(scenario: str, payload: dict):
+    if payload.get("operationName") == "GetDependabotAlertPullRequestIds":
+        if scenario == "prs_dependabot_alert_error":
+            return 500, {"message": "dependabot alert lookup failed"}
+        if scenario == "prs_dependabot_alert_short_circuit":
+            after = (payload.get("variables") or {}).get("after")
+            if after is None:
+                return 200, dependabot_alert_pr_page("PRID1", "alert-page-1", True)
+            return 500, {"message": f"unexpected alert page request: {after}"}
+        if scenario == "prs_dependabot_alert":
+            return 200, load_json("dependabot_alert_prs.json")
+        return 200, load_json("dependabot_alert_prs_empty.json")
+
     if scenario == "issues":
         return 200, load_json("issues.json")
 
     if scenario == "prs":
+        return 200, load_json("prs.json")
+
+    if scenario == "prs_dependabot_alert":
+        return 200, load_json("prs.json")
+
+    if scenario == "prs_dependabot_alert_error":
+        return 200, load_json("prs.json")
+
+    if scenario == "prs_dependabot_alert_short_circuit":
         return 200, load_json("prs.json")
 
     if scenario == "prs_requested_reviewers":

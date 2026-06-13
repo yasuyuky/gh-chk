@@ -47,6 +47,14 @@ impl MergeStateStatus {
     }
 }
 
+fn pr_list_color(pr: &PrNode) -> Color {
+    if pr.dependabot_alert_origin {
+        Color::Cyan
+    } else {
+        pr.merge_state_status.to_color()
+    }
+}
+
 #[derive(Debug, Clone, Copy, Default)]
 struct Preview {
     mode: Option<PreviewMode>,
@@ -984,7 +992,7 @@ fn build_pr_list(app: &App) -> List<'static> {
     let mut items: Vec<ListItem> = Vec::new();
     for pr in &app.prs {
         let line = format!("{} {}", pr, pr.ci_status());
-        let styled = Span::styled(line, Style::default().fg(pr.merge_state_status.to_color()));
+        let styled = Span::styled(line, Style::default().fg(pr_list_color(pr)));
         items.push(ListItem::new(Line::from(styled)));
     }
     let mut title = format!("Pull Requests: total {}", app.prs.len());

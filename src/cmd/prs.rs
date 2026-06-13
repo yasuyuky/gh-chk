@@ -8,6 +8,8 @@ use crate::cmd::prs::pull_request::PullRequest;
 use crate::slug::Slug;
 use crate::{config, graphql};
 
+const DEPENDABOT_ALERT_LOOKUP_CONCURRENCY: usize = 8;
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(tag = "__typename")]
 pub enum RequestedReviewer {
@@ -548,7 +550,7 @@ async fn search_prs(query: &str) -> surf::Result<Vec<PullRequest>> {
 }
 
 async fn mark_dependabot_alert_origins(prs: &mut [PullRequest]) {
-    let repos: HashSet<(String, String)> = prs
+    let repos: Vec<(String, String)> = prs
         .iter()
         .map(|pr| {
             (
@@ -556,19 +558,23 @@ async fn mark_dependabot_alert_origins(prs: &mut [PullRequest]) {
                 pr.repository.name.clone(),
             )
         })
+        .collect::<HashSet<_>>()
+        .into_iter()
         .collect();
-    let mut handles = Vec::with_capacity(repos.len());
-
-    for (owner, name) in repos {
-        handles.push(async_std::task::spawn(async move {
-            fetch_dependabot_alert_pr_ids(&owner, &name).await
-        }));
-    }
 
     let mut alert_pr_ids = HashSet::new();
-    for handle in handles {
-        if let Ok(ids) = handle.await {
-            alert_pr_ids.extend(ids);
+    for chunk in repos.chunks(DEPENDABOT_ALERT_LOOKUP_CONCURRENCY) {
+        let mut handles = Vec::with_capacity(chunk.len());
+        for (owner, name) in chunk.iter().cloned() {
+            handles.push(async_std::task::spawn(async move {
+                fetch_dependabot_alert_pr_ids(&owner, &name).await
+            }));
+        }
+
+        for handle in handles {
+            if let Ok(ids) = handle.await {
+                alert_pr_ids.extend(ids);
+            }
         }
     }
 

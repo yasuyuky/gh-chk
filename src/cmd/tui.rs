@@ -999,29 +999,39 @@ fn build_pr_list(app: &App) -> List<'static> {
 
 fn pr_list_line(pr: &PrNode) -> Line<'static> {
     let style = Style::default().fg(pr.merge_state_status.to_color());
-    let mut spans = vec![
-        Span::styled(format!("#{}", pr.number), style),
-        Span::styled(" ", style),
-        Span::styled(pr.merge_state_status.to_emoji(), style),
-        Span::styled(" ", style),
-        Span::styled(pr.slug(), style),
-        Span::styled(" ", style),
-        Span::styled(pr.title.clone(), style),
-        Span::styled(" ", style),
-        Span::styled(pr.review_status(), style),
-        Span::styled(" ", style),
-    ];
+    let mut spans = Vec::new();
+    push_pr_field(&mut spans, format!("#{}", pr.number), style);
+    push_pr_field(&mut spans, pr.merge_state_status.to_emoji(), style);
+    push_pr_field(&mut spans, pr.slug(), style);
+    push_pr_field(&mut spans, pr.title.clone(), style);
+    push_pr_field(&mut spans, pr.review_status(), style);
     let alert = pr.dependabot_alert_status();
     if !alert.is_empty() {
-        spans.push(Span::styled(alert, Style::default().fg(Color::Cyan)));
+        push_pr_span(
+            &mut spans,
+            Span::styled(alert, Style::default().fg(Color::Cyan)),
+            style,
+        );
     }
-    spans.extend([
-        Span::styled(" ", style),
-        Span::styled(pr.review_requests(), style),
-        Span::styled(format!(" ({}) ", pr.created_date()), style),
-        Span::styled(pr.ci_status(), style),
-    ]);
+    push_pr_field(&mut spans, pr.review_requests(), style);
+    push_pr_field(&mut spans, format!("({})", pr.created_date()), style);
+    push_pr_field(&mut spans, pr.ci_status(), style);
     Line::from(spans)
+}
+
+fn push_pr_field(spans: &mut Vec<Span<'static>>, text: impl Into<String>, style: Style) {
+    let text = text.into();
+    if text.is_empty() {
+        return;
+    }
+    push_pr_span(spans, Span::styled(text, style), style);
+}
+
+fn push_pr_span(spans: &mut Vec<Span<'static>>, span: Span<'static>, style: Style) {
+    if !spans.is_empty() {
+        spans.push(Span::styled(" ", style));
+    }
+    spans.push(span);
 }
 
 fn build_preview_text(app: &App) -> Text<'static> {

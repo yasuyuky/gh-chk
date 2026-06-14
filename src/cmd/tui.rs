@@ -1976,7 +1976,31 @@ mod tests {
             .map(|cell| cell.symbol())
             .collect::<String>();
         assert!(rendered.contains("[dep-alert]"));
-        assert_eq!(terminal.backend().buffer()[(1, 1)].fg, Color::Cyan);
+        let buffer = terminal.backend().buffer();
+        let alert_x = find_row_text_x(buffer, 1, prs::DEPENDABOT_ALERT_BADGE);
+        assert_eq!(buffer[(1, 1)].fg, Color::Green);
+        for x in alert_x..alert_x + prs::DEPENDABOT_ALERT_BADGE.len() as u16 {
+            assert_eq!(buffer[(x, 1)].fg, Color::Cyan);
+        }
+        assert_eq!(
+            buffer[(alert_x + prs::DEPENDABOT_ALERT_BADGE.len() as u16, 1)].fg,
+            Color::Green
+        );
+    }
+
+    fn find_row_text_x(buffer: &ratatui::buffer::Buffer, y: u16, needle: &str) -> u16 {
+        let symbols = needle.chars().map(|c| c.to_string()).collect::<Vec<_>>();
+        let max_x = buffer.area.width.saturating_sub(symbols.len() as u16);
+        for x in 0..=max_x {
+            if symbols
+                .iter()
+                .enumerate()
+                .all(|(i, symbol)| buffer[(x + i as u16, y)].symbol() == symbol)
+            {
+                return x;
+            }
+        }
+        panic!("{needle:?} not found on row {y}");
     }
 
     #[test]

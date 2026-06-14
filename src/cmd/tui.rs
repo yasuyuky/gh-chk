@@ -1966,6 +1966,14 @@ mod tests {
     }
 
     #[test]
+    fn pr_list_line_skips_empty_optional_fields() {
+        let pr = test_pr("one", 1);
+        let rendered = line_text(&pr_list_line(&pr));
+
+        assert_eq!(rendered, "#1 ✅ owner/repo PR 1 (2026-01-01)");
+    }
+
+    #[test]
     fn pr_list_marks_dependabot_alert_origin() {
         let mut app = empty_app(AppMode::Prs);
         let mut pr = test_pr("one", 1);
@@ -2011,6 +2019,13 @@ mod tests {
             }
         }
         panic!("{needle:?} not found on row {y}");
+    }
+
+    fn line_text(line: &Line<'_>) -> String {
+        line.spans
+            .iter()
+            .map(|span| span.content.as_ref())
+            .collect::<String>()
     }
 
     #[test]

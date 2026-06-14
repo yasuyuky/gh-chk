@@ -983,9 +983,7 @@ fn layout_main_chunks(area: Rect, preview_mode: Option<PreviewMode>) -> Rc<[Rect
 fn build_pr_list(app: &App) -> List<'static> {
     let mut items: Vec<ListItem> = Vec::new();
     for pr in &app.prs {
-        let line = format!("{} {}", pr, pr.ci_status());
-        let styled = Span::styled(line, Style::default().fg(pr.merge_state_status.to_color()));
-        items.push(ListItem::new(Line::from(styled)));
+        items.push(ListItem::new(pr_list_line(pr)));
     }
     let mut title = format!("Pull Requests: total {}", app.prs.len());
     if let Some(auto_reload) = &app.auto_reload {
@@ -997,6 +995,33 @@ fn build_pr_list(app: &App) -> List<'static> {
         .block(block)
         .highlight_style(highlight_style)
         .highlight_symbol(">> ")
+}
+
+fn pr_list_line(pr: &PrNode) -> Line<'static> {
+    let style = Style::default().fg(pr.merge_state_status.to_color());
+    let mut spans = vec![
+        Span::styled(format!("#{}", pr.number), style),
+        Span::styled(" ", style),
+        Span::styled(pr.merge_state_status.to_emoji(), style),
+        Span::styled(" ", style),
+        Span::styled(pr.slug(), style),
+        Span::styled(" ", style),
+        Span::styled(pr.title.clone(), style),
+        Span::styled(" ", style),
+        Span::styled(pr.review_status(), style),
+        Span::styled(" ", style),
+    ];
+    let alert = pr.dependabot_alert_status();
+    if !alert.is_empty() {
+        spans.push(Span::styled(alert, Style::default().fg(Color::Cyan)));
+    }
+    spans.extend([
+        Span::styled(" ", style),
+        Span::styled(pr.review_requests(), style),
+        Span::styled(format!(" ({}) ", pr.created_date()), style),
+        Span::styled(pr.ci_status(), style),
+    ]);
+    Line::from(spans)
 }
 
 fn build_preview_text(app: &App) -> Text<'static> {
@@ -1951,6 +1976,31 @@ mod tests {
             .map(|cell| cell.symbol())
             .collect::<String>();
         assert!(rendered.contains("[dep-alert]"));
+        let buffer = terminal.backend().buffer();
+        let alert_x = find_row_text_x(buffer, 1, prs::DEPENDABOT_ALERT_BADGE);
+        assert_eq!(buffer[(1, 1)].fg, Color::Green);
+        for x in alert_x..alert_x + prs::DEPENDABOT_ALERT_BADGE.len() as u16 {
+            assert_eq!(buffer[(x, 1)].fg, Color::Cyan);
+        }
+        assert_eq!(
+            buffer[(alert_x + prs::DEPENDABOT_ALERT_BADGE.len() as u16, 1)].fg,
+            Color::Green
+        );
+    }
+
+    fn find_row_text_x(buffer: &ratatui::buffer::Buffer, y: u16, needle: &str) -> u16 {
+        let symbols = needle.chars().map(|c| c.to_string()).collect::<Vec<_>>();
+        let max_x = buffer.area.width.saturating_sub(symbols.len() as u16);
+        for x in 0..=max_x {
+            if symbols
+                .iter()
+                .enumerate()
+                .all(|(i, symbol)| buffer[(x + i as u16, y)].symbol() == symbol)
+            {
+                return x;
+            }
+        }
+        panic!("{needle:?} not found on row {y}");
     }
 
     #[test]

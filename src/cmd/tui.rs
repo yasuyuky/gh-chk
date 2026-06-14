@@ -47,14 +47,6 @@ impl MergeStateStatus {
     }
 }
 
-fn pr_list_color(pr: &PrNode) -> Color {
-    if pr.dependabot_alert_origin {
-        Color::Cyan
-    } else {
-        pr.merge_state_status.to_color()
-    }
-}
-
 #[derive(Debug, Clone, Copy, Default)]
 struct Preview {
     mode: Option<PreviewMode>,
@@ -991,9 +983,7 @@ fn layout_main_chunks(area: Rect, preview_mode: Option<PreviewMode>) -> Rc<[Rect
 fn build_pr_list(app: &App) -> List<'static> {
     let mut items: Vec<ListItem> = Vec::new();
     for pr in &app.prs {
-        let line = format!("{} {}", pr, pr.ci_status());
-        let styled = Span::styled(line, Style::default().fg(pr_list_color(pr)));
-        items.push(ListItem::new(Line::from(styled)));
+        items.push(ListItem::new(pr_list_line(pr)));
     }
     let mut title = format!("Pull Requests: total {}", app.prs.len());
     if let Some(auto_reload) = &app.auto_reload {
@@ -1005,6 +995,33 @@ fn build_pr_list(app: &App) -> List<'static> {
         .block(block)
         .highlight_style(highlight_style)
         .highlight_symbol(">> ")
+}
+
+fn pr_list_line(pr: &PrNode) -> Line<'static> {
+    let style = Style::default().fg(pr.merge_state_status.to_color());
+    let mut spans = vec![
+        Span::styled(format!("#{}", pr.number), style),
+        Span::styled(" ", style),
+        Span::styled(pr.merge_state_status.to_emoji(), style),
+        Span::styled(" ", style),
+        Span::styled(pr.slug(), style),
+        Span::styled(" ", style),
+        Span::styled(pr.title.clone(), style),
+        Span::styled(" ", style),
+        Span::styled(pr.review_status(), style),
+        Span::styled(" ", style),
+    ];
+    let alert = pr.dependabot_alert_status();
+    if !alert.is_empty() {
+        spans.push(Span::styled(alert, Style::default().fg(Color::Cyan)));
+    }
+    spans.extend([
+        Span::styled(" ", style),
+        Span::styled(pr.review_requests(), style),
+        Span::styled(format!(" ({}) ", pr.created_date()), style),
+        Span::styled(pr.ci_status(), style),
+    ]);
+    Line::from(spans)
 }
 
 fn build_preview_text(app: &App) -> Text<'static> {

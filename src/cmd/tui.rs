@@ -1983,6 +1983,70 @@ mod tests {
     }
 
     #[test]
+    fn pr_list_line_skips_empty_optional_fields() {
+        let pr = test_pr("one", 1);
+        let rendered = line_text(&pr_list_line(&pr));
+
+        assert_eq!(rendered, "#1 ✅ owner/repo PR 1 (2026-01-01)");
+    }
+
+    #[test]
+    fn pr_list_line_highlights_review_decision() {
+        for (decision, badge, color) in [
+            (prs::ReviewDecision::Approved, "[approved]", Color::Green),
+            (
+                prs::ReviewDecision::ChangesRequested,
+                "[changes requested]",
+                Color::Red,
+            ),
+            (
+                prs::ReviewDecision::ReviewRequired,
+                "[review required]",
+                Color::Yellow,
+            ),
+        ] {
+            let mut pr = test_pr("one", 1);
+            pr.review_decision = Some(decision);
+            let line = pr_list_line(&pr);
+
+            assert_eq!(span_style(&line, badge), Style::default().fg(color));
+        }
+    }
+
+    #[test]
+    fn pr_list_line_highlights_review_requests() {
+        let pr: PrNode = serde_json::from_value(serde_json::json!({
+            "repository": {
+                "name": "repo",
+                "owner": { "login": "owner" }
+            },
+            "number": 1,
+            "id": "one",
+            "title": "PR 1",
+            "url": "https://github.com/owner/repo/pull/1",
+            "createdAt": "2026-01-01T00:00:00Z",
+            "mergeStateStatus": "CLEAN",
+            "reviewDecision": null,
+            "commits": null,
+            "reviewRequests": {
+                "nodes": [{
+                    "requestedReviewer": {
+                        "__typename": "User",
+                        "login": "alice"
+                    }
+                }]
+            }
+        }))
+        .expect("test PR");
+        let line = pr_list_line(&pr);
+
+        assert_eq!(
+            span_style(&line, "[r: alice]"),
+            Style::default().fg(Color::Yellow)
+        );
+    }
+
+    #[test]
     fn pr_list_marks_dependabot_alert_origin() {
         let mut app = empty_app(AppMode::Prs);
         let mut pr = test_pr("one", 1);
@@ -2003,6 +2067,46 @@ mod tests {
             .map(|cell| cell.symbol())
             .collect::<String>();
         assert!(rendered.contains("[dep-alert]"));
+        let buffer = terminal.backend().buffer();
+        let alert_x = find_row_text_x(buffer, 1, prs::DEPENDABOT_ALERT_BADGE);
+        assert_eq!(buffer[(1, 1)].fg, Color::Green);
+        for x in alert_x..alert_x + prs::DEPENDABOT_ALERT_BADGE.len() as u16 {
+            assert_eq!(buffer[(x, 1)].fg, Color::Cyan);
+        }
+        assert_eq!(
+            buffer[(alert_x + prs::DEPENDABOT_ALERT_BADGE.len() as u16, 1)].fg,
+            Color::Green
+        );
+    }
+
+    fn find_row_text_x(buffer: &ratatui::buffer::Buffer, y: u16, needle: &str) -> u16 {
+        let symbols = needle.chars().map(|c| c.to_string()).collect::<Vec<_>>();
+        let max_x = buffer.area.width.saturating_sub(symbols.len() as u16);
+        for x in 0..=max_x {
+            if symbols
+                .iter()
+                .enumerate()
+                .all(|(i, symbol)| buffer[(x + i as u16, y)].symbol() == symbol)
+            {
+                return x;
+            }
+        }
+        panic!("{needle:?} not found on row {y}");
+    }
+
+    fn line_text(line: &Line<'_>) -> String {
+        line.spans
+            .iter()
+            .map(|span| span.content.as_ref())
+            .collect::<String>()
+    }
+
+    fn span_style(line: &Line<'_>, text: &str) -> Style {
+        line.spans
+            .iter()
+            .find(|span| span.content.as_ref() == text)
+            .unwrap_or_else(|| panic!("{text:?} not found in {:?}", line_text(line)))
+            .style
     }
 
     #[test]

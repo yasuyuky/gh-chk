@@ -1004,7 +1004,11 @@ fn pr_list_line(pr: &PrNode) -> Line<'static> {
     push_pr_field(&mut spans, pr.merge_state_status.to_emoji(), style);
     push_pr_field(&mut spans, pr.slug(), style);
     push_pr_field(&mut spans, pr.title.clone(), style);
-    push_pr_field(&mut spans, pr.review_status(), style);
+    push_pr_field(
+        &mut spans,
+        pr.review_status(),
+        review_status_style(pr, style),
+    );
     let alert = pr.dependabot_alert_status();
     if !alert.is_empty() {
         push_pr_span(
@@ -1013,10 +1017,23 @@ fn pr_list_line(pr: &PrNode) -> Line<'static> {
             style,
         );
     }
-    push_pr_field(&mut spans, pr.review_requests(), style);
+    push_pr_field(
+        &mut spans,
+        pr.review_requests(),
+        Style::default().fg(Color::Yellow),
+    );
     push_pr_field(&mut spans, format!("({})", pr.created_date()), style);
     push_pr_field(&mut spans, pr.ci_status(), style);
     Line::from(spans)
+}
+
+fn review_status_style(pr: &PrNode, fallback: Style) -> Style {
+    match pr.review_decision.as_ref() {
+        Some(prs::ReviewDecision::Approved) => Style::default().fg(Color::Magenta),
+        Some(prs::ReviewDecision::ChangesRequested) => Style::default().fg(Color::Red),
+        Some(prs::ReviewDecision::ReviewRequired) => Style::default().fg(Color::Yellow),
+        None => fallback,
+    }
 }
 
 fn push_pr_field(spans: &mut Vec<Span<'static>>, text: impl Into<String>, style: Style) {
@@ -1974,6 +1991,62 @@ mod tests {
     }
 
     #[test]
+    fn pr_list_line_highlights_review_decision() {
+        for (decision, badge, color) in [
+            (prs::ReviewDecision::Approved, "[approved]", Color::Magenta),
+            (
+                prs::ReviewDecision::ChangesRequested,
+                "[changes requested]",
+                Color::Red,
+            ),
+            (
+                prs::ReviewDecision::ReviewRequired,
+                "[review required]",
+                Color::Yellow,
+            ),
+        ] {
+            let mut pr = test_pr("one", 1);
+            pr.review_decision = Some(decision);
+            let line = pr_list_line(&pr);
+
+            assert_eq!(span_style(&line, badge), Style::default().fg(color));
+        }
+    }
+
+    #[test]
+    fn pr_list_line_highlights_review_requests() {
+        let pr: PrNode = serde_json::from_value(serde_json::json!({
+            "repository": {
+                "name": "repo",
+                "owner": { "login": "owner" }
+            },
+            "number": 1,
+            "id": "one",
+            "title": "PR 1",
+            "url": "https://github.com/owner/repo/pull/1",
+            "createdAt": "2026-01-01T00:00:00Z",
+            "mergeStateStatus": "CLEAN",
+            "reviewDecision": null,
+            "commits": null,
+            "reviewRequests": {
+                "nodes": [{
+                    "requestedReviewer": {
+                        "__typename": "User",
+                        "login": "alice"
+                    }
+                }]
+            }
+        }))
+        .expect("test PR");
+        let line = pr_list_line(&pr);
+
+        assert_eq!(
+            span_style(&line, "[r: alice]"),
+            Style::default().fg(Color::Yellow)
+        );
+    }
+
+    #[test]
     fn pr_list_marks_dependabot_alert_origin() {
         let mut app = empty_app(AppMode::Prs);
         let mut pr = test_pr("one", 1);
@@ -2026,6 +2099,14 @@ mod tests {
             .iter()
             .map(|span| span.content.as_ref())
             .collect::<String>()
+    }
+
+    fn span_style(line: &Line<'_>, text: &str) -> Style {
+        line.spans
+            .iter()
+            .find(|span| span.content.as_ref() == text)
+            .unwrap_or_else(|| panic!("{text:?} not found in {:?}", line_text(line)))
+            .style
     }
 
     #[test]

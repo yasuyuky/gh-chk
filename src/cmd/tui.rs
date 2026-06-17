@@ -1029,7 +1029,7 @@ fn pr_list_line(pr: &PrNode) -> Line<'static> {
 
 fn review_status_style(pr: &PrNode, fallback: Style) -> Style {
     match pr.review_decision.as_ref() {
-        Some(prs::ReviewDecision::Approved) => Style::default().fg(Color::Green),
+        Some(prs::ReviewDecision::Approved) => Style::default().fg(Color::Magenta),
         Some(prs::ReviewDecision::ChangesRequested) => Style::default().fg(Color::Red),
         Some(prs::ReviewDecision::ReviewRequired) => Style::default().fg(Color::Yellow),
         None => fallback,
@@ -1993,7 +1993,7 @@ mod tests {
     #[test]
     fn pr_list_line_highlights_review_decision() {
         for (decision, badge, color) in [
-            (prs::ReviewDecision::Approved, "[approved]", Color::Green),
+            (prs::ReviewDecision::Approved, "[approved]", Color::Magenta),
             (
                 prs::ReviewDecision::ChangesRequested,
                 "[changes requested]",

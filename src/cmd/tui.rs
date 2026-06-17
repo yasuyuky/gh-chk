@@ -983,9 +983,7 @@ fn layout_main_chunks(area: Rect, preview_mode: Option<PreviewMode>) -> Rc<[Rect
 fn build_pr_list(app: &App) -> List<'static> {
     let mut items: Vec<ListItem> = Vec::new();
     for pr in &app.prs {
-        let line = format!("{} {}", pr, pr.ci_status());
-        let styled = Span::styled(line, Style::default().fg(pr.merge_state_status.to_color()));
-        items.push(ListItem::new(Line::from(styled)));
+        items.push(ListItem::new(pr_list_line(pr)));
     }
     let mut title = format!("Pull Requests: total {}", app.prs.len());
     if let Some(auto_reload) = &app.auto_reload {
@@ -997,6 +995,60 @@ fn build_pr_list(app: &App) -> List<'static> {
         .block(block)
         .highlight_style(highlight_style)
         .highlight_symbol(">> ")
+}
+
+fn pr_list_line(pr: &PrNode) -> Line<'static> {
+    let style = Style::default().fg(pr.merge_state_status.to_color());
+    let mut spans = Vec::new();
+    push_pr_field(&mut spans, format!("#{}", pr.number), style);
+    push_pr_field(&mut spans, pr.merge_state_status.to_emoji(), style);
+    push_pr_field(&mut spans, pr.slug(), style);
+    push_pr_field(&mut spans, pr.title.clone(), style);
+    push_pr_field(
+        &mut spans,
+        pr.review_status(),
+        review_status_style(pr, style),
+    );
+    let alert = pr.dependabot_alert_status();
+    if !alert.is_empty() {
+        push_pr_span(
+            &mut spans,
+            Span::styled(alert, Style::default().fg(Color::Cyan)),
+            style,
+        );
+    }
+    push_pr_field(
+        &mut spans,
+        pr.review_requests(),
+        Style::default().fg(Color::Yellow),
+    );
+    push_pr_field(&mut spans, format!("({})", pr.created_date()), style);
+    push_pr_field(&mut spans, pr.ci_status(), style);
+    Line::from(spans)
+}
+
+fn review_status_style(pr: &PrNode, fallback: Style) -> Style {
+    match pr.review_decision.as_ref() {
+        Some(prs::ReviewDecision::Approved) => Style::default().fg(Color::Green),
+        Some(prs::ReviewDecision::ChangesRequested) => Style::default().fg(Color::Red),
+        Some(prs::ReviewDecision::ReviewRequired) => Style::default().fg(Color::Yellow),
+        None => fallback,
+    }
+}
+
+fn push_pr_field(spans: &mut Vec<Span<'static>>, text: impl Into<String>, style: Style) {
+    let text = text.into();
+    if text.is_empty() {
+        return;
+    }
+    push_pr_span(spans, Span::styled(text, style), style);
+}
+
+fn push_pr_span(spans: &mut Vec<Span<'static>>, span: Span<'static>, style: Style) {
+    if !spans.is_empty() {
+        spans.push(Span::styled(" ", style));
+    }
+    spans.push(span);
 }
 
 fn build_preview_text(app: &App) -> Text<'static> {

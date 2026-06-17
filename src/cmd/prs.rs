@@ -9,6 +9,7 @@ use crate::slug::Slug;
 use crate::{config, graphql};
 
 const DEPENDABOT_ALERT_LOOKUP_CONCURRENCY: usize = 8;
+pub(crate) const DEPENDABOT_ALERT_BADGE: &str = "[dep-alert]";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DependabotAlertLookupWarning {
@@ -161,13 +162,13 @@ impl pull_request::PullRequest {
     pub fn numslug(&self) -> String {
         format!("#{} in {}", self.number, self.slug())
     }
-    fn created_date(&self) -> &str {
+    pub(crate) fn created_date(&self) -> &str {
         self.created_at
             .split('T')
             .next()
             .unwrap_or(&self.created_at)
     }
-    fn review_requests(&self) -> String {
+    pub(crate) fn review_requests(&self) -> String {
         if self.review_requests.nodes.is_empty() {
             String::default()
         } else if self.review_requests.nodes.len() == 1 {
@@ -177,15 +178,15 @@ impl pull_request::PullRequest {
             format!("[r: {}]", &self.review_requests.nodes.len())
         }
     }
-    fn review_status(&self) -> String {
+    pub(crate) fn review_status(&self) -> String {
         match &self.review_decision {
             Some(rd) => format!("[{}]", rd),
             None => String::default(),
         }
     }
-    fn dependabot_alert_status(&self) -> &'static str {
+    pub(crate) fn dependabot_alert_status(&self) -> &'static str {
         if self.dependabot_alert_origin {
-            "[dep-alert]"
+            DEPENDABOT_ALERT_BADGE
         } else {
             ""
         }

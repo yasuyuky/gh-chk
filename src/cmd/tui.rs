@@ -1036,7 +1036,6 @@ fn review_status_style(pr: &PrNode, fallback: Style) -> Style {
     }
 }
 
-
 fn push_pr_field(spans: &mut Vec<Span<'static>>, text: impl Into<String>, style: Style) {
     let text = text.into();
     if text.is_empty() {

@@ -1101,7 +1101,7 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "surf",
- "time 0.3.52",
+ "time 0.3.53",
  "toml",
 ]
 
@@ -2268,7 +2268,7 @@ dependencies = [
  "ratatui-core",
  "serde",
  "strum",
- "time 0.3.52",
+ "time 0.3.53",
  "unicode-segmentation",
  "unicode-width",
 ]
@@ -2894,9 +2894,9 @@ dependencies = [
 
 [[package]]
 name = "time"
-version = "0.3.52"
+version = "0.3.53"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0e48db7b415311b615f910b3dcaa4557bcd4bf1982379c95c223fd8c2a20e210"
+checksum = "18dfaaeddcb932337b5e7866ee7d0ce9b76d2fd092997146f187ec09b4558a50"
 dependencies = [
  "deranged",
  "libc",

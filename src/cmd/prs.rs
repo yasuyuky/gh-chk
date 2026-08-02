@@ -175,7 +175,7 @@ impl pull_request::PullRequest {
             let name = &self.review_requests.nodes[0].requested_reviewer;
             format!("[r: {}]", name.as_ref().unwrap())
         } else {
-            format!("[r: {}]", &self.review_requests.nodes.len())
+            format!("[r: {}]", self.review_requests.nodes.len())
         }
     }
     pub(crate) fn review_status(&self) -> String {

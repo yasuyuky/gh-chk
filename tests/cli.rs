@@ -56,7 +56,7 @@ fn start_stub() -> StubServer {
     }
 
     let port = reserve_port();
-    let child = Command::new(find_python())
+    let mut child = Command::new(find_python())
         .arg(stub_script())
         .args(["--port", &port.to_string()])
         .stdout(Stdio::null())
@@ -75,6 +75,8 @@ fn start_stub() -> StubServer {
         thread::sleep(Duration::from_millis(50));
     }
 
+    let _ = child.kill();
+    let _ = child.wait();
     panic!("stub server did not start");
 }
 

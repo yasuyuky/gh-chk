@@ -175,7 +175,7 @@ impl pull_request::PullRequest {
             let name = &self.review_requests.nodes[0].requested_reviewer;
             format!("[r: {}]", name.as_ref().unwrap())
         } else {
-            format!("[r: {}]", &self.review_requests.nodes.len())
+            format!("[r: {}]", self.review_requests.nodes.len())
         }
     }
     pub(crate) fn review_status(&self) -> String {
@@ -650,7 +650,10 @@ async fn mark_dependabot_alert_origins(
     let mut lookup_errors = Vec::new();
     for chunk in repos.chunks(DEPENDABOT_ALERT_LOOKUP_CONCURRENCY) {
         let mut handles = Vec::with_capacity(chunk.len());
-        for ((owner, name), target_pr_ids) in chunk.iter().cloned() {
+        for ((owner, name), target_pr_ids) in chunk {
+            let owner = owner.clone();
+            let name = name.clone();
+            let target_pr_ids = target_pr_ids.clone();
             let repo = format!("{}/{}", owner, name);
             handles.push((
                 repo,

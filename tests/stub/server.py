@@ -62,6 +62,8 @@ def response_for(scenario: str, payload: dict):
         return 200, load_json("issues.json")
 
     if scenario == "prs":
+        if payload.get("operationName") == "MergePullRequest":
+            return 200, {"data": {"mergePullRequest": {"clientMutationId": None}}}
         return 200, load_json("prs.json")
 
     if scenario == "prs_dependabot_alert":

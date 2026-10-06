@@ -10,12 +10,16 @@ pub async fn query<T: DeserializeOwned>(q: &serde_json::Value) -> surf::Result<T
         ));
     }
 
-    let mut res = surf::post(crate::config::github_graphql_url())
+    let mut request = surf::post(crate::config::github_graphql_url())
         .header("Authorization", format!("bearer {}", *TOKEN))
         .header("Content-Type", "application/json")
         .header("Accept", "application/vnd.github.merge-info-preview+json")
-        .body(q.to_string())
-        .await?;
+        .body(q.to_string());
+    // GitHub may ignore this timezone hint when creating merge commits.
+    if let Ok(timezone) = iana_time_zone::get_timezone() {
+        request = request.header("Time-Zone", timezone);
+    }
+    let mut res = request.await?;
     let status = res.status();
     let body = res.body_string().await?;
     parse_response_body(status, &body)

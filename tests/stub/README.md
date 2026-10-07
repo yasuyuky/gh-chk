@@ -15,6 +15,9 @@ GH_CHK_TEST_STUB_BASE_URL=http://127.0.0.1:18080/graphql cargo test --locked
 - `/graphql/prs_paginated`
 - `/graphql/issues`
 
+The `prs` scenario also accepts the merge mutation. Add `?time_zone=Asia/Tokyo`
+to a scenario URL to require that `Time-Zone` header on every request.
+
 ## Default test behavior
 
 If `GH_CHK_TEST_STUB_BASE_URL` is not set, `tests/cli.rs` starts the same stub locally with Python and targets it automatically.

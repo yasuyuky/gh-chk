@@ -4,6 +4,7 @@ import argparse
 import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
 
 
 def resolve_data_dir():
@@ -62,6 +63,8 @@ def response_for(scenario: str, payload: dict):
         return 200, load_json("issues.json")
 
     if scenario == "prs":
+        if payload.get("operationName") == "MergePullRequest":
+            return 200, {"data": {"mergePullRequest": {"clientMutationId": None}}}
         return 200, load_json("prs.json")
 
     if scenario == "prs_dependabot_alert":
@@ -101,15 +104,20 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         prefix = "/graphql/"
-        if not self.path.startswith(prefix):
+        url = urlsplit(self.path)
+        if not url.path.startswith(prefix):
             self.send_error(404)
             return
 
         try:
-            scenario = self.path[len(prefix):]
+            scenario = url.path[len(prefix):]
             length = int(self.headers.get("Content-Length", "0"))
             payload = json.loads(self.rfile.read(length) or b"{}")
-            status, body = response_for(scenario, payload)
+            timezone = parse_qs(url.query).get("time_zone", [None])[0]
+            if timezone is not None and self.headers.get("Time-Zone") != timezone:
+                status, body = 400, {"message": "unexpected Time-Zone header"}
+            else:
+                status, body = response_for(scenario, payload)
         except Exception as err:
             status, body = 500, {"error": str(err)}
 

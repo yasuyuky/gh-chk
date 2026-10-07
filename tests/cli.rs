@@ -109,6 +109,16 @@ fn prs_output() {
 }
 
 #[test]
+fn merge_sends_os_timezone() {
+    let timezone = iana_time_zone::get_timezone().expect("read OS timezone");
+    let out = run_cmd(
+        &["-f", "text", "prs", "--merge", "foo"],
+        &format!("prs?time_zone={timezone}"),
+    );
+    assert!(out.contains("✅ Merged PR #1"));
+}
+
+#[test]
 fn prs_text_includes_review_status() {
     let out = run_cmd(&["-f", "text", "prs", "foo"], "prs");
     assert!(out.contains("[approved]"));

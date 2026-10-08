@@ -2007,6 +2007,34 @@ mod tests {
         assert!(app.should_quit);
     }
 
+    #[async_std::test]
+    async fn merge_error_keeps_the_list_and_identifies_the_original_pr() {
+        let mut app = empty_app(AppMode::Prs);
+        app.prs = vec![test_pr("one", 1), test_pr("two", 2)];
+        app.list_state.select(Some(1));
+        let (tx, rx) = async_std::channel::bounded(1);
+        app.merge_task = Some(MergeTask {
+            pr: app.prs[0].clone(),
+            rx,
+        });
+        tx.send(Err(surf::Error::from_str(
+            surf::StatusCode::BadRequest,
+            "Required checks failed",
+        )))
+        .await
+        .unwrap();
+
+        app.finish_merge().await;
+
+        assert!(app.merge_task.is_none());
+        assert_eq!(app.prs.len(), 2);
+        assert_eq!(app.get_selected_pr().unwrap().id, "two");
+        let status = app.status_message.unwrap();
+        assert!(status.contains("#1 in owner/repo"));
+        assert!(status.contains("Required checks failed"));
+        assert!(!status.contains("✅ Merged"));
+    }
+
     #[test]
     fn esc_leaves_search_input() {
         assert!(is_search_back_key(SearchFocus::Input, KeyCode::Esc));

@@ -127,6 +127,14 @@ fn merge_sends_os_timezone() {
 }
 
 #[test]
+fn merge_polls_accepted_and_existing_requests() {
+    for scenario in ["merge_pending", "merge_conflict", "merge_already_merged"] {
+        let out = run_cmd(&["prs", "--merge", "foo"], scenario);
+        assert!(out.contains("✅ Merged PR #1"), "{scenario}: {out}");
+    }
+}
+
+#[test]
 fn prs_text_includes_review_status() {
     let out = run_cmd(&["-f", "text", "prs", "foo"], "prs");
     assert!(out.contains("[approved]"));

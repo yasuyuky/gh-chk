@@ -164,6 +164,15 @@ fn merge_failures_report_the_api_message() {
 }
 
 #[test]
+fn merge_keeps_existing_eligibility_and_json_output_behavior() {
+    let out = run_cmd(&["prs", "--merge", "foo"], "merge_blocked");
+    assert!(!out.contains("Merging PR"));
+    let out = run_cmd(&["-f", "json", "prs", "--merge", "foo"], "merge_forbidden");
+    let prs: serde_json::Value = serde_json::from_str(&out).expect("PR JSON output");
+    assert_eq!(prs[0]["number"], 1);
+}
+
+#[test]
 fn prs_text_includes_review_status() {
     let out = run_cmd(&["-f", "text", "prs", "foo"], "prs");
     assert!(out.contains("[approved]"));

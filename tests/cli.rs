@@ -135,6 +135,15 @@ fn merge_polls_accepted_and_existing_requests() {
 }
 
 #[test]
+fn merge_queue_results_do_not_claim_the_pr_is_merged() {
+    for scenario in ["merge_enqueued", "merge_already_enqueued"] {
+        let out = run_cmd(&["prs", "--merge", "foo"], scenario);
+        assert!(out.contains("Added PR #1 to the merge queue (not yet merged)"));
+        assert!(!out.contains("✅ Merged"));
+    }
+}
+
+#[test]
 fn prs_text_includes_review_status() {
     let out = run_cmd(&["-f", "text", "prs", "foo"], "prs");
     assert!(out.contains("[approved]"));

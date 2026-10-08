@@ -2,6 +2,7 @@ use crate::cmd::prs::{
     self, Commit, CommitGraphEntry, MergeStateStatus, approve_pr, fetch_prs_with_warnings,
 };
 use crate::cmd::search::{SearchItem, search_code};
+use crate::merge::MergeOutcome;
 use crate::{slug::Slug, styling};
 use async_std::channel::{Receiver, Sender, TryRecvError};
 use crossterm::{
@@ -112,6 +113,11 @@ type AutoReloadReceiver = Receiver<AutoReloadEvent>;
 struct AutoReloadEvent {
     id: u64,
     result: surf::Result<prs::PullRequestFetchResult>,
+}
+
+struct MergeTask {
+    pr: PrNode,
+    rx: Receiver<surf::Result<MergeOutcome>>,
 }
 
 struct AutoReload {
@@ -343,6 +349,7 @@ struct App {
     contrib_title: String,
     viewer_profile_url: Option<String>,
     pending_task: Option<PendingTask>,
+    merge_task: Option<MergeTask>,
     auto_reload: Option<AutoReload>,
     mode: AppMode,
     search: SearchState,
@@ -377,6 +384,7 @@ impl App {
             contrib_title: "Contributions".to_string(),
             viewer_profile_url: None,
             pending_task: None,
+            merge_task: None,
             auto_reload: auto_reload.map(AutoReload::new),
             mode: AppMode::Prs,
             search: SearchState::new(search_owner, search_history),
@@ -406,35 +414,69 @@ impl App {
         self.list_state.selected().and_then(|i| self.prs.get(i))
     }
 
-    async fn merge_selected(&mut self) {
-        if let Some(selected_index) = self.list_state.selected()
-            && let Some(pr) = self.prs.get(selected_index).cloned()
-        {
-            if pr.merge_state_status == MergeStateStatus::Clean {
-                self.set_status_persistent(format!("Merging PR {}...", pr.numslug()));
-                match crate::cmd::prs::merge_pr(&pr.id).await {
-                    Ok(_) => {
-                        self.set_status_persistent(format!(
-                            "✅ Merged PR {}. Reloading...",
-                            pr.numslug()
-                        ));
-                        self.pending_task = Some(PendingTask::ReloadSelected);
-                        // Reload contributions to reflect the newly merged PR
-                        if let Err(e) = self.load_contributions().await {
-                            self.set_status(format!("❌ Contrib load error: {}", e));
-                        }
-                    }
-                    Err(e) => {
-                        self.set_status(format!("❌ Failed to merge PR {}: {}", pr.numslug(), e));
-                    }
-                }
-            } else {
-                self.set_status(format!(
-                    "Cannot merge PR {}: not in clean state",
-                    pr.numslug()
-                ));
-            }
+    fn merge_selected(&mut self) {
+        if self.merge_task.is_some() {
+            return;
         }
+        let Some(pr) = self.get_selected_pr().cloned() else {
+            return;
+        };
+        self.set_status_persistent(format!("Merging PR {}...", pr.numslug()));
+        let (tx, rx) = async_std::channel::bounded(1);
+        let slug = pr.slug();
+        let number = pr.number;
+        self.merge_task = Some(MergeTask { pr, rx });
+        async_std::task::spawn(async move {
+            let result = crate::merge::merge_pr(&slug, number).await;
+            let _ = tx.send(result).await;
+        });
+    }
+
+    async fn finish_merge(&mut self) {
+        let Some(task) = &self.merge_task else {
+            return;
+        };
+        let result = match task.rx.try_recv() {
+            Ok(result) => result,
+            Err(TryRecvError::Empty) => return,
+            Err(TryRecvError::Closed) => Err(surf::Error::from_str(
+                surf::StatusCode::InternalServerError,
+                "Merge result unavailable; check the PR on GitHub before retrying",
+            )),
+        };
+        let pr = task.pr.clone();
+        self.merge_task = None;
+        self.ignore_auto_reload_result();
+        self.defer_auto_reload();
+        let outcome = match result {
+            Ok(outcome) => outcome,
+            Err(err) => {
+                self.set_status(format!("❌ Merge request for PR {}: {err}", pr.numslug()));
+                return;
+            }
+        };
+        let mut message = outcome.message(&pr.numslug());
+        let owner = &pr.repository.owner.login;
+        let name = &pr.repository.name;
+        match prs::fetch_repo_prs_with_warnings(owner, name).await {
+            Ok(mut result) => {
+                // Selection may have changed while the merge was running.
+                let selected_id = self.get_selected_pr().map(|pr| pr.id.clone());
+                self.replace_repo_prs(owner, name, &mut result.prs, selected_id);
+                self.drop_preview_cache_for(&pr.id);
+                self.refresh_preview().await;
+                if let Some(warning) = result.warning {
+                    message.push_str(&format!(". {}", warning.message()));
+                }
+            }
+            Err(err) => message.push_str(&format!(". Reload failed: {err}")),
+        }
+        if outcome == MergeOutcome::Merged
+            && let Err(err) = self.load_contributions().await
+        {
+            message.push_str(&format!(". Contrib load error: {err}"));
+        }
+        self.set_status(message);
     }
     async fn approve_selected(&mut self) {
         if let Some(selected_index) = self.list_state.selected()
@@ -558,7 +600,7 @@ impl App {
     }
 
     fn start_auto_reload(&mut self) {
-        if self.mode != AppMode::Prs || self.pending_task.is_some() {
+        if self.mode != AppMode::Prs || self.pending_task.is_some() || self.merge_task.is_some() {
             return;
         }
         let Some(auto_reload) = &mut self.auto_reload else {
@@ -1620,6 +1662,13 @@ impl App {
     }
 
     fn on_merge_key(&mut self) {
+        if let Some(task) = &self.merge_task {
+            self.set_status_persistent(format!(
+                "Still waiting for merge of PR {}...",
+                task.pr.numslug()
+            ));
+            return;
+        }
         if let Some(pr) = self.get_selected_pr() {
             self.set_status_persistent(format!("Merging PR {}...", pr.numslug()));
             self.pending_task = Some(PendingTask::MergeSelected);
@@ -1771,6 +1820,7 @@ async fn run_app(
         terminal.draw(|f| ui(f, app))?;
 
         handle_terminal_events(app).await?;
+        app.finish_merge().await;
         app.finish_auto_reload();
         app.start_auto_reload();
         run_pending_task(terminal, app).await?;
@@ -1816,7 +1866,7 @@ async fn run_pending_task(
 
 async fn run_task(app: &mut App, task: PendingTask) {
     match task {
-        PendingTask::MergeSelected => app.merge_selected().await,
+        PendingTask::MergeSelected => app.merge_selected(),
         PendingTask::ApproveSelected => app.approve_selected().await,
         PendingTask::Reload => app.reload().await,
         PendingTask::ReloadSelected => app.reload_selected_pr().await,
@@ -1924,6 +1974,7 @@ mod tests {
             contrib_title: "Contributions".to_string(),
             viewer_profile_url: None,
             pending_task: None,
+            merge_task: None,
             auto_reload: None,
             mode,
             search: SearchState::new(String::default(), Vec::new()),

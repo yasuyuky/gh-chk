@@ -168,4 +168,19 @@ mod tests {
         assert!(err.to_string().contains("merge-async/request-id"));
         assert!(err.to_string().contains("may still be running"));
     }
+
+    #[test]
+    fn only_pending_submissions_can_recover_from_conflict() {
+        let pending = r#"{"status":"pending","details":{"uuid":"request-id"}}"#;
+        assert!(parse_response(Method::Put, StatusCode::Conflict, pending).is_ok());
+        assert!(parse_response(Method::Get, StatusCode::Conflict, pending).is_err());
+        assert!(
+            parse_response(
+                Method::Put,
+                StatusCode::Conflict,
+                r#"{"message":"Conflict"}"#
+            )
+            .is_err()
+        );
+    }
 }

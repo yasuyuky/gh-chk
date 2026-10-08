@@ -150,3 +150,22 @@ fn parse_response(method: Method, status: StatusCode, body: &str) -> surf::Resul
         format!("GitHub async merge request failed ({status}): {message}"),
     ))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[async_std::test]
+    async fn timeout_preserves_the_request_id_and_does_not_claim_failure() {
+        let err = wait_for_merge(
+            "repos/owner/repo/pulls/1/merge-async",
+            "request-id",
+            Duration::ZERO,
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(err.status(), StatusCode::GatewayTimeout);
+        assert!(err.to_string().contains("merge-async/request-id"));
+        assert!(err.to_string().contains("may still be running"));
+    }
+}

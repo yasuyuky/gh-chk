@@ -1981,6 +1981,32 @@ mod tests {
         }
     }
 
+    #[async_std::test]
+    async fn pending_merge_allows_navigation_and_quitting_without_resubmitting() {
+        let mut app = empty_app(AppMode::Prs);
+        app.prs = vec![test_pr("one", 1), test_pr("two", 2)];
+        app.list_state.select(Some(0));
+        let (_tx, rx) = async_std::channel::bounded(1);
+        app.merge_task = Some(MergeTask {
+            pr: app.prs[0].clone(),
+            rx,
+        });
+
+        app.handle_key(KeyCode::Char('j')).await;
+        app.handle_key(KeyCode::Char('m')).await;
+        app.finish_merge().await;
+        assert_eq!(app.get_selected_pr().unwrap().id, "two");
+        assert!(app.pending_task.is_none());
+        assert!(
+            app.status_message
+                .as_ref()
+                .unwrap()
+                .contains("#1 in owner/repo")
+        );
+        app.handle_key(KeyCode::Char('q')).await;
+        assert!(app.should_quit);
+    }
+
     #[test]
     fn esc_leaves_search_input() {
         assert!(is_search_back_key(SearchFocus::Input, KeyCode::Esc));

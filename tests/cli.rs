@@ -144,6 +144,26 @@ fn merge_queue_results_do_not_claim_the_pr_is_merged() {
 }
 
 #[test]
+fn merge_failures_report_the_api_message() {
+    for (scenario, message) in [
+        ("merge_failed", "Required status checks have not passed"),
+        ("merge_rejected", "Required status checks have not passed"),
+        ("merge_forbidden", "Resource not accessible"),
+        ("merge_conflict_error", "Conflicting merge options"),
+        ("merge_invalid", "Invalid GitHub async merge response"),
+        ("merge_poll_error", "Merge request expired"),
+    ] {
+        let output = run_output(&["prs", "--merge", "foo"], scenario);
+        assert!(!output.status.success(), "{scenario}: {output:?}");
+        assert!(
+            String::from_utf8_lossy(&output.stderr).contains(message),
+            "{scenario}: {output:?}"
+        );
+        assert!(!String::from_utf8_lossy(&output.stdout).contains("✅ Merged"));
+    }
+}
+
+#[test]
 fn prs_text_includes_review_status() {
     let out = run_cmd(&["-f", "text", "prs", "foo"], "prs");
     assert!(out.contains("[approved]"));

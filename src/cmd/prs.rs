@@ -554,8 +554,8 @@ pub async fn check(slugs: Vec<String>, merge: bool) -> surf::Result<()> {
                 println!("{}", pr.colorized_string());
                 if pr.merge_state_status == MergeStateStatus::Clean {
                     println!("🔄 Merging PR #{}", pr.number);
-                    merge_pr(&pr.id).await?;
-                    println!("✅ Merged PR #{}", pr.number);
+                    let outcome = crate::merge::merge_pr(&pr.slug(), pr.number).await?;
+                    println!("{}", outcome.message(&format!("#{}", pr.number)));
                 }
             }
         }

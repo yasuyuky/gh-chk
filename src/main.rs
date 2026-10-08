@@ -6,6 +6,7 @@ mod cmd;
 mod config;
 mod env_keys;
 mod graphql;
+mod merge;
 mod rest;
 mod slug;
 mod styling;

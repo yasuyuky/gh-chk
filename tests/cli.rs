@@ -88,6 +88,14 @@ fn run_output(args: &[&str], scenario: &str) -> Output {
         .env("NO_COLOR", "1")
         .env("GITHUB_TOKEN", "test-token")
         .env(
+            "GH_CHK_API_BASE_URL",
+            format!(
+                "{}/rest/{}",
+                stub.graphql_base_url.trim_end_matches("/graphql"),
+                scenario.split('?').next().unwrap(),
+            ),
+        )
+        .env(
             "GH_CHK_GRAPHQL_URL",
             format!("{}/{}", stub.graphql_base_url, scenario),
         )
@@ -113,7 +121,7 @@ fn merge_sends_os_timezone() {
     let timezone = iana_time_zone::get_timezone().expect("read OS timezone");
     let out = run_cmd(
         &["-f", "text", "prs", "--merge", "foo"],
-        &format!("prs?time_zone={timezone}"),
+        &format!("merge_timezone?time_zone={timezone}"),
     );
     assert!(out.contains("✅ Merged PR #1"));
 }

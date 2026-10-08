@@ -60,7 +60,7 @@ fn start_stub() -> StubServer {
         .arg(stub_script())
         .args(["--port", &port.to_string()])
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stderr(Stdio::inherit())
         .spawn()
         .expect("start stub server");
 

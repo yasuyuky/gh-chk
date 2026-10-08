@@ -88,12 +88,6 @@ query GetDependabotAlertPullRequestIds(
   }
 }
 
-mutation MergePullRequest($pullRequestId: ID!) {
-  mergePullRequest(input: { pullRequestId: $pullRequestId }) {
-    clientMutationId
-  }
-}
-
 mutation ApprovePullRequest($pullRequestId: ID!) {
   addPullRequestReview(
     input: { pullRequestId: $pullRequestId, event: APPROVE }

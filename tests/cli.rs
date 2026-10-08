@@ -60,7 +60,7 @@ fn start_stub() -> StubServer {
         .arg(stub_script())
         .args(["--port", &port.to_string()])
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stderr(Stdio::inherit())
         .spawn()
         .expect("start stub server");
 
@@ -88,6 +88,14 @@ fn run_output(args: &[&str], scenario: &str) -> Output {
         .env("NO_COLOR", "1")
         .env("GITHUB_TOKEN", "test-token")
         .env(
+            "GH_CHK_API_BASE_URL",
+            format!(
+                "{}/rest/{}",
+                stub.graphql_base_url.trim_end_matches("/graphql"),
+                scenario.split('?').next().unwrap(),
+            ),
+        )
+        .env(
             "GH_CHK_GRAPHQL_URL",
             format!("{}/{}", stub.graphql_base_url, scenario),
         )
@@ -113,9 +121,55 @@ fn merge_sends_os_timezone() {
     let timezone = iana_time_zone::get_timezone().expect("read OS timezone");
     let out = run_cmd(
         &["-f", "text", "prs", "--merge", "foo"],
-        &format!("prs?time_zone={timezone}"),
+        &format!("merge_timezone?time_zone={timezone}"),
     );
     assert!(out.contains("✅ Merged PR #1"));
+}
+
+#[test]
+fn merge_polls_accepted_and_existing_requests() {
+    for scenario in ["merge_pending", "merge_conflict", "merge_already_merged"] {
+        let out = run_cmd(&["prs", "--merge", "foo"], scenario);
+        assert!(out.contains("✅ Merged PR #1"), "{scenario}: {out}");
+    }
+}
+
+#[test]
+fn merge_queue_results_do_not_claim_the_pr_is_merged() {
+    for scenario in ["merge_enqueued", "merge_already_enqueued"] {
+        let out = run_cmd(&["prs", "--merge", "foo"], scenario);
+        assert!(out.contains("Added PR #1 to the merge queue (not yet merged)"));
+        assert!(!out.contains("✅ Merged"));
+    }
+}
+
+#[test]
+fn merge_failures_report_the_api_message() {
+    for (scenario, message) in [
+        ("merge_failed", "Required status checks have not passed"),
+        ("merge_rejected", "Required status checks have not passed"),
+        ("merge_forbidden", "Resource not accessible"),
+        ("merge_conflict_error", "Conflicting merge options"),
+        ("merge_invalid", "Invalid GitHub async merge response"),
+        ("merge_poll_error", "Merge request expired"),
+    ] {
+        let output = run_output(&["prs", "--merge", "foo"], scenario);
+        assert!(!output.status.success(), "{scenario}: {output:?}");
+        assert!(
+            String::from_utf8_lossy(&output.stderr).contains(message),
+            "{scenario}: {output:?}"
+        );
+        assert!(!String::from_utf8_lossy(&output.stdout).contains("✅ Merged"));
+    }
+}
+
+#[test]
+fn merge_keeps_existing_eligibility_and_json_output_behavior() {
+    let out = run_cmd(&["prs", "--merge", "foo"], "merge_blocked");
+    assert!(!out.contains("Merging PR"));
+    let out = run_cmd(&["-f", "json", "prs", "--merge", "foo"], "merge_forbidden");
+    let prs: serde_json::Value = serde_json::from_str(&out).expect("PR JSON output");
+    assert_eq!(prs[0]["number"], 1);
 }
 
 #[test]

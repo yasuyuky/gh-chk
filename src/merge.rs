@@ -183,4 +183,15 @@ mod tests {
             .is_err()
         );
     }
+
+    #[test]
+    fn malformed_responses_are_not_successful_merges() {
+        for body in [
+            "not json",
+            r#"{"status":"pending","details":{}}"#,
+            r#"{"status":"unknown","details":{}}"#,
+        ] {
+            assert!(parse_response(Method::Put, StatusCode::Accepted, body).is_err());
+        }
+    }
 }

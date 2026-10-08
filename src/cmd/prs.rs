@@ -519,13 +519,6 @@ pub async fn fetch_pr_body(owner: &str, name: &str, number: usize) -> surf::Resu
     Ok(res.data.repository_owner.repository.pull_request.body_text)
 }
 
-pub async fn merge_pr(pr_id: &str) -> surf::Result<()> {
-    let v = json!({ "pullRequestId": pr_id });
-    let q = json!({ "query": include_str!("../query/prs.graphql"), "operationName": "MergePullRequest", "variables": v });
-    crate::graphql::query::<serde_json::Value>(&q).await?;
-    Ok(())
-}
-
 pub async fn check(slugs: Vec<String>, merge: bool) -> surf::Result<()> {
     let slugs = if slugs.is_empty() {
         vec![crate::cmd::viewer::get().await?]

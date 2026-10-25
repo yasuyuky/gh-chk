@@ -109,19 +109,13 @@ fn run_cmd(args: &[&str], scenario: &str) -> String {
 }
 
 #[test]
-fn merge_sends_os_timezone() {
-    let timezone = iana_time_zone::get_timezone().expect("read OS timezone");
-    let out = run_cmd(
-        &["-f", "text", "prs", "--merge", "foo"],
-        &format!("merge_timezone?time_zone={timezone}"),
-    );
-    assert!(out.contains("✅ Merged PR #1"));
-}
-
-#[test]
 fn merge_polls_accepted_and_existing_requests() {
+    let timezone = iana_time_zone::get_timezone().expect("read OS timezone");
     for scenario in ["merge_pending", "merge_conflict", "merge_already_merged"] {
-        let out = run_cmd(&["prs", "--merge", "foo"], scenario);
+        let out = run_cmd(
+            &["prs", "--merge", "foo"],
+            &format!("{scenario}?time_zone={timezone}"),
+        );
         assert!(out.contains("✅ Merged PR #1"), "{scenario}: {out}");
     }
 }

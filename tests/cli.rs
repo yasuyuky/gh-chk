@@ -109,13 +109,6 @@ fn run_cmd(args: &[&str], scenario: &str) -> String {
 }
 
 #[test]
-fn prs_output() {
-    let out = run_cmd(&["-f", "json", "prs", "foo"], "prs");
-    assert!(out.contains("\"mergeStateStatus\": \"CLEAN\""));
-    assert!(out.contains("\"reviewDecision\": \"APPROVED\""));
-}
-
-#[test]
 fn merge_sends_os_timezone() {
     let timezone = iana_time_zone::get_timezone().expect("read OS timezone");
     let out = run_cmd(
@@ -219,8 +212,10 @@ fn prs_text_handles_bot_and_mannequin_reviewers() {
 }
 
 #[test]
-fn prs_pagination() {
+fn prs_json_output_and_pagination() {
     let out = run_cmd(&["-f", "json", "prs", "foo"], "prs_paginated");
+    assert!(out.contains("\"mergeStateStatus\": \"CLEAN\""));
+    assert!(out.contains("\"reviewDecision\": \"APPROVED\""));
     assert!(out.contains("\"title\": \"Test PR Page 1\""));
     assert!(out.contains("\"title\": \"Test PR Page 2\""));
 }

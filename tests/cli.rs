@@ -82,8 +82,7 @@ fn start_stub() -> StubServer {
 
 fn run_output(args: &[&str], scenario: &str) -> Output {
     let stub = start_stub();
-    Command::new("cargo")
-        .args(["run", "--quiet", "--"])
+    Command::new(env!("CARGO_BIN_EXE_gh-chk"))
         .args(args)
         .env("NO_COLOR", "1")
         .env("GITHUB_TOKEN", "test-token")

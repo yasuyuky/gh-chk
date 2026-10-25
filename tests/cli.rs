@@ -82,8 +82,7 @@ fn start_stub() -> StubServer {
 
 fn run_output(args: &[&str], scenario: &str) -> Output {
     let stub = start_stub();
-    Command::new("cargo")
-        .args(["run", "--quiet", "--"])
+    Command::new(env!("CARGO_BIN_EXE_gh-chk"))
         .args(args)
         .env("NO_COLOR", "1")
         .env("GITHUB_TOKEN", "test-token")
@@ -110,26 +109,13 @@ fn run_cmd(args: &[&str], scenario: &str) -> String {
 }
 
 #[test]
-fn prs_output() {
-    let out = run_cmd(&["-f", "json", "prs", "foo"], "prs");
-    assert!(out.contains("\"mergeStateStatus\": \"CLEAN\""));
-    assert!(out.contains("\"reviewDecision\": \"APPROVED\""));
-}
-
-#[test]
-fn merge_sends_os_timezone() {
-    let timezone = iana_time_zone::get_timezone().expect("read OS timezone");
-    let out = run_cmd(
-        &["-f", "text", "prs", "--merge", "foo"],
-        &format!("merge_timezone?time_zone={timezone}"),
-    );
-    assert!(out.contains("✅ Merged PR #1"));
-}
-
-#[test]
 fn merge_polls_accepted_and_existing_requests() {
+    let timezone = iana_time_zone::get_timezone().expect("read OS timezone");
     for scenario in ["merge_pending", "merge_conflict", "merge_already_merged"] {
-        let out = run_cmd(&["prs", "--merge", "foo"], scenario);
+        let out = run_cmd(
+            &["prs", "--merge", "foo"],
+            &format!("{scenario}?time_zone={timezone}"),
+        );
         assert!(out.contains("✅ Merged PR #1"), "{scenario}: {out}");
     }
 }
@@ -220,8 +206,10 @@ fn prs_text_handles_bot_and_mannequin_reviewers() {
 }
 
 #[test]
-fn prs_pagination() {
+fn prs_json_output_and_pagination() {
     let out = run_cmd(&["-f", "json", "prs", "foo"], "prs_paginated");
+    assert!(out.contains("\"mergeStateStatus\": \"CLEAN\""));
+    assert!(out.contains("\"reviewDecision\": \"APPROVED\""));
     assert!(out.contains("\"title\": \"Test PR Page 1\""));
     assert!(out.contains("\"title\": \"Test PR Page 2\""));
 }

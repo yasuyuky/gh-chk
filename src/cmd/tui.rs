@@ -765,6 +765,12 @@ impl App {
                 if active.pr_revision != self.pr_revision
                     && matches!(event, TaskEvent::Reloaded(_) | TaskEvent::RepoReloaded { .. } | TaskEvent::PreviewLoaded { .. })
                 {
+                    if matches!(active.task, Task::Preview { .. }) {
+                        self.queue_preview_if_needed();
+                    } else {
+                        // A merge's follow-up only reloads its own repository.
+                        self.queue_task(active.task);
+                    }
                     return;
                 }
                 self.apply_task_event(event);

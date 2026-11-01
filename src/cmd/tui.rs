@@ -2353,6 +2353,35 @@ mod tests {
         assert!(!app.auto_reload.as_ref().unwrap().in_flight);
     }
 
+    #[test]
+    fn preview_errors_replace_loading_and_do_not_change_other_previews() {
+        let mut app = empty_app(AppMode::Prs);
+        let pr = test_pr("one", 1);
+        app.prs = vec![pr.clone()];
+        app.list_state.select(Some(0));
+        app.preview.mode = Some(PreviewMode::Diff);
+        let tx = hold_task(
+            &mut app,
+            Task::Preview {
+                pr: pr.clone(),
+                mode: PreviewMode::Body,
+            },
+        );
+        deliver(
+            &tx,
+            TaskEvent::PreviewLoaded {
+                pr,
+                mode: PreviewMode::Body,
+                result: Err(surf::Error::from_str(surf::StatusCode::Forbidden, "denied")),
+            },
+        );
+        app.finish_pending_task();
+        assert_eq!(app.preview.mode, Some(PreviewMode::Diff));
+        assert!(app.status_message.is_none());
+        let text = &app.cache[&(PreviewMode::Body, "one".into())];
+        assert!(line_text(&text.lines[0]).contains("denied"));
+    }
+
     #[async_std::test]
     async fn pending_merge_allows_navigation_and_quitting_without_resubmitting() {
         let mut app = empty_app(AppMode::Prs);

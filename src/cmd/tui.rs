@@ -792,126 +792,167 @@ impl App {
 
     fn apply_task_event(&mut self, event: TaskEvent) {
         match event {
-            TaskEvent::Reloaded(result) => match result {
-                Ok((specs, result)) => {
-                    self.specs = specs;
-                    if self.search.owner.is_empty() {
-                        self.search.owner = Self::default_search_owner(&self.specs);
-                        for task in &mut self.pending_tasks {
-                            if let Task::Search { owner, .. } = task {
-                                owner.clone_from(&self.search.owner);
-                            }
-                        }
-                    }
-                    let warning = result.warning;
-                    self.apply_pr_list_and_restore_selection(result.prs);
-                    self.refresh_preview();
-                    if self.mode == AppMode::Prs {
-                        let message = format!("Reloaded. {} PRs.", self.prs.len());
-                        self.set_reload_status(message, warning);
-                    }
-                    self.queue_task(Task::Contributions);
-                }
-                Err(err) => self.set_status(format!("❌ Reload error: {err}")),
-            },
+            TaskEvent::Reloaded(result) => self.apply_reload_result(result),
             TaskEvent::RepoReloaded {
                 pr,
                 message,
                 result,
-            } => match result {
-                Ok(mut result) => {
-                    let selected_id = self.get_selected_pr().map(|pr| pr.id.clone());
-                    self.replace_repo_prs(
-                        &pr.repository.owner.login,
-                        &pr.repository.name,
-                        &mut result.prs,
-                        selected_id,
-                    );
-                    self.drop_preview_cache_for(&pr.id);
-                    self.refresh_preview();
-                    let message = message.unwrap_or_else(|| {
-                        if self.prs.iter().any(|p| p.id == pr.id) {
-                            format!("Reloaded {}.", pr.numslug())
-                        } else {
-                            format!("Removed {} (no longer open).", pr.numslug())
-                        }
-                    });
-                    self.set_reload_status(message, result.warning);
-                }
-                Err(err) => self.set_status(match message {
-                    Some(message) => format!("{message}. Reload failed: {err}"),
-                    None => format!("❌ Reload error for {}: {err}", pr.numslug()),
-                }),
-            },
-            TaskEvent::Approved { pr, result } => match result {
-                Ok(()) => {
-                    let message = format!("✅ Approved PR {}.", pr.numslug());
-                    self.set_status(format!("{message} Reloading..."));
-                    self.queue_task(Task::ReloadRepo {
-                        pr,
-                        message: Some(message),
-                    });
-                }
-                Err(err) => {
-                    self.set_status(format!("❌ Failed to approve PR {}: {err}", pr.numslug()))
-                }
-            },
-            TaskEvent::ContributionsLoaded(result) => match result {
-                Ok((profile, calendar)) => self.apply_contributions(profile, calendar),
-                Err(err) => {
-                    if self.contrib_lines.is_none() {
-                        self.contrib_lines = Some(vec![Line::from(
-                            "Could not load contributions. Press c to retry.",
-                        )]);
-                    }
-                    self.set_status(format!("❌ Contrib load error: {err}"));
-                }
-            },
+            } => self.apply_repo_reload_result(pr, message, result),
+            TaskEvent::Approved { pr, result } => self.apply_approval_result(pr, result),
+            TaskEvent::ContributionsLoaded(result) => self.apply_contributions_result(result),
             TaskEvent::PreviewLoaded { pr, mode, result } => {
-                if !self.prs.iter().any(|p| p.id == pr.id) {
-                    return;
-                }
-                let visible = self.mode == AppMode::Prs
-                    && self.preview.mode == Some(mode)
-                    && self
-                        .get_selected_pr()
-                        .is_some_and(|selected| selected.id == pr.id);
-                match result {
-                    Ok(text) => {
-                        self.cache.insert((mode, pr.id.clone()), text);
-                        if visible && self.status_clear_at.is_none() {
-                            self.set_status(format!("✅ Loaded {mode} for #{}", pr.number));
-                        }
-                    }
-                    Err(err) => {
-                        let message = format!("Failed to load {mode} for #{}: {err}", pr.number);
-                        // Replace the loading placeholder; a manual reload can retry the request.
-                        self.cache
-                            .insert((mode, pr.id), Text::from(message.clone()));
-                        if visible {
-                            self.set_status(format!("❌ {message}"));
-                        }
-                    }
-                }
+                self.apply_preview_result(pr, mode, result)
             }
             TaskEvent::SearchCompleted { revision, result } => {
-                if revision != self.search.revision || self.mode != AppMode::Search {
-                    return;
-                }
-                match result {
-                    Ok(items) => {
-                        self.search.results = items;
-                        self.search.select_first();
-                        self.search.focus = SearchFocus::Results;
-                        self.search.preview_open = false;
-                        self.set_status(format!(
-                            "✅ Search done. {} results.",
-                            self.search.results.len()
-                        ));
+                self.apply_search_result(revision, result)
+            }
+        }
+    }
+
+    fn apply_reload_result(
+        &mut self,
+        result: surf::Result<(Vec<Slug>, prs::PullRequestFetchResult)>,
+    ) {
+        match result {
+            Ok((specs, result)) => {
+                self.specs = specs;
+                if self.search.owner.is_empty() {
+                    self.search.owner = Self::default_search_owner(&self.specs);
+                    for task in &mut self.pending_tasks {
+                        if let Task::Search { owner, .. } = task {
+                            owner.clone_from(&self.search.owner);
+                        }
                     }
-                    Err(err) => self.set_status(format!("❌ Search error: {err}")),
+                }
+                let warning = result.warning;
+                self.apply_pr_list_and_restore_selection(result.prs);
+                self.refresh_preview();
+                if self.mode == AppMode::Prs {
+                    let message = format!("Reloaded. {} PRs.", self.prs.len());
+                    self.set_reload_status(message, warning);
+                }
+                self.queue_task(Task::Contributions);
+            }
+            Err(err) => self.set_status(format!("❌ Reload error: {err}")),
+        }
+    }
+
+    fn apply_repo_reload_result(
+        &mut self,
+        pr: PrNode,
+        message: Option<String>,
+        result: surf::Result<prs::PullRequestFetchResult>,
+    ) {
+        match result {
+            Ok(mut result) => {
+                let selected_id = self.get_selected_pr().map(|pr| pr.id.clone());
+                self.replace_repo_prs(
+                    &pr.repository.owner.login,
+                    &pr.repository.name,
+                    &mut result.prs,
+                    selected_id,
+                );
+                self.drop_preview_cache_for(&pr.id);
+                self.refresh_preview();
+                let message = message.unwrap_or_else(|| {
+                    if self.prs.iter().any(|p| p.id == pr.id) {
+                        format!("Reloaded {}.", pr.numslug())
+                    } else {
+                        format!("Removed {} (no longer open).", pr.numslug())
+                    }
+                });
+                self.set_reload_status(message, result.warning);
+            }
+            Err(err) => self.set_status(match message {
+                Some(message) => format!("{message}. Reload failed: {err}"),
+                None => format!("❌ Reload error for {}: {err}", pr.numslug()),
+            }),
+        }
+    }
+
+    fn apply_approval_result(&mut self, pr: PrNode, result: surf::Result<()>) {
+        match result {
+            Ok(()) => {
+                let message = format!("✅ Approved PR {}.", pr.numslug());
+                self.set_status(format!("{message} Reloading..."));
+                self.queue_task(Task::ReloadRepo {
+                    pr,
+                    message: Some(message),
+                });
+            }
+            Err(err) => self.set_status(format!("❌ Failed to approve PR {}: {err}", pr.numslug())),
+        }
+    }
+
+    fn apply_contributions_result(
+        &mut self,
+        result: surf::Result<(
+            crate::cmd::viewer::Profile,
+            crate::cmd::contributions::model::Res,
+        )>,
+    ) {
+        match result {
+            Ok((profile, calendar)) => self.apply_contributions(profile, calendar),
+            Err(err) => {
+                if self.contrib_lines.is_none() {
+                    self.contrib_lines = Some(vec![Line::from(
+                        "Could not load contributions. Press c to retry.",
+                    )]);
+                }
+                self.set_status(format!("❌ Contrib load error: {err}"));
+            }
+        }
+    }
+
+    fn apply_preview_result(
+        &mut self,
+        pr: PrNode,
+        mode: PreviewMode,
+        result: surf::Result<Text<'static>>,
+    ) {
+        if !self.prs.iter().any(|p| p.id == pr.id) {
+            return;
+        }
+        let visible = self.mode == AppMode::Prs
+            && self.preview.mode == Some(mode)
+            && self
+                .get_selected_pr()
+                .is_some_and(|selected| selected.id == pr.id);
+        match result {
+            Ok(text) => {
+                self.cache.insert((mode, pr.id.clone()), text);
+                if visible && self.status_clear_at.is_none() {
+                    self.set_status(format!("✅ Loaded {mode} for #{}", pr.number));
                 }
             }
+            Err(err) => {
+                let message = format!("Failed to load {mode} for #{}: {err}", pr.number);
+                // Replace the loading placeholder; a manual reload can retry the request.
+                self.cache
+                    .insert((mode, pr.id), Text::from(message.clone()));
+                if visible {
+                    self.set_status(format!("❌ {message}"));
+                }
+            }
+        }
+    }
+
+    fn apply_search_result(&mut self, revision: u64, result: surf::Result<Vec<SearchItem>>) {
+        if revision != self.search.revision || self.mode != AppMode::Search {
+            return;
+        }
+        match result {
+            Ok(items) => {
+                self.search.results = items;
+                self.search.select_first();
+                self.search.focus = SearchFocus::Results;
+                self.search.preview_open = false;
+                self.set_status(format!(
+                    "✅ Search done. {} results.",
+                    self.search.results.len()
+                ));
+            }
+            Err(err) => self.set_status(format!("❌ Search error: {err}")),
         }
     }
 

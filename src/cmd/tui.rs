@@ -2198,6 +2198,40 @@ mod tests {
         );
     }
 
+    #[test]
+    fn queued_preview_keeps_its_target_but_uses_updated_pr_details() {
+        let mut app = empty_app(AppMode::Prs);
+        let mut pr = test_pr("one", 1);
+        let other = test_pr("two", 2);
+        app.prs = vec![pr.clone(), other.clone()];
+        app.list_state.select(Some(0));
+        app.on_right();
+        app.on_left();
+        app.on_down();
+        pr.title = "Updated title".into();
+
+        app.apply_pr_list_and_restore_selection(vec![pr, other]);
+
+        assert_eq!(app.get_selected_pr().unwrap().id, "two");
+        let Some(Task::Preview { pr, mode }) = app.pending_tasks.pop_front() else {
+            panic!("preview should remain queued");
+        };
+        let text = styling::prettify_pr_preview(&pr.title, &pr.url, "body");
+        app.apply_task_event(TaskEvent::PreviewLoaded {
+            pr,
+            mode,
+            result: Ok(text),
+        });
+        app.list_state.select(Some(0));
+        app.on_right();
+        assert!(
+            build_preview_text(&app)
+                .lines
+                .iter()
+                .any(|line| line_text(line).contains("Updated title"))
+        );
+    }
+
     #[async_std::test]
     async fn pending_merge_allows_navigation_and_quitting_without_resubmitting() {
         let mut app = empty_app(AppMode::Prs);

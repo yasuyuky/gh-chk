@@ -2042,6 +2042,45 @@ mod tests {
         }
     }
 
+    #[test]
+    fn approval_keeps_its_target_and_reload_preserves_the_current_selection() {
+        let mut app = empty_app(AppMode::Prs);
+        let mut other = test_pr("two", 2);
+        other.repository.name = "other".into();
+        app.prs = vec![test_pr("one", 1), other];
+        app.list_state.select(Some(0));
+        app.on_approve_key();
+        let task = app.pending_tasks.pop_front().unwrap();
+        let Task::Approve(pr) = task.clone() else {
+            panic!("approval expected");
+        };
+        let tx = hold_task(&mut app, task);
+        app.on_approve_key();
+        assert!(
+            app.pending_tasks.is_empty(),
+            "do not submit a duplicate review"
+        );
+        app.handle_key(KeyCode::Char('j'));
+
+        deliver(
+            &tx,
+            TaskEvent::Approved {
+                pr: pr.clone(),
+                result: Ok(()),
+            },
+        );
+        app.finish_pending_task();
+        assert!(
+            matches!(app.pending_tasks.front(), Some(Task::ReloadRepo { pr, .. }) if pr.id == "one")
+        );
+        app.apply_task_event(TaskEvent::RepoReloaded {
+            pr: pr.clone(),
+            message: None,
+            result: Ok(fetched(vec![pr])),
+        });
+        assert_eq!(app.get_selected_pr().unwrap().id, "two");
+    }
+
     #[async_std::test]
     async fn pending_merge_allows_navigation_and_quitting_without_resubmitting() {
         let mut app = empty_app(AppMode::Prs);

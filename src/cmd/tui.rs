@@ -2199,6 +2199,37 @@ mod tests {
     }
 
     #[test]
+    fn merge_completion_queues_followup_and_rejects_an_older_reload() {
+        let mut app = empty_app(AppMode::Prs);
+        let pr = test_pr("one", 1);
+        app.prs = vec![pr.clone()];
+        app.list_state.select(Some(0));
+        let reload_tx = hold_task(&mut app, Task::Reload);
+        let (merge_tx, rx) = async_std::channel::bounded(1);
+        app.merge_task = Some(MergeTask { pr, rx });
+        merge_tx.try_send(Ok(MergeOutcome::Merged)).unwrap();
+
+        app.finish_merge();
+        assert!(app.merge_task.is_none());
+        assert!(
+            matches!(app.pending_tasks.front(), Some(Task::ReloadRepo { pr, .. }) if pr.id == "one")
+        );
+        assert!(
+            app.pending_tasks
+                .iter()
+                .any(|task| matches!(task, Task::Contributions))
+        );
+        deliver(
+            &reload_tx,
+            TaskEvent::Reloaded(Ok((vec![], fetched(vec![test_pr("outdated", 3)])))),
+        );
+        app.finish_pending_task();
+
+        assert_eq!(app.prs[0].id, "one");
+        assert!(app.status_message.as_ref().unwrap().contains("✅ Merged"));
+    }
+
+    #[test]
     fn queued_preview_keeps_its_target_but_uses_updated_pr_details() {
         let mut app = empty_app(AppMode::Prs);
         let mut pr = test_pr("one", 1);

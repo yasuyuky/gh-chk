@@ -2230,6 +2230,71 @@ mod tests {
     }
 
     #[test]
+    fn merge_completion_retries_a_superseded_reload_for_other_repositories() {
+        for reload_all in [false, true] {
+            let mut app = empty_app(AppMode::Prs);
+            let pr = test_pr("one", 1);
+            let mut merged = test_pr("two", 2);
+            merged.repository.name = "other".into();
+            app.prs = vec![pr.clone(), merged.clone()];
+            app.list_state.select(Some(0));
+            let task = if reload_all {
+                Task::Reload
+            } else {
+                Task::ReloadRepo {
+                    pr: pr.clone(),
+                    message: Some("Approved PR #1.".into()),
+                }
+            };
+            let reload_tx = hold_task(&mut app, task);
+            let (merge_tx, rx) = async_std::channel::bounded(1);
+            app.merge_task = Some(MergeTask { pr: merged, rx });
+            merge_tx.try_send(Ok(MergeOutcome::Merged)).unwrap();
+            app.finish_merge();
+            let result = fetched(vec![pr.clone()]);
+            let event = if reload_all {
+                TaskEvent::Reloaded(Ok((vec![], result)))
+            } else {
+                TaskEvent::RepoReloaded {
+                    pr: pr.clone(),
+                    message: Some("Approved PR #1.".into()),
+                    result: Ok(result),
+                }
+            };
+            deliver(&reload_tx, event);
+            app.finish_pending_task();
+
+            let retry = app.pending_tasks.pop_back().expect("retry the stale read");
+            if reload_all {
+                assert!(matches!(retry, Task::Reload));
+            } else {
+                assert!(
+                    matches!(&retry, Task::ReloadRepo { pr, message: Some(message) }
+                    if pr.id == "one" && message == "Approved PR #1.")
+                );
+            }
+            let retry_tx = hold_task(&mut app, retry);
+            let mut updated = pr.clone();
+            updated.review_decision = Some(prs::ReviewDecision::Approved);
+            let result = fetched(vec![updated]);
+            deliver(
+                &retry_tx,
+                if reload_all {
+                    TaskEvent::Reloaded(Ok((vec![], result)))
+                } else {
+                    TaskEvent::RepoReloaded {
+                        pr,
+                        message: None,
+                        result: Ok(result),
+                    }
+                },
+            );
+            app.finish_pending_task();
+            assert_eq!(app.prs[0].review_status(), "[approved]");
+        }
+    }
+
+    #[test]
     fn queued_preview_keeps_its_target_but_uses_updated_pr_details() {
         let mut app = empty_app(AppMode::Prs);
         let mut pr = test_pr("one", 1);

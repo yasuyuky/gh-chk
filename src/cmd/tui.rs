@@ -1961,6 +1961,7 @@ mod tests {
     fn empty_app(mode: AppMode) -> App {
         App {
             prs: Vec::new(),
+            pr_revision: 0,
             list_state: ListState::default(),
             should_quit: false,
             status_message: None,
@@ -1973,11 +1974,71 @@ mod tests {
             contrib_height: 9,
             contrib_title: "Contributions".to_string(),
             viewer_profile_url: None,
-            pending_task: None,
+            pending_tasks: VecDeque::new(),
+            active_task: None,
             merge_task: None,
             auto_reload: None,
             mode,
             search: SearchState::new(String::default(), Vec::new()),
+        }
+    }
+
+    // Hold a worker response without sockets, sleeps, or live GitHub requests.
+    fn hold_task(app: &mut App, task: Task) -> Sender<TaskEvent> {
+        let (tx, rx) = async_std::channel::bounded(1);
+        app.set_status_persistent(task.status());
+        app.active_task = Some(RunningTask {
+            task,
+            rx,
+            pr_revision: app.pr_revision,
+        });
+        tx
+    }
+
+    fn deliver(tx: &Sender<TaskEvent>, event: TaskEvent) {
+        assert!(tx.try_send(event).is_ok());
+    }
+
+    fn fetched(prs: Vec<PrNode>) -> prs::PullRequestFetchResult {
+        prs::PullRequestFetchResult { prs, warning: None }
+    }
+
+    #[test]
+    fn pending_network_tasks_allow_navigation_search_and_quitting() {
+        let pr = test_pr("one", 1);
+        for task in [
+            Task::Reload,
+            Task::ReloadRepo {
+                pr: pr.clone(),
+                message: None,
+            },
+            Task::Approve(pr.clone()),
+            Task::Contributions,
+            Task::Preview {
+                pr,
+                mode: PreviewMode::Diff,
+            },
+            Task::Search {
+                owner: "owner".into(),
+                query: "rust".into(),
+                revision: 0,
+            },
+        ] {
+            let mut app = empty_app(AppMode::Prs);
+            app.prs = vec![test_pr("one", 1), test_pr("two", 2)];
+            app.list_state.select(Some(0));
+            let _tx = hold_task(&mut app, task);
+
+            app.finish_pending_task();
+            app.handle_key(KeyCode::Char('j'));
+            assert_eq!(app.get_selected_pr().unwrap().id, "two");
+            app.handle_key(KeyCode::Char('s'));
+            app.handle_key(KeyCode::Char('x'));
+            assert_eq!(app.search.query, "x");
+            app.handle_key(KeyCode::Esc);
+            app.handle_key(KeyCode::Char('q'));
+            assert!(app.should_quit);
+            assert!(app.active_task.is_some());
         }
     }
 
@@ -1992,18 +2053,18 @@ mod tests {
             rx,
         });
 
-        app.handle_key(KeyCode::Char('j')).await;
-        app.handle_key(KeyCode::Char('m')).await;
-        app.finish_merge().await;
+        app.handle_key(KeyCode::Char('j'));
+        app.handle_key(KeyCode::Char('m'));
+        app.finish_merge();
         assert_eq!(app.get_selected_pr().unwrap().id, "two");
-        assert!(app.pending_task.is_none());
+        assert!(app.pending_tasks.is_empty());
         assert!(
             app.status_message
                 .as_ref()
                 .unwrap()
                 .contains("#1 in owner/repo")
         );
-        app.handle_key(KeyCode::Char('q')).await;
+        app.handle_key(KeyCode::Char('q'));
         assert!(app.should_quit);
     }
 
@@ -2024,7 +2085,7 @@ mod tests {
         .await
         .unwrap();
 
-        app.finish_merge().await;
+        app.finish_merge();
 
         assert!(app.merge_task.is_none());
         assert_eq!(app.prs.len(), 2);
@@ -2295,23 +2356,6 @@ mod tests {
     }
 
     #[test]
-    fn only_pr_list_tasks_supersede_auto_reload() {
-        assert!(PendingTask::Reload.supersedes_auto_reload());
-        assert!(PendingTask::ReloadSelected.supersedes_auto_reload());
-        assert!(PendingTask::MergeSelected.supersedes_auto_reload());
-        assert!(PendingTask::ApproveSelected.supersedes_auto_reload());
-        assert!(!PendingTask::ReloadContrib.supersedes_auto_reload());
-        assert!(!PendingTask::LoadBodyForSelected.supersedes_auto_reload());
-        assert!(!PendingTask::LoadDiffForSelected.supersedes_auto_reload());
-        assert!(!PendingTask::LoadCommitsForSelected.supersedes_auto_reload());
-        let search = PendingTask::SearchCode {
-            owner: String::default(),
-            query: String::default(),
-        };
-        assert!(!search.supersedes_auto_reload());
-    }
-
-    #[test]
     fn deferring_auto_reload_keeps_in_flight_result_current() {
         let mut app = empty_app(AppMode::Prs);
         let mut auto_reload = AutoReload::new(Duration::from_secs(60));
@@ -2348,8 +2392,11 @@ mod tests {
 
         assert_eq!(app.get_selected_pr().map(|pr| pr.id.as_str()), Some("two"));
         assert!(matches!(
-            app.pending_task,
-            Some(PendingTask::LoadBodyForSelected)
+            app.pending_tasks.front(),
+            Some(Task::Preview {
+                mode: PreviewMode::Body,
+                ..
+            })
         ));
     }
 
@@ -2366,8 +2413,11 @@ mod tests {
         assert_eq!(app.mode, AppMode::Prs);
         assert_eq!(app.get_selected_pr().map(|pr| pr.id.as_str()), Some("two"));
         assert!(matches!(
-            app.pending_task,
-            Some(PendingTask::LoadBodyForSelected)
+            app.pending_tasks.front(),
+            Some(Task::Preview {
+                mode: PreviewMode::Body,
+                ..
+            })
         ));
     }
 
@@ -2399,7 +2449,7 @@ mod tests {
         let mut app = empty_app(AppMode::Search);
         app.search.focus = SearchFocus::Results;
 
-        app.handle_key_search(KeyCode::Char('c')).await;
+        app.handle_key_search(KeyCode::Char('c'));
 
         assert_eq!(
             app.status_message.as_deref(),

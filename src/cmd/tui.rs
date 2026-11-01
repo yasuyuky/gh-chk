@@ -2187,7 +2187,7 @@ mod tests {
         let mut app = empty_app(AppMode::Search);
         let tx = hold_task(&mut app, Task::Reload);
         app.queue_task(Task::Search {
-            owner: String::new(),
+            owner: String::default(),
             query: "rust".into(),
             revision: app.search.revision,
         });

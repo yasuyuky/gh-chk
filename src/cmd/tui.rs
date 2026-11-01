@@ -2124,6 +2124,23 @@ mod tests {
         }
     }
 
+    #[test]
+    fn queued_searches_keep_only_the_latest_request() {
+        let mut app = empty_app(AppMode::Search);
+        for revision in 1..=3 {
+            app.queue_task(Task::Search {
+                owner: "owner".into(),
+                query: revision.to_string(),
+                revision,
+            });
+        }
+        assert_eq!(app.pending_tasks.len(), 1);
+        assert!(matches!(
+            app.pending_tasks.front(),
+            Some(Task::Search { revision: 3, .. })
+        ));
+    }
+
     #[async_std::test]
     async fn pending_merge_allows_navigation_and_quitting_without_resubmitting() {
         let mut app = empty_app(AppMode::Prs);

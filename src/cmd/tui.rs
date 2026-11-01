@@ -1,9 +1,7 @@
 mod tasks;
 
-use crate::cmd::prs::{
-    self, Commit, CommitGraphEntry, MergeStateStatus, approve_pr, fetch_prs_with_warnings,
-};
-use crate::cmd::search::{SearchItem, search_code};
+use crate::cmd::prs::{self, Commit, CommitGraphEntry, MergeStateStatus};
+use crate::cmd::search::SearchItem;
 use crate::merge::MergeOutcome;
 use crate::{slug::Slug, styling};
 use async_std::channel::{Receiver, Sender, TryRecvError};
@@ -21,13 +19,14 @@ use ratatui::{
     text::{Line, Span, Text},
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap},
 };
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::rc::Rc;
 use std::time::{Duration, Instant};
+use tasks::{Task, TaskEvent};
 
 // Type alias for GraphQL PR node for brevity (reuse prs module types)
 type PrNode = prs::pull_request::PullRequest;
@@ -75,26 +74,10 @@ impl std::fmt::Display for PreviewMode {
     }
 }
 
-#[derive(Debug, Clone)]
-enum PendingTask {
-    MergeSelected,
-    ApproveSelected,
-    Reload,
-    ReloadSelected,
-    ReloadContrib,
-    LoadBodyForSelected,
-    LoadDiffForSelected,
-    LoadCommitsForSelected,
-    SearchCode { owner: String, query: String },
-}
-
-impl PendingTask {
-    fn supersedes_auto_reload(&self) -> bool {
-        matches!(
-            self,
-            Self::MergeSelected | Self::ApproveSelected | Self::Reload | Self::ReloadSelected
-        )
-    }
+struct RunningTask {
+    task: Task,
+    rx: Receiver<TaskEvent>,
+    pr_revision: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -152,10 +135,6 @@ fn mark_auto_reload_complete(auto_reload: &mut AutoReload) {
     auto_reload.next_at = Instant::now() + auto_reload.interval;
 }
 
-fn dependabot_warning_status(warning: &prs::DependabotAlertLookupWarning) -> String {
-    format!("⚠️ {}", warning.message())
-}
-
 struct SearchState {
     owner: String,
     query: String,
@@ -166,6 +145,7 @@ struct SearchState {
     list_state: ListState,
     focus: SearchFocus,
     preview_open: bool,
+    revision: u64,
 }
 
 impl SearchState {
@@ -180,6 +160,7 @@ impl SearchState {
             list_state: ListState::default(),
             focus: SearchFocus::Input,
             preview_open: false,
+            revision: 0,
         }
     }
 
@@ -338,6 +319,7 @@ fn run_clipboard_command(program: &str, args: &[&str], text: &str) -> io::Result
 
 struct App {
     prs: Vec<PrNode>,
+    pr_revision: u64,
     list_state: ListState,
     should_quit: bool,
     status_message: Option<String>,
@@ -350,7 +332,8 @@ struct App {
     contrib_height: u16,
     contrib_title: String,
     viewer_profile_url: Option<String>,
-    pending_task: Option<PendingTask>,
+    pending_tasks: VecDeque<Task>,
+    active_task: Option<RunningTask>,
     merge_task: Option<MergeTask>,
     auto_reload: Option<AutoReload>,
     mode: AppMode,
@@ -358,25 +341,16 @@ struct App {
 }
 
 impl App {
-    async fn new(specs: Vec<Slug>, auto_reload: Option<Duration>) -> surf::Result<App> {
-        let result = fetch_prs_with_warnings(&specs).await?;
-        let status_message = result.warning.as_ref().map(dependabot_warning_status);
-        let status_clear_at = status_message
-            .as_ref()
-            .map(|_| Instant::now() + Duration::from_millis(3000));
-        let prs = result.prs;
-        let mut list_state = ListState::default();
-        if !prs.is_empty() {
-            list_state.select(Some(0));
-        }
-        let search_owner = App::default_search_owner(&specs);
+    fn new(specs: Vec<Slug>, auto_reload: Option<Duration>) -> App {
+        let search_owner = Self::default_search_owner(&specs);
         let search_history = load_search_history(&search_history_path());
-        Ok(App {
-            prs,
-            list_state,
+        App {
+            prs: Vec::new(),
+            pr_revision: 0,
+            list_state: ListState::default(),
             should_quit: false,
-            status_message,
-            status_clear_at,
+            status_message: Some("🔄 Loading PRs...".to_string()),
+            status_clear_at: None,
             specs,
             cache: HashMap::new(),
             preview: Preview::default(),
@@ -385,12 +359,13 @@ impl App {
             contrib_height: 9,
             contrib_title: "Contributions".to_string(),
             viewer_profile_url: None,
-            pending_task: None,
+            pending_tasks: VecDeque::from([Task::Reload, Task::Contributions]),
+            active_task: None,
             merge_task: None,
             auto_reload: auto_reload.map(AutoReload::new),
             mode: AppMode::Prs,
             search: SearchState::new(search_owner, search_history),
-        })
+        }
     }
 
     fn default_search_owner(specs: &[Slug]) -> String {
@@ -423,18 +398,13 @@ impl App {
         let Some(pr) = self.get_selected_pr().cloned() else {
             return;
         };
+        self.ignore_auto_reload_result();
         self.set_status_persistent(format!("Merging PR {}...", pr.numslug()));
-        let (tx, rx) = async_std::channel::bounded(1);
-        let slug = pr.slug();
-        let number = pr.number;
+        let rx = tasks::start_merge(&pr);
         self.merge_task = Some(MergeTask { pr, rx });
-        async_std::task::spawn(async move {
-            let result = crate::merge::merge_pr(&slug, number).await;
-            let _ = tx.send(result).await;
-        });
     }
 
-    async fn finish_merge(&mut self) {
+    fn finish_merge(&mut self) {
         let Some(task) = &self.merge_task else {
             return;
         };
@@ -450,53 +420,20 @@ impl App {
         self.merge_task = None;
         self.ignore_auto_reload_result();
         self.defer_auto_reload();
-        let outcome = match result {
-            Ok(outcome) => outcome,
-            Err(err) => {
-                self.set_status(format!("❌ Merge request for PR {}: {err}", pr.numslug()));
-                return;
-            }
-        };
-        let mut message = outcome.message(&pr.numslug());
-        let owner = &pr.repository.owner.login;
-        let name = &pr.repository.name;
-        match prs::fetch_repo_prs_with_warnings(owner, name).await {
-            Ok(mut result) => {
-                // Selection may have changed while the merge was running.
-                let selected_id = self.get_selected_pr().map(|pr| pr.id.clone());
-                self.replace_repo_prs(owner, name, &mut result.prs, selected_id);
-                self.drop_preview_cache_for(&pr.id);
-                self.refresh_preview().await;
-                if let Some(warning) = result.warning {
-                    message.push_str(&format!(". {}", warning.message()));
+        match result {
+            Ok(outcome) => {
+                self.pr_revision += 1;
+                let message = outcome.message(&pr.numslug());
+                self.set_status(message.clone());
+                self.queue_task(Task::ReloadRepo {
+                    pr,
+                    message: Some(message),
+                });
+                if outcome == MergeOutcome::Merged {
+                    self.queue_task(Task::Contributions);
                 }
             }
-            Err(err) => message.push_str(&format!(". Reload failed: {err}")),
-        }
-        if outcome == MergeOutcome::Merged
-            && let Err(err) = self.load_contributions().await
-        {
-            message.push_str(&format!(". Contrib load error: {err}"));
-        }
-        self.set_status(message);
-    }
-    async fn approve_selected(&mut self) {
-        if let Some(selected_index) = self.list_state.selected()
-            && let Some(pr) = self.prs.get(selected_index).cloned()
-        {
-            self.set_status_persistent(format!("Approving PR {}...", pr.numslug()));
-            match approve_pr(&pr.id).await {
-                Ok(_) => {
-                    self.set_status_persistent(format!(
-                        "✅ Approved PR {}. Reloading...",
-                        pr.numslug()
-                    ));
-                    self.pending_task = Some(PendingTask::ReloadSelected);
-                }
-                Err(e) => {
-                    self.set_status(format!("❌ Failed to approve PR {}: {}", pr.numslug(), e));
-                }
-            }
+            Err(err) => self.set_status(format!("❌ Merge request for PR {}: {err}", pr.numslug())),
         }
     }
 
@@ -506,46 +443,6 @@ impl App {
         {
             eprintln!("Failed to open URL: {}", e);
         }
-    }
-
-    async fn load_body(&mut self, pr: &PrNode) -> surf::Result<()> {
-        self.set_status_persistent(format!("🔎 Loading body for #{}...", pr.number));
-        let body: String =
-            prs::fetch_pr_body(&pr.repository.owner.login, &pr.repository.name, pr.number).await?;
-        let text = styling::prettify_pr_preview(&pr.title, &pr.url, &body);
-        self.cache.insert((PreviewMode::Body, pr.id.clone()), text);
-        self.set_status(format!("✅ Loaded body for #{}", pr.number));
-        Ok(())
-    }
-
-    async fn load_diff(&mut self, pr: &PrNode) -> surf::Result<()> {
-        self.set_status_persistent(format!("🔎 Loading diff for #{}...", pr.number));
-        let files =
-            prs::fetch_pr_diffs(&pr.repository.owner.login, &pr.repository.name, pr.number).await?;
-        let mut out = String::default();
-        for f in files {
-            out += f.to_string().as_str();
-        }
-        if out.is_empty() {
-            out = "No file changes found.".to_string();
-        }
-        let text = styling::make_diff_text(&out);
-        self.cache.insert((PreviewMode::Diff, pr.id.clone()), text);
-        self.set_status(format!("✅ Loaded diff for #{}", pr.number));
-        Ok(())
-    }
-
-    async fn load_commits(&mut self, pr: &PrNode) -> surf::Result<()> {
-        self.set_status_persistent(format!("🔎 Loading commits for #{}...", pr.number));
-        let commits =
-            prs::fetch_pr_commits(&pr.repository.owner.login, &pr.repository.name, pr.number)
-                .await?;
-        let entries = build_commit_graph_entries(&commits);
-        let text = make_commit_graph_text(&entries); // pre-render to check for emptiness
-        self.cache
-            .insert((PreviewMode::Commits, pr.id.clone()), text);
-        self.set_status(format!("✅ Loaded commits for #{}", pr.number));
-        Ok(())
     }
 
     fn scroll_preview_down(&mut self, n: u16) {
@@ -559,34 +456,8 @@ impl App {
         }
     }
 
-    async fn reload(&mut self) {
-        let result = match fetch_prs_with_warnings(&self.specs).await {
-            Ok(result) => result,
-            Err(e) => {
-                self.set_status(format!("❌ Reload error: {}", e));
-                return;
-            }
-        };
-        let warning = result.warning;
-
-        self.apply_pr_list_and_restore_selection(result.prs);
-        self.refresh_preview().await;
-        if let Some(warning) = warning {
-            self.set_status(format!(
-                "⚠️ Reloaded. {} PRs. {}",
-                self.prs.len(),
-                warning.message()
-            ));
-        } else {
-            self.set_status(format!("✅ Reloaded. {} PRs.", self.prs.len()));
-        }
-
-        if let Err(e) = self.load_contributions().await {
-            self.set_status(format!("❌ Contrib load error: {}", e));
-        }
-    }
-
     fn apply_pr_list_and_restore_selection(&mut self, new_list: Vec<PrNode>) {
+        self.pr_revision += 1;
         let sel = self.list_state.selected().unwrap_or(0);
         let selected_id = self.get_selected_pr().map(|pr| pr.id.clone());
         self.prs = new_list;
@@ -602,7 +473,11 @@ impl App {
     }
 
     fn start_auto_reload(&mut self) {
-        if self.mode != AppMode::Prs || self.pending_task.is_some() || self.merge_task.is_some() {
+        if self.mode != AppMode::Prs
+            || !self.pending_tasks.is_empty()
+            || self.active_task.is_some()
+            || self.merge_task.is_some()
+        {
             return;
         }
         let Some(auto_reload) = &mut self.auto_reload else {
@@ -617,12 +492,7 @@ impl App {
         auto_reload.next_id += 1;
         auto_reload.in_flight = true;
 
-        let specs = self.specs.clone();
-        let tx = auto_reload.tx.clone();
-        async_std::task::spawn(async move {
-            let result = fetch_prs_with_warnings(&specs).await;
-            let _ = tx.send(AutoReloadEvent { id, result }).await;
-        });
+        tasks::start_auto_reload(self.specs.clone(), id, auto_reload.tx.clone());
         self.set_status_persistent("🔄 Auto reloading PRs...");
     }
 
@@ -698,31 +568,16 @@ impl App {
     }
 
     fn queue_preview_if_needed(&mut self) -> bool {
-        let Some(mode) = self.preview.mode else {
-            return false;
-        };
-        if self.pending_task.is_some() {
-            return false;
-        }
-        self.queue_mode_if_needed(mode)
+        self.preview
+            .mode
+            .is_some_and(|mode| self.queue_mode_if_needed(mode))
     }
 
-    async fn refresh_preview(&mut self) {
-        if let Some(mode) = self.preview.mode
-            && let Some(pr) = self.get_selected_pr().cloned()
-        {
-            match mode {
-                PreviewMode::Body => {
-                    let _ = self.load_body(&pr).await;
-                }
-                PreviewMode::Diff => {
-                    let _ = self.load_diff(&pr).await;
-                }
-                PreviewMode::Commits => {
-                    let _ = self.load_commits(&pr).await;
-                }
-            }
+    fn refresh_preview(&mut self) {
+        if let Some(id) = self.get_selected_pr().map(|pr| pr.id.clone()) {
+            self.drop_preview_cache_for(&id);
         }
+        self.queue_preview_if_needed();
     }
 
     fn prune_cache_to_existing(&mut self) {
@@ -731,6 +586,8 @@ impl App {
     }
 
     fn drop_preview_cache_for(&mut self, pr_id: &str) {
+        self.pending_tasks
+            .retain(|task| !matches!(task, Task::Preview { pr, .. } if pr.id == pr_id));
         let id = pr_id.to_string();
         for mode in [PreviewMode::Body, PreviewMode::Diff, PreviewMode::Commits] {
             self.cache.remove(&(mode, id.clone()));
@@ -744,6 +601,7 @@ impl App {
         repo_prs: &mut Vec<PrNode>,
         keep_selection: Option<String>,
     ) {
+        self.pr_revision += 1;
         let insert_at = self
             .prs
             .iter()
@@ -774,44 +632,12 @@ impl App {
         self.preview.scroll = 0;
     }
 
-    async fn reload_selected_pr(&mut self) {
-        let Some(selected_index) = self.list_state.selected() else {
-            return;
-        };
-        let Some(pr) = self.prs.get(selected_index).cloned() else {
-            return;
-        };
-
-        let owner = pr.repository.owner.login.clone();
-        let name = pr.repository.name.clone();
-        self.set_status_persistent(format!("🔄 Reloading {}...", pr.numslug()));
-        match prs::fetch_repo_prs_with_warnings(&owner, &name).await {
-            Ok(result) => {
-                let warning = result.warning;
-                let mut repo_prs = result.prs;
-                self.replace_repo_prs(&owner, &name, &mut repo_prs, Some(pr.id.clone()));
-                self.drop_preview_cache_for(&pr.id);
-                self.refresh_preview().await;
-                let still_present = self.prs.iter().any(|p| p.id == pr.id);
-                let action = if still_present {
-                    format!("Reloaded {}.", pr.numslug())
-                } else {
-                    format!("Removed {} (no longer open).", pr.numslug())
-                };
-                if let Some(warning) = warning {
-                    self.set_status(format!("⚠️ {} {}", action, warning.message()));
-                } else {
-                    self.set_status(format!("✅ {}", action));
-                }
-            }
-            Err(e) => self.set_status(format!("❌ Reload error for {}: {}", pr.numslug(), e)),
-        }
-    }
-
-    async fn load_contributions(&mut self) -> surf::Result<()> {
-        let profile = crate::cmd::viewer::get_profile().await?;
+    fn apply_contributions(
+        &mut self,
+        profile: crate::cmd::viewer::Profile,
+        res: crate::cmd::contributions::model::Res,
+    ) {
         self.viewer_profile_url = Some(profile.url);
-        let res = crate::cmd::contributions::fetch_calendar(&profile.login).await?;
         let cal = &res.data.user.contributions_collection.contribution_calendar;
         let weeks = &cal.weeks;
         let mut lines: Vec<Line> = Vec::new();
@@ -858,7 +684,225 @@ impl App {
         ];
         self.contrib_lines = Some(lines);
         self.contrib_stats = Some(stats);
-        Ok(())
+    }
+}
+
+impl App {
+    fn queue_task(&mut self, task: Task) -> bool {
+        if self
+            .active_task
+            .as_ref()
+            .is_some_and(|active| active.task.same_request(&task))
+            || self
+                .pending_tasks
+                .iter()
+                .any(|pending| pending.same_request(&task))
+        {
+            return false;
+        }
+        if task.changes_prs() {
+            self.ignore_auto_reload_result();
+        }
+        if matches!(task, Task::Search { .. }) {
+            self.pending_tasks
+                .retain(|pending| !matches!(pending, Task::Search { .. }));
+        }
+        self.pending_tasks.push_back(task);
+        true
+    }
+
+    fn start_pending_task(&mut self) {
+        if self.active_task.is_some() || self.should_quit {
+            return;
+        }
+        while let Some(task) = self.pending_tasks.pop_front() {
+            match &task {
+                Task::Search { revision, .. } if *revision != self.search.revision => continue,
+                Task::Preview { pr, mode }
+                    if !self.prs.iter().any(|p| p.id == pr.id)
+                        || self.cache.contains_key(&(*mode, pr.id.clone())) =>
+                {
+                    continue;
+                }
+                _ => {}
+            }
+            // Let a completed operation's message remain visible during follow-up reads.
+            if self.status_clear_at.is_none() {
+                self.set_status_persistent(task.status());
+            }
+            let rx = tasks::start(task.clone(), self.specs.clone());
+            self.active_task = Some(RunningTask {
+                task,
+                rx,
+                pr_revision: self.pr_revision,
+            });
+            break;
+        }
+    }
+
+    fn finish_pending_task(&mut self) {
+        let Some(active) = &self.active_task else {
+            return;
+        };
+        let result = match active.rx.try_recv() {
+            Err(TryRecvError::Empty) => return,
+            result => result,
+        };
+        let active = self
+            .active_task
+            .take()
+            .expect("active task was checked above");
+        if self.status_message.as_deref() == Some(active.task.status().as_str()) {
+            self.on_clear_help();
+        }
+        self.defer_auto_reload();
+        if active.task.changes_prs() {
+            self.ignore_auto_reload_result();
+        }
+        match result {
+            Ok(event) => {
+                // A merge or automatic reload may have replaced the data while a read ran.
+                if active.pr_revision != self.pr_revision
+                    && matches!(event, TaskEvent::Reloaded(_) | TaskEvent::RepoReloaded { .. } | TaskEvent::PreviewLoaded { .. })
+                {
+                    return;
+                }
+                self.apply_task_event(event);
+            }
+            Err(_) => self.set_status("❌ Background task stopped before returning a result. Check GitHub before retrying an approval."),
+        }
+    }
+
+    fn apply_task_event(&mut self, event: TaskEvent) {
+        match event {
+            TaskEvent::Reloaded(result) => match result {
+                Ok((specs, result)) => {
+                    self.specs = specs;
+                    if self.search.owner.is_empty() {
+                        self.search.owner = Self::default_search_owner(&self.specs);
+                    }
+                    let warning = result.warning;
+                    self.apply_pr_list_and_restore_selection(result.prs);
+                    self.refresh_preview();
+                    if self.mode == AppMode::Prs {
+                        let message = format!("Reloaded. {} PRs.", self.prs.len());
+                        self.set_reload_status(message, warning);
+                    }
+                    self.queue_task(Task::Contributions);
+                }
+                Err(err) => self.set_status(format!("❌ Reload error: {err}")),
+            },
+            TaskEvent::RepoReloaded {
+                pr,
+                message,
+                result,
+            } => match result {
+                Ok(mut result) => {
+                    let selected_id = self.get_selected_pr().map(|pr| pr.id.clone());
+                    self.replace_repo_prs(
+                        &pr.repository.owner.login,
+                        &pr.repository.name,
+                        &mut result.prs,
+                        selected_id,
+                    );
+                    self.drop_preview_cache_for(&pr.id);
+                    self.refresh_preview();
+                    let message = message.unwrap_or_else(|| {
+                        if self.prs.iter().any(|p| p.id == pr.id) {
+                            format!("Reloaded {}.", pr.numslug())
+                        } else {
+                            format!("Removed {} (no longer open).", pr.numslug())
+                        }
+                    });
+                    self.set_reload_status(message, result.warning);
+                }
+                Err(err) => self.set_status(match message {
+                    Some(message) => format!("{message}. Reload failed: {err}"),
+                    None => format!("❌ Reload error for {}: {err}", pr.numslug()),
+                }),
+            },
+            TaskEvent::Approved { pr, result } => match result {
+                Ok(()) => {
+                    let message = format!("✅ Approved PR {}.", pr.numslug());
+                    self.set_status(format!("{message} Reloading..."));
+                    self.queue_task(Task::ReloadRepo {
+                        pr,
+                        message: Some(message),
+                    });
+                }
+                Err(err) => {
+                    self.set_status(format!("❌ Failed to approve PR {}: {err}", pr.numslug()))
+                }
+            },
+            TaskEvent::ContributionsLoaded(result) => match result {
+                Ok((profile, calendar)) => self.apply_contributions(profile, calendar),
+                Err(err) => {
+                    if self.contrib_lines.is_none() {
+                        self.contrib_lines = Some(vec![Line::from(
+                            "Could not load contributions. Press c to retry.",
+                        )]);
+                    }
+                    self.set_status(format!("❌ Contrib load error: {err}"));
+                }
+            },
+            TaskEvent::PreviewLoaded { pr, mode, result } => {
+                if !self.prs.iter().any(|p| p.id == pr.id) {
+                    return;
+                }
+                let visible = self.mode == AppMode::Prs
+                    && self.preview.mode == Some(mode)
+                    && self
+                        .get_selected_pr()
+                        .is_some_and(|selected| selected.id == pr.id);
+                match result {
+                    Ok(text) => {
+                        self.cache.insert((mode, pr.id.clone()), text);
+                        if visible && self.status_clear_at.is_none() {
+                            self.set_status(format!("✅ Loaded {mode} for #{}", pr.number));
+                        }
+                    }
+                    Err(err) => {
+                        let message = format!("Failed to load {mode} for #{}: {err}", pr.number);
+                        // Replace the loading placeholder; a manual reload can retry the request.
+                        self.cache
+                            .insert((mode, pr.id), Text::from(message.clone()));
+                        if visible {
+                            self.set_status(format!("❌ {message}"));
+                        }
+                    }
+                }
+            }
+            TaskEvent::SearchCompleted { revision, result } => {
+                if revision != self.search.revision || self.mode != AppMode::Search {
+                    return;
+                }
+                match result {
+                    Ok(items) => {
+                        self.search.results = items;
+                        self.search.select_first();
+                        self.search.focus = SearchFocus::Results;
+                        self.search.preview_open = false;
+                        self.set_status(format!(
+                            "✅ Search done. {} results.",
+                            self.search.results.len()
+                        ));
+                    }
+                    Err(err) => self.set_status(format!("❌ Search error: {err}")),
+                }
+            }
+        }
+    }
+
+    fn set_reload_status(
+        &mut self,
+        message: String,
+        warning: Option<prs::DependabotAlertLookupWarning>,
+    ) {
+        if let Some(warning) = warning {
+            self.set_status(format!("⚠️ {message} {}", warning.message()));
+        } else {
+            self.set_status(message);
+        }
     }
 }
 
@@ -1501,12 +1545,11 @@ fn dedup_branches(branches: &mut Vec<String>) {
     branches.retain(|sha| seen.insert(sha.clone()));
 }
 
-async fn run_tui(
+fn run_tui(
     specs: Vec<Slug>,
     auto_reload: Option<Duration>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let mut app = App::new(specs, auto_reload).await?;
-    app.load_contributions().await?;
+    let mut app = App::new(specs, auto_reload);
 
     enable_raw_mode()?;
     let mut stdout = io::stdout();
@@ -1514,7 +1557,7 @@ async fn run_tui(
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let res = run_app(&mut terminal, &mut app).await;
+    let res = run_app(&mut terminal, &mut app);
 
     disable_raw_mode()?;
     execute!(
@@ -1531,19 +1574,19 @@ async fn run_tui(
 }
 
 impl App {
-    async fn handle_key(&mut self, code: KeyCode) {
+    fn handle_key(&mut self, code: KeyCode) {
         match self.mode {
-            AppMode::Prs => self.handle_key_prs(code).await,
-            AppMode::Search => self.handle_key_search(code).await,
+            AppMode::Prs => self.handle_key_prs(code),
+            AppMode::Search => self.handle_key_search(code),
         }
     }
 
-    async fn handle_key_prs(&mut self, code: KeyCode) {
+    fn handle_key_prs(&mut self, code: KeyCode) {
         match code {
             KeyCode::Char('q') => self.on_quit(),
             KeyCode::Char('s') => self.enter_search_mode(),
-            KeyCode::Down | KeyCode::Char('j') => self.on_down().await,
-            KeyCode::Up | KeyCode::Char('k') => self.on_up().await,
+            KeyCode::Down | KeyCode::Char('j') => self.on_down(),
+            KeyCode::Up | KeyCode::Char('k') => self.on_up(),
             KeyCode::Enter | KeyCode::Char('o') => self.on_open(),
             KeyCode::Char('p') => self.on_open_profile(),
             KeyCode::Char('m') => self.on_merge_key(),
@@ -1558,10 +1601,18 @@ impl App {
         }
     }
 
-    async fn handle_key_search(&mut self, code: KeyCode) {
+    fn handle_key_search(&mut self, code: KeyCode) {
         if is_search_back_key(self.search.focus, code) {
             self.exit_search_mode();
             return;
+        }
+        if self.search.focus == SearchFocus::Input
+            && matches!(
+                code,
+                KeyCode::Up | KeyCode::Down | KeyCode::Backspace | KeyCode::Char(_)
+            )
+        {
+            self.invalidate_search();
         }
         match self.search.focus {
             SearchFocus::Input => match code {
@@ -1608,7 +1659,7 @@ impl App {
         self.should_quit = true;
     }
 
-    async fn on_down(&mut self) {
+    fn on_down(&mut self) {
         if self.preview.mode.is_some() {
             self.scroll_preview_down(1);
         } else {
@@ -1616,7 +1667,7 @@ impl App {
         }
     }
 
-    async fn on_up(&mut self) {
+    fn on_up(&mut self) {
         if self.preview.mode.is_some() {
             self.scroll_preview_up(1);
         } else {
@@ -1671,32 +1722,32 @@ impl App {
             ));
             return;
         }
-        if let Some(pr) = self.get_selected_pr() {
-            self.set_status_persistent(format!("Merging PR {}...", pr.numslug()));
-            self.pending_task = Some(PendingTask::MergeSelected);
-        }
+        self.merge_selected();
     }
 
     fn on_approve_key(&mut self) {
-        if let Some(pr) = self.get_selected_pr() {
+        if let Some(pr) = self.get_selected_pr().cloned()
+            && self.queue_task(Task::Approve(pr.clone()))
+        {
             self.set_status_persistent(format!("Approving PR {}...", pr.numslug()));
-            self.pending_task = Some(PendingTask::ApproveSelected);
         }
     }
 
     fn on_reload_key(&mut self) {
-        self.set_status_persistent("🔄 Reloading PR...".to_string());
-        self.pending_task = Some(PendingTask::ReloadSelected);
+        if let Some(pr) = self.get_selected_pr().cloned() {
+            self.set_status_persistent(format!("🔄 Reloading {}...", pr.numslug()));
+            self.queue_task(Task::ReloadRepo { pr, message: None });
+        }
     }
 
     fn on_reload_all_key(&mut self) {
         self.set_status_persistent("🔄 Reloading all...".to_string());
-        self.pending_task = Some(PendingTask::Reload);
+        self.queue_task(Task::Reload);
     }
 
     fn on_reload_contrib_key(&mut self) {
         self.set_status_persistent("🔄 Reloading contrib...".to_string());
-        self.pending_task = Some(PendingTask::ReloadContrib);
+        self.queue_task(Task::Contributions);
     }
 
     fn on_clear_help(&mut self) {
@@ -1705,18 +1756,16 @@ impl App {
     }
 
     fn queue_mode_if_needed(&mut self, mode: PreviewMode) -> bool {
-        if let Some(pr) = self.get_selected_pr().cloned() {
-            let has_cache = self.cache.contains_key(&(mode, pr.id.clone()));
-            let pending = match mode {
-                PreviewMode::Body => PendingTask::LoadBodyForSelected,
-                PreviewMode::Diff => PendingTask::LoadDiffForSelected,
-                PreviewMode::Commits => PendingTask::LoadCommitsForSelected,
-            };
-            if !has_cache {
-                self.set_status_persistent(format!("🔎 Loading {} for #{}...", mode, pr.number));
-                self.pending_task = Some(pending);
-                return true;
-            }
+        let Some(pr) = self.get_selected_pr().cloned() else {
+            return false;
+        };
+        if self.cache.contains_key(&(mode, pr.id.clone())) {
+            return false;
+        }
+        let number = pr.number;
+        if self.queue_task(Task::Preview { pr, mode }) {
+            self.set_status_persistent(format!("🔎 Loading {} for #{}...", mode, number));
+            return true;
         }
         false
     }
@@ -1772,6 +1821,7 @@ impl App {
     }
 
     fn exit_search_mode(&mut self) {
+        self.invalidate_search();
         self.mode = AppMode::Prs;
         self.search.preview_open = false;
         self.search.focus = SearchFocus::Input;
@@ -1792,118 +1842,50 @@ impl App {
             let _ = save_search_history(&search_history_path(), &self.search.history);
         }
         self.set_status_persistent(format!("🔎 Searching code for user:{}...", owner));
-        self.pending_task = Some(PendingTask::SearchCode { owner, query });
+        self.search.revision += 1;
+        self.queue_task(Task::Search {
+            owner,
+            query,
+            revision: self.search.revision,
+        });
     }
 
-    async fn run_search(&mut self, owner: String, query: String) {
-        match search_code(&owner, &query).await {
-            Ok(items) => {
-                self.search.results = items;
-                self.search.select_first();
-                self.search.focus = SearchFocus::Results;
-                self.search.preview_open = false;
-                self.set_status(format!(
-                    "✅ Search done. {} results.",
-                    self.search.results.len()
-                ));
-            }
-            Err(e) => {
-                self.set_status(format!("❌ Search error: {}", e));
-            }
-        }
+    fn invalidate_search(&mut self) {
+        self.search.revision += 1;
+        self.pending_tasks
+            .retain(|task| !matches!(task, Task::Search { .. }));
+        self.on_clear_help();
     }
 }
 
-async fn run_app(
-    terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
-    app: &mut App,
-) -> io::Result<()> {
+fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App) -> io::Result<()> {
     loop {
         terminal.draw(|f| ui(f, app))?;
-
-        handle_terminal_events(app).await?;
-        app.finish_merge().await;
-        app.finish_auto_reload();
-        app.start_auto_reload();
-        run_pending_task(terminal, app).await?;
-        clear_expired_status(app);
-
+        handle_terminal_events(app)?;
         if app.should_quit {
             break;
         }
+        app.finish_pending_task();
+        app.finish_merge();
+        app.finish_auto_reload();
+        app.start_pending_task();
+        app.start_auto_reload();
+        clear_expired_status(app);
     }
     Ok(())
 }
 
-async fn handle_terminal_events(app: &mut App) -> io::Result<()> {
+fn handle_terminal_events(app: &mut App) -> io::Result<()> {
     if !event::poll(std::time::Duration::from_millis(100))? {
         return Ok(());
     }
 
     match event::read()? {
-        Event::Key(key) => app.handle_key(key.code).await,
+        Event::Key(key) => app.handle_key(key.code),
         Event::Mouse(m) => app.handle_mouse(m.kind),
         _ => {}
     }
     Ok(())
-}
-
-async fn run_pending_task(
-    terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
-    app: &mut App,
-) -> io::Result<()> {
-    let Some(task) = app.pending_task.take() else {
-        return Ok(());
-    };
-
-    let supersedes_auto_reload = task.supersedes_auto_reload();
-    terminal.draw(|f| ui(f, app))?;
-    run_task(app, task).await;
-    app.defer_auto_reload();
-    if supersedes_auto_reload {
-        app.ignore_auto_reload_result();
-    }
-    Ok(())
-}
-
-async fn run_task(app: &mut App, task: PendingTask) {
-    match task {
-        PendingTask::MergeSelected => app.merge_selected(),
-        PendingTask::ApproveSelected => app.approve_selected().await,
-        PendingTask::Reload => app.reload().await,
-        PendingTask::ReloadSelected => app.reload_selected_pr().await,
-        PendingTask::ReloadContrib => reload_contributions(app).await,
-        PendingTask::LoadBodyForSelected => load_body_for_selected(app).await,
-        PendingTask::LoadDiffForSelected => load_diff_for_selected(app).await,
-        PendingTask::LoadCommitsForSelected => load_commits_for_selected(app).await,
-        PendingTask::SearchCode { owner, query } => app.run_search(owner, query).await,
-    }
-}
-
-async fn reload_contributions(app: &mut App) {
-    if let Err(e) = app.load_contributions().await {
-        app.set_status(format!("❌ Contrib load error: {}", e));
-    } else {
-        app.set_status("✅ Contrib reloaded.".to_string());
-    }
-}
-
-async fn load_body_for_selected(app: &mut App) {
-    if let Some(pr) = app.get_selected_pr().cloned() {
-        let _ = app.load_body(&pr).await;
-    }
-}
-
-async fn load_diff_for_selected(app: &mut App) {
-    if let Some(pr) = app.get_selected_pr().cloned() {
-        let _ = app.load_diff(&pr).await;
-    }
-}
-
-async fn load_commits_for_selected(app: &mut App) {
-    if let Some(pr) = app.get_selected_pr().cloned() {
-        let _ = app.load_commits(&pr).await;
-    }
 }
 
 fn clear_expired_status(app: &mut App) {
@@ -1916,19 +1898,13 @@ fn clear_expired_status(app: &mut App) {
 }
 
 pub async fn run(slugs: Vec<String>, auto_reload_secs: u64) -> surf::Result<()> {
-    let slugs = if slugs.is_empty() {
-        vec![crate::cmd::viewer::get().await?]
-    } else {
-        slugs
-    };
-
     let mut specs: Vec<Slug> = Vec::new();
     for slug in slugs {
         specs.push(Slug::try_from(slug.as_str())?);
     }
 
     let auto_reload = Some(Duration::from_secs(auto_reload_secs));
-    run_tui(specs, auto_reload).await.map_err(|e| {
+    run_tui(specs, auto_reload).map_err(|e| {
         surf::Error::from_str(
             surf::StatusCode::InternalServerError,
             format!("TUI error: {}", e),

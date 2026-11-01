@@ -2164,6 +2164,40 @@ mod tests {
         );
     }
 
+    #[test]
+    fn stale_preview_does_not_repopulate_cache_after_a_list_update() {
+        let mut app = empty_app(AppMode::Prs);
+        let pr = test_pr("one", 1);
+        app.prs = vec![pr.clone()];
+        app.list_state.select(Some(0));
+        app.preview.mode = Some(PreviewMode::Body);
+        let tx = hold_task(
+            &mut app,
+            Task::Preview {
+                pr: pr.clone(),
+                mode: PreviewMode::Body,
+            },
+        );
+        let mut updated = pr.clone();
+        updated.title = "Updated title".into();
+        app.apply_pr_list_and_restore_selection(vec![updated]);
+        deliver(
+            &tx,
+            TaskEvent::PreviewLoaded {
+                pr,
+                mode: PreviewMode::Body,
+                result: Ok(Text::from("old body")),
+            },
+        );
+
+        app.finish_pending_task();
+
+        assert!(app.cache.is_empty());
+        assert!(
+            matches!(app.pending_tasks.front(), Some(Task::Preview { pr, .. }) if pr.title == "Updated title")
+        );
+    }
+
     #[async_std::test]
     async fn pending_merge_allows_navigation_and_quitting_without_resubmitting() {
         let mut app = empty_app(AppMode::Prs);

@@ -2141,6 +2141,29 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn search_queued_during_startup_uses_the_resolved_owner() {
+        let mut app = empty_app(AppMode::Search);
+        let tx = hold_task(&mut app, Task::Reload);
+        app.queue_task(Task::Search {
+            owner: String::new(),
+            query: "rust".into(),
+            revision: app.search.revision,
+        });
+        deliver(
+            &tx,
+            TaskEvent::Reloaded(Ok((vec![Slug::Owner("owner".into())], fetched(vec![])))),
+        );
+
+        app.finish_pending_task();
+
+        assert_eq!(app.search.owner, "owner");
+        assert!(
+            matches!(app.pending_tasks.front(), Some(Task::Search { owner, query, .. })
+            if owner == "owner" && query == "rust")
+        );
+    }
+
     #[async_std::test]
     async fn pending_merge_allows_navigation_and_quitting_without_resubmitting() {
         let mut app = empty_app(AppMode::Prs);

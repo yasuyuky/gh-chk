@@ -1,3 +1,5 @@
+mod tasks;
+
 use crate::cmd::prs::{
     self, Commit, CommitGraphEntry, MergeStateStatus, approve_pr, fetch_prs_with_warnings,
 };

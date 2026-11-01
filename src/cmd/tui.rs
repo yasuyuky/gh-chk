@@ -2081,6 +2081,49 @@ mod tests {
         assert_eq!(app.get_selected_pr().unwrap().id, "two");
     }
 
+    #[test]
+    fn editing_or_leaving_search_ignores_old_successes_and_errors() {
+        for key in [KeyCode::Char('x'), KeyCode::Esc] {
+            for failed in [false, true] {
+                let mut app = empty_app(AppMode::Search);
+                app.search.query = "rust".into();
+                let tx = hold_task(
+                    &mut app,
+                    Task::Search {
+                        owner: "owner".into(),
+                        query: "rust".into(),
+                        revision: 0,
+                    },
+                );
+                app.handle_key(key);
+                let result = if failed {
+                    Err(surf::Error::from_str(
+                        surf::StatusCode::BadGateway,
+                        "old error",
+                    ))
+                } else {
+                    Ok(vec![SearchItem {
+                        repo: "owner/repo".into(),
+                        path: "old.rs".into(),
+                        html_url: String::new(),
+                        matches: vec![],
+                    }])
+                };
+                deliver(
+                    &tx,
+                    TaskEvent::SearchCompleted {
+                        revision: 0,
+                        result,
+                    },
+                );
+                app.finish_pending_task();
+                assert!(app.search.results.is_empty());
+                assert_eq!(app.search.focus, SearchFocus::Input);
+                assert!(app.status_message.is_none());
+            }
+        }
+    }
+
     #[async_std::test]
     async fn pending_merge_allows_navigation_and_quitting_without_resubmitting() {
         let mut app = empty_app(AppMode::Prs);

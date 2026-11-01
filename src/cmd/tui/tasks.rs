@@ -184,7 +184,7 @@ async fn load_preview(pr: &PrNode, mode: PreviewMode) -> surf::Result<Text<'stat
         }
         PreviewMode::Diff => {
             let files = prs::fetch_pr_diffs(owner, name, pr.number).await?;
-            let mut out = String::new();
+            let mut out = String::default();
             for file in files {
                 out.push_str(&file.to_string());
             }

@@ -2328,6 +2328,31 @@ mod tests {
         );
     }
 
+    #[test]
+    fn queued_mutations_invalidate_in_flight_auto_reload() {
+        let mut app = empty_app(AppMode::Prs);
+        app.prs = vec![test_pr("one", 1)];
+        let mut auto_reload = AutoReload::new(Duration::from_secs(60));
+        auto_reload.in_flight = true;
+        auto_reload.next_id = 2;
+        assert!(
+            auto_reload
+                .tx
+                .try_send(AutoReloadEvent {
+                    id: 1,
+                    result: Ok(fetched(vec![]))
+                })
+                .is_ok()
+        );
+        app.auto_reload = Some(auto_reload);
+        app.queue_task(Task::Approve(app.prs[0].clone()));
+
+        app.finish_auto_reload();
+
+        assert_eq!(app.prs.len(), 1);
+        assert!(!app.auto_reload.as_ref().unwrap().in_flight);
+    }
+
     #[async_std::test]
     async fn pending_merge_allows_navigation_and_quitting_without_resubmitting() {
         let mut app = empty_app(AppMode::Prs);

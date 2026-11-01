@@ -797,6 +797,11 @@ impl App {
                     self.specs = specs;
                     if self.search.owner.is_empty() {
                         self.search.owner = Self::default_search_owner(&self.specs);
+                        for task in &mut self.pending_tasks {
+                            if let Task::Search { owner, .. } = task {
+                                owner.clone_from(&self.search.owner);
+                            }
+                        }
                     }
                     let warning = result.warning;
                     self.apply_pr_list_and_restore_selection(result.prs);

@@ -583,6 +583,17 @@ impl App {
     fn prune_cache_to_existing(&mut self) {
         let ids: HashSet<String> = self.prs.iter().map(|pr| pr.id.clone()).collect();
         self.cache.retain(|(_, pr_id), _| ids.contains(pr_id));
+        self.pending_tasks.retain_mut(|task| {
+            let Task::Preview { pr, .. } = task else {
+                return true;
+            };
+            let Some(current) = self.prs.iter().find(|current| current.id == pr.id) else {
+                return false;
+            };
+            // Queued previews may outlive the PR details captured by the key press.
+            pr.clone_from(current);
+            true
+        });
     }
 
     fn drop_preview_cache_for(&mut self, pr_id: &str) {

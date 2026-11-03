@@ -780,7 +780,12 @@ impl App {
             Ok(event) => {
                 // A merge or automatic reload may have replaced the data while a read ran.
                 if active.pr_revision != self.pr_revision
-                    && matches!(event, TaskEvent::Reloaded(_) | TaskEvent::RepoReloaded { .. } | TaskEvent::PreviewLoaded { .. })
+                    && matches!(
+                        event,
+                        TaskEvent::Reloaded(_)
+                            | TaskEvent::RepoReloaded { .. }
+                            | TaskEvent::PreviewLoaded { .. }
+                    )
                 {
                     if matches!(active.task, Task::Preview { .. }) {
                         self.queue_preview_if_needed();
@@ -792,7 +797,14 @@ impl App {
                 }
                 self.apply_task_event(event);
             }
-            Err(_) => self.set_status("❌ Background task stopped before returning a result. Check GitHub before retrying an approval."),
+            Err(_) => {
+                let mut message =
+                    "❌ Background task stopped before returning a result.".to_string();
+                if matches!(active.task, Task::Approve(_)) {
+                    message.push_str(" Check GitHub before retrying an approval.");
+                }
+                self.set_status(message);
+            }
         }
     }
 

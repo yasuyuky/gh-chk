@@ -73,6 +73,14 @@ The TUI remains usable while waiting. Quitting does not cancel a submitted merge
 gh chk tui [<owner>[/<repo>]]
 ```
 
+You can keep navigating, editing a search, or quitting while PRs, previews, and
+contributions load, or while an approval is submitted. Requests are processed in
+order; merging and automatic reloads run independently. Approval and repository
+reload actions target the PR selected when you pressed the key, even if you move
+to another PR while waiting. Search results from an earlier query are ignored
+after you edit the query or leave search mode. If a preview fails to load, press
+`r` to retry.
+
 Basic keys:
 - `q` - Quit.
 - Arrow keys or `j`/`k` - Move selection.

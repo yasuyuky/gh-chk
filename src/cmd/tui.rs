@@ -2277,6 +2277,55 @@ mod tests {
     }
 
     #[test]
+    fn merge_completion_refreshes_contributions_after_an_active_read() {
+        for already_queued in [false, true] {
+            let mut app = empty_app(AppMode::Prs);
+            if already_queued {
+                app.queue_task(Task::Contributions);
+            }
+            let contrib_tx = hold_task(&mut app, Task::Contributions);
+            let (merge_tx, rx) = async_std::channel::bounded(1);
+            app.merge_task = Some(MergeTask {
+                pr: test_pr("one", 1),
+                rx,
+            });
+            merge_tx.try_send(Ok(MergeOutcome::Merged)).unwrap();
+            app.finish_merge();
+
+            let calendar = serde_json::from_value(serde_json::json!({
+                "data": {"user": {"contributionsCollection": {"contributionCalendar": {
+                    "totalContributions": 1,
+                    "weeks": [{"firstDay": "2026-11-01", "contributionDays": [
+                        {"date": "2026-11-01", "contributionCount": 1, "color": "#40c463"}
+                    ]}]
+                }}}}
+            }))
+            .unwrap();
+            deliver(
+                &contrib_tx,
+                TaskEvent::ContributionsLoaded(Ok((
+                    crate::cmd::viewer::Profile {
+                        login: "owner".into(),
+                        url: "https://example.test/owner".into(),
+                    },
+                    calendar,
+                ))),
+            );
+            app.finish_pending_task();
+
+            assert_eq!(app.contrib_title, "Contributions: total 1");
+            assert_eq!(
+                app.pending_tasks
+                    .iter()
+                    .filter(|task| matches!(task, Task::Contributions))
+                    .count(),
+                1,
+                "refresh the pre-merge calendar exactly once"
+            );
+        }
+    }
+
+    #[test]
     fn merge_completion_retries_a_superseded_reload_for_other_repositories() {
         for reload_all in [false, true] {
             let mut app = empty_app(AppMode::Prs);

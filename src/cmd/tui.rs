@@ -2462,6 +2462,44 @@ mod tests {
     }
 
     #[test]
+    fn closed_task_channels_only_warn_about_retrying_approvals() {
+        let pr = test_pr("one", 1);
+        for task in [
+            Task::Reload,
+            Task::ReloadRepo {
+                pr: pr.clone(),
+                message: None,
+            },
+            Task::Approve(pr.clone()),
+            Task::Contributions,
+            Task::Preview {
+                pr,
+                mode: PreviewMode::Body,
+            },
+            Task::Search {
+                owner: "owner".into(),
+                query: "rust".into(),
+                revision: 0,
+            },
+        ] {
+            let mut app = empty_app(AppMode::Prs);
+            let is_approval = matches!(task, Task::Approve(_));
+            let tx = hold_task(&mut app, task);
+            drop(tx);
+
+            app.finish_pending_task();
+
+            assert!(app.active_task.is_none());
+            let message = app.status_message.unwrap();
+            assert!(message.starts_with("❌ Background task stopped before returning a result."));
+            assert_eq!(
+                message.contains("Check GitHub before retrying an approval."),
+                is_approval
+            );
+        }
+    }
+
+    #[test]
     fn preview_errors_replace_loading_and_do_not_change_other_previews() {
         let mut app = empty_app(AppMode::Prs);
         let pr = test_pr("one", 1);

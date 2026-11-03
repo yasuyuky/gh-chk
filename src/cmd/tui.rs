@@ -429,8 +429,14 @@ impl App {
                     pr,
                     message: Some(message),
                 });
-                if outcome == MergeOutcome::Merged {
-                    self.queue_task(Task::Contributions);
+                if outcome == MergeOutcome::Merged
+                    && !self
+                        .pending_tasks
+                        .iter()
+                        .any(|task| matches!(task, Task::Contributions))
+                {
+                    // An active request may contain a calendar fetched before this merge.
+                    self.pending_tasks.push_back(Task::Contributions);
                 }
             }
             Err(err) => self.set_status(format!("❌ Merge request for PR {}: {err}", pr.numslug())),

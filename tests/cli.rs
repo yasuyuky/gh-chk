@@ -130,6 +130,27 @@ fn search_text_output_with_filters() {
 }
 
 #[test]
+fn search_json_output_with_filters() {
+    let out = run_cmd(
+        &[
+            "-f",
+            "json",
+            "search",
+            "hello world",
+            "-u",
+            "foo",
+            "-l",
+            "rust",
+        ],
+        "search",
+    );
+    let actual: serde_json::Value = serde_json::from_str(&out).expect("search JSON output");
+    let expected: serde_json::Value =
+        serde_json::from_str(include_str!("data/search.json")).unwrap();
+    assert_eq!(actual, expected);
+}
+
+#[test]
 fn merge_polls_accepted_and_existing_requests() {
     let timezone = iana_time_zone::get_timezone().expect("read OS timezone");
     for scenario in ["merge_pending", "merge_conflict", "merge_already_merged"] {

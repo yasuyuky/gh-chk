@@ -1,5 +1,8 @@
 //! Network work owns its inputs and returns events; it never mutates the UI.
-use super::{PrNode, PreviewMode, build_commit_graph_entries, make_commit_graph_text};
+use super::{
+    PrNode, PreviewMode,
+    commit_graph::{build_commit_graph_entries, make_commit_graph_text},
+};
 use crate::cmd::{contributions, prs, search, viewer};
 use crate::{slug::Slug, styling};
 use async_std::channel::{Receiver, Sender};

@@ -219,3 +219,13 @@ fn issues_output() {
     let out = run_cmd(&["-f", "json", "issues", "foo"], "issues");
     assert!(out.contains("Test Issue"));
 }
+
+#[test]
+fn prs_text_preserves_slug_order() {
+    let out = run_cmd(&["-f", "text", "prs", "foo", "bar"], "prs");
+    let lines: Vec<_> = out.lines().collect();
+    assert_eq!(lines[0], "foo");
+    let bar = lines.iter().position(|line| *line == "bar").unwrap();
+    assert!(lines[1..bar].iter().any(|line| line.contains("Test PR")));
+    assert!(lines[bar + 1..].iter().any(|line| line.contains("Test PR")));
+}

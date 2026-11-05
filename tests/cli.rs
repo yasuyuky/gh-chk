@@ -109,6 +109,27 @@ fn run_cmd(args: &[&str], scenario: &str) -> String {
 }
 
 #[test]
+fn search_text_output_with_filters() {
+    let out = run_cmd(
+        &[
+            "-f",
+            "text",
+            "search",
+            "hello world",
+            "-u",
+            "foo",
+            "-l",
+            "rust",
+        ],
+        "search",
+    );
+    assert_eq!(
+        out,
+        "foo/bar src/main.rs https://github.com/foo/bar/blob/main/src/main.rs\n# count: 1\n"
+    );
+}
+
+#[test]
 fn merge_polls_accepted_and_existing_requests() {
     let timezone = iana_time_zone::get_timezone().expect("read OS timezone");
     for scenario in ["merge_pending", "merge_conflict", "merge_already_merged"] {

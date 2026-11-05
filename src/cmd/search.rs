@@ -42,8 +42,8 @@ pub struct Query {
 }
 
 impl Query {
-    fn to_api(&self) -> ApiQuery {
-        let q = self.q.to_owned()
+    fn to_query(&self) -> String {
+        self.q.to_owned()
             + match &self.user {
                 Some(user) => format!(" user:{}", user),
                 None => "".to_owned(),
@@ -53,12 +53,7 @@ impl Query {
                 Some(lang) => format!(" language:{}", lang),
                 None => "".to_owned(),
             }
-            .as_str();
-        ApiQuery {
-            q,
-            page: 0,
-            per_page: 100,
-        }
+            .as_str()
     }
 }
 
@@ -93,10 +88,7 @@ struct SearchTextMatch {
 }
 
 pub async fn search(q: &Query) -> surf::Result<()> {
-    let mut res = surf::get(crate::config::github_api_url("search/code"))
-        .header("Authorization", format!("token {}", *TOKEN))
-        .query(&q.to_api())?
-        .await?;
+    let mut res = search_request(q.to_query())?.await?;
     let search_result = res.body_json::<search::Search>().await?;
     match crate::config::FORMAT.get() {
         Some(&crate::config::Format::Json) => {
@@ -108,15 +100,8 @@ pub async fn search(q: &Query) -> surf::Result<()> {
 }
 
 pub async fn search_code(owner: &str, query: &str) -> surf::Result<Vec<SearchItem>> {
-    let q = build_query(owner, query);
-    let mut res = surf::get(crate::config::github_api_url("search/code"))
-        .header("Authorization", format!("token {}", *TOKEN))
+    let mut res = search_request(build_query(owner, query))?
         .header("Accept", "application/vnd.github.v3.text-match+json")
-        .query(&ApiQuery {
-            q,
-            page: 0,
-            per_page: 100,
-        })?
         .await?;
     let search_result = res.body_json::<SearchResultWithMatches>().await?;
     let items = search_result
@@ -135,6 +120,16 @@ pub async fn search_code(owner: &str, query: &str) -> surf::Result<Vec<SearchIte
         })
         .collect();
     Ok(items)
+}
+
+fn search_request(q: String) -> surf::Result<surf::RequestBuilder> {
+    surf::get(crate::config::github_api_url("search/code"))
+        .header("Authorization", format!("token {}", *TOKEN))
+        .query(&ApiQuery {
+            q,
+            page: 0,
+            per_page: 100,
+        })
 }
 
 fn build_query(owner: &str, query: &str) -> String {

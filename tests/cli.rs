@@ -219,3 +219,22 @@ fn issues_output() {
     let out = run_cmd(&["-f", "json", "issues", "foo"], "issues");
     assert!(out.contains("Test Issue"));
 }
+
+#[test]
+fn prs_text_preserves_slug_order() {
+    let out = run_cmd(&["-f", "text", "prs", "foo", "bar"], "prs");
+    let lines: Vec<_> = out.lines().collect();
+    assert_eq!(lines[0], "foo");
+    let bar = lines.iter().position(|line| *line == "bar").unwrap();
+    assert!(lines[1..bar].iter().any(|line| line.contains("Test PR")));
+    assert!(lines[bar + 1..].iter().any(|line| line.contains("Test PR")));
+}
+
+#[test]
+fn prs_json_combines_slug_results() {
+    let out = run_cmd(&["-f", "json", "prs", "foo", "bar"], "prs");
+    let prs: serde_json::Value = serde_json::from_str(&out).expect("PR JSON output");
+    let prs = prs.as_array().expect("combined PR array");
+    assert_eq!(prs.len(), 2);
+    assert!(prs.iter().all(|pr| pr["title"] == "Test PR"));
+}

@@ -526,56 +526,58 @@ pub async fn check(slugs: Vec<String>, merge: bool) -> surf::Result<()> {
         slugs
     };
 
-    if matches!(config::FORMAT.get(), Some(config::Format::Json)) {
-        let specs: Vec<Slug> = slugs
-            .iter()
-            .map(|s| Slug::try_from(s.as_str()))
-            .collect::<Result<_, _>>()?;
-        let result = fetch_prs_with_warnings(&specs).await?;
-        print_dependabot_alert_warning(result.warning.as_ref());
-        println!("{}", serde_json::to_string_pretty(&result.prs).unwrap());
-        return Ok(());
-    }
-
-    if merge {
-        for slug in slugs {
-            println!("{}", slug.bright_blue());
-            let result = fetch_prs_for_spec_with_warnings(Slug::try_from(slug.as_str())?).await?;
-            print_dependabot_alert_warning(result.warning.as_ref());
-            let prs = result.prs;
-            for pr in &prs {
-                println!("{}", pr.colorized_string());
-                if pr.merge_state_status == MergeStateStatus::Clean {
-                    println!("🔄 Merging PR #{}", pr.number);
-                    let outcome = crate::merge::merge_pr(&pr.slug(), pr.number).await?;
-                    println!("{}", outcome.message(&format!("#{}", pr.number)));
-                }
-            }
-        }
-        return Ok(());
+    let json = matches!(config::FORMAT.get(), Some(config::Format::Json));
+    if merge && !json {
+        return merge_prs(slugs).await;
     }
 
     let specs: Vec<Slug> = slugs
         .iter()
         .map(|s| Slug::try_from(s.as_str()))
         .collect::<Result<_, _>>()?;
-    let mut handles = Vec::with_capacity(specs.len());
-    for spec in specs.into_iter() {
-        handles.push(async_std::task::spawn(fetch_prs_for_spec_with_warnings(
-            spec,
-        )));
+    if json {
+        let result = fetch_prs_with_warnings(&specs).await?;
+        print_dependabot_alert_warning(result.warning.as_ref());
+        println!("{}", serde_json::to_string_pretty(&result.prs).unwrap());
+        return Ok(());
     }
 
-    for (slug, handle) in slugs.into_iter().zip(handles) {
+    for (slug, handle) in slugs.into_iter().zip(start_pr_fetches(&specs)) {
         println!("{}", slug.bright_blue());
         let result = handle.await?;
         print_dependabot_alert_warning(result.warning.as_ref());
-        let prs = result.prs;
-        for pr in &prs {
+        for pr in &result.prs {
             println!("{}", pr.colorized_string());
         }
     }
     Ok(())
+}
+
+async fn merge_prs(slugs: Vec<String>) -> surf::Result<()> {
+    for slug in slugs {
+        println!("{}", slug.bright_blue());
+        let result = fetch_prs_for_spec_with_warnings(Slug::try_from(slug.as_str())?).await?;
+        print_dependabot_alert_warning(result.warning.as_ref());
+        for pr in &result.prs {
+            println!("{}", pr.colorized_string());
+            if pr.merge_state_status == MergeStateStatus::Clean {
+                println!("🔄 Merging PR #{}", pr.number);
+                let outcome = crate::merge::merge_pr(&pr.slug(), pr.number).await?;
+                println!("{}", outcome.message(&format!("#{}", pr.number)));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn start_pr_fetches(
+    specs: &[Slug],
+) -> Vec<async_std::task::JoinHandle<surf::Result<PullRequestFetchResult>>> {
+    specs
+        .iter()
+        .cloned()
+        .map(|spec| async_std::task::spawn(fetch_prs_for_spec_with_warnings(spec)))
+        .collect()
 }
 
 async fn fetch_prs_for_spec_with_warnings(spec: Slug) -> surf::Result<PullRequestFetchResult> {
@@ -587,13 +589,7 @@ async fn fetch_prs_for_spec_with_warnings(spec: Slug) -> surf::Result<PullReques
 
 pub async fn fetch_prs_with_warnings(specs: &[Slug]) -> surf::Result<PullRequestFetchResult> {
     let mut result = PullRequestFetchResult::new(Vec::new(), None);
-    let mut handles = Vec::with_capacity(specs.len());
-    for spec in specs.iter().cloned() {
-        handles.push(async_std::task::spawn(fetch_prs_for_spec_with_warnings(
-            spec,
-        )));
-    }
-    for handle in handles {
+    for handle in start_pr_fetches(specs) {
         result.extend(handle.await?);
     }
     Ok(result)

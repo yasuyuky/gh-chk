@@ -1433,6 +1433,30 @@ mod tests {
         assert!(!text.contains("Could not load contributions."));
     }
 
+    #[test]
+    fn contributions_keep_previous_calendar_when_refresh_fails() {
+        let mut app = empty_app(AppMode::Prs);
+        app.apply_contributions_result(Ok(test_contributions()));
+        let before = render_app(&mut app);
+
+        app.apply_contributions_result(Err(surf::Error::from_str(
+            surf::StatusCode::ServiceUnavailable,
+            "calendar unavailable",
+        )));
+        let after = render_app(&mut app);
+
+        // Only the Help panel should change to report the refresh error.
+        for y in 3..12 {
+            for x in 0..100 {
+                assert_eq!(before[(x, y)], after[(x, y)]);
+            }
+        }
+        assert_eq!(
+            app.viewer_profile_url.as_deref(),
+            Some("https://example.test/owner")
+        );
+    }
+
     // Hold a worker response without sockets, sleeps, or live GitHub requests.
     fn hold_task(app: &mut App, task: Task) -> Sender<TaskEvent> {
         let (tx, rx) = async_std::channel::bounded(1);

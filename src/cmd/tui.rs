@@ -1414,6 +1414,25 @@ mod tests {
         );
     }
 
+    #[test]
+    fn contributions_show_initial_failure_and_recover_on_retry() {
+        let mut app = empty_app(AppMode::Prs);
+        assert!(buffer_text(&render_app(&mut app)).contains("Loading contributions..."));
+
+        app.apply_contributions_result(Err(surf::Error::from_str(
+            surf::StatusCode::ServiceUnavailable,
+            "calendar unavailable",
+        )));
+        let text = buffer_text(&render_app(&mut app));
+        assert!(text.contains("Could not load contributions. Press c to retry."));
+        assert!(text.contains("Contrib load error: calendar unavailable"));
+
+        app.apply_contributions_result(Ok(test_contributions()));
+        let text = buffer_text(&render_app(&mut app));
+        assert!(text.contains("Contributions: total 103"));
+        assert!(!text.contains("Could not load contributions."));
+    }
+
     // Hold a worker response without sockets, sleeps, or live GitHub requests.
     fn hold_task(app: &mut App, task: Task) -> Sender<TaskEvent> {
         let (tx, rx) = async_std::channel::bounded(1);

@@ -1356,6 +1356,64 @@ mod tests {
         }
     }
 
+    fn test_contributions() -> (
+        crate::cmd::viewer::Profile,
+        crate::cmd::contributions::model::Res,
+    ) {
+        let calendar = serde_json::from_value(serde_json::json!({
+            "data": {"user": {"contributionsCollection": {"contributionCalendar": {
+                "totalContributions": 103,
+                "weeks": [{"firstDay": "2026-05-10", "contributionDays": [
+                    {"date": "2026-05-10", "contributionCount": 3, "color": "#40c463"},
+                    {"date": "2026-05-11", "contributionCount": 100, "color": "#216e39"}
+                ]}]
+            }}}}
+        }))
+        .unwrap();
+        (
+            crate::cmd::viewer::Profile {
+                login: "owner".into(),
+                url: "https://example.test/owner".into(),
+            },
+            calendar,
+        )
+    }
+
+    fn render_app(app: &mut App) -> ratatui::buffer::Buffer {
+        let mut terminal =
+            Terminal::new(ratatui::backend::TestBackend::new(100, 15)).expect("terminal");
+        terminal.draw(|frame| view::ui(frame, app)).expect("draw");
+        terminal.backend().buffer().clone()
+    }
+
+    fn buffer_text(buffer: &ratatui::buffer::Buffer) -> String {
+        buffer.content().iter().map(|cell| cell.symbol()).collect()
+    }
+
+    #[test]
+    fn contributions_render_counts_colors_and_totals() {
+        let mut app = empty_app(AppMode::Prs);
+        app.apply_contributions_result(Ok(test_contributions()));
+
+        let buffer = render_app(&mut app);
+        let text = buffer_text(&buffer);
+        assert!(text.contains("Contributions: total 103"));
+        assert!(text.contains("# year to date:   103 51.50"));
+        assert!(text.contains("# month to date:  103 51.50"));
+        assert!(text.contains("# week to date:   103 51.50"));
+        assert_eq!(buffer[(2, 4)].symbol(), "3");
+        assert_eq!(buffer[(1, 4)].bg, Color::Rgb(64, 196, 99));
+        assert_eq!(buffer[(1, 4)].fg, Color::Black);
+        assert_eq!(buffer[(1, 5)].symbol(), "+");
+        assert_eq!(buffer[(2, 5)].symbol(), "+");
+        assert_eq!(buffer[(1, 5)].bg, Color::Rgb(33, 110, 57));
+        assert_eq!(buffer[(1, 5)].fg, Color::White);
+        assert_eq!(
+            app.viewer_profile_url.as_deref(),
+            Some("https://example.test/owner")
+        );
+    }
+
     // Hold a worker response without sockets, sleeps, or live GitHub requests.
     fn hold_task(app: &mut App, task: Task) -> Sender<TaskEvent> {
         let (tx, rx) = async_std::channel::bounded(1);

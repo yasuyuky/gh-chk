@@ -6,7 +6,7 @@ mod view;
 use crate::cmd::prs::{self, MergeStateStatus};
 use crate::cmd::search::SearchItem;
 use crate::merge::MergeOutcome;
-use crate::{slug::Slug, styling};
+use crate::slug::Slug;
 use async_std::channel::{Receiver, Sender, TryRecvError};
 use contributions::ContributionView;
 use crossterm::{
@@ -15,13 +15,7 @@ use crossterm::{
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use open;
-use ratatui::{
-    Terminal,
-    backend::CrosstermBackend,
-    style::{Color, Style},
-    text::{Line, Span, Text},
-    widgets::ListState,
-};
+use ratatui::{Terminal, backend::CrosstermBackend, style::Color, text::Text, widgets::ListState};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
 use std::io::{self, Write};
@@ -649,60 +643,6 @@ impl App {
         self.list_state.select(selection);
         self.preview.scroll = 0;
     }
-
-    fn apply_contributions(
-        &mut self,
-        profile: crate::cmd::viewer::Profile,
-        res: crate::cmd::contributions::model::Res,
-    ) {
-        self.viewer_profile_url = Some(profile.url);
-        let cal = &res.data.user.contributions_collection.contribution_calendar;
-        let weeks = &cal.weeks;
-        let mut lines: Vec<Line> = Vec::new();
-        self.contributions.title = format!("Contributions: total {}", cal.total_contributions);
-        let dates = crate::cmd::contributions::calendar_dates(&res);
-        let window = ContribWindow::new(dates.today, dates.week_start);
-        let mut year_to_date = ContribTotals::default();
-        let mut month_to_date = ContribTotals::default();
-        let mut week_to_date = ContribTotals::default();
-        for day in 0..7 {
-            let mut spans: Vec<Span> = Vec::new();
-            for w in weeks {
-                if let Some(d) = w.contribution_days.get(day) {
-                    window.update_totals(
-                        &d.date,
-                        d.contribution_count,
-                        &mut year_to_date,
-                        &mut month_to_date,
-                        &mut week_to_date,
-                    );
-                    spans.push(contrib_span(d.contribution_count, &d.color));
-                } else {
-                    spans.push(Span::raw("  "));
-                }
-            }
-            lines.push(Line::from(spans));
-        }
-        let stats = vec![
-            Line::from(format!(
-                "# year to date:  {:4} {:>5.2}",
-                year_to_date.total,
-                year_to_date.avg()
-            )),
-            Line::from(format!(
-                "# month to date: {:4} {:>5.2}",
-                month_to_date.total,
-                month_to_date.avg()
-            )),
-            Line::from(format!(
-                "# week to date:  {:4} {:>5.2}",
-                week_to_date.total,
-                week_to_date.avg()
-            )),
-        ];
-        self.contributions.lines = Some(lines);
-        self.contributions.stats = Some(stats);
-    }
 }
 
 impl App {
@@ -911,13 +851,12 @@ impl App {
         )>,
     ) {
         match result {
-            Ok((profile, calendar)) => self.apply_contributions(profile, calendar),
+            Ok((profile, calendar)) => {
+                self.viewer_profile_url = Some(profile.url);
+                self.contributions.update(&calendar);
+            }
             Err(err) => {
-                if self.contributions.lines.is_none() {
-                    self.contributions.lines = Some(vec![Line::from(
-                        "Could not load contributions. Press c to retry.",
-                    )]);
-                }
+                self.contributions.show_load_error();
                 self.set_status(format!("❌ Contrib load error: {err}"));
             }
         }
@@ -986,80 +925,6 @@ impl App {
             self.set_status(message);
         }
     }
-}
-
-#[derive(Default)]
-struct ContribTotals {
-    total: usize,
-    days: usize,
-}
-
-impl ContribTotals {
-    fn add(&mut self, count: usize) {
-        self.total += count;
-        self.days += 1;
-    }
-
-    fn avg(&self) -> f64 {
-        if self.days == 0 {
-            0.0
-        } else {
-            self.total as f64 / self.days as f64
-        }
-    }
-}
-
-struct ContribWindow {
-    today: String,
-    today_year: String,
-    today_month: String,
-    week_start: String,
-}
-
-impl ContribWindow {
-    fn new(today: &str, week_start: &str) -> Self {
-        let today_year = today[..4].to_string();
-        let today_month = today[..7].to_string();
-        Self {
-            today: today.to_string(),
-            today_year,
-            today_month,
-            week_start: week_start.to_string(),
-        }
-    }
-
-    fn update_totals(
-        &self,
-        date: &str,
-        count: usize,
-        year: &mut ContribTotals,
-        month: &mut ContribTotals,
-        week: &mut ContribTotals,
-    ) {
-        if date > self.today.as_str() {
-            return;
-        }
-        if date.starts_with(&self.today_year) {
-            year.add(count);
-        }
-        if date.starts_with(&self.today_month) {
-            month.add(count);
-        }
-        if date >= self.week_start.as_str() {
-            week.add(count);
-        }
-    }
-}
-
-fn contrib_span(count: usize, color: &str) -> Span<'static> {
-    let (r, g, b) = styling::hex_to_rgb(color);
-    let fg = styling::contrast_fg(r, g, b);
-    let txt = if count >= 100 {
-        String::from("++")
-    } else {
-        format!("{:>2}", count)
-    };
-    Span::styled(txt, Style::default().bg(Color::Rgb(r, g, b)).fg(fg))
 }
 
 impl App {
@@ -1447,6 +1312,8 @@ pub async fn run(slugs: Vec<String>, auto_reload_secs: u64) -> surf::Result<()> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::styling;
+    use ratatui::{style::Style, text::Line};
 
     fn test_pr(id: &str, number: usize) -> PrNode {
         serde_json::from_value(serde_json::json!({
@@ -2260,20 +2127,6 @@ mod tests {
         assert_eq!(load_search_history(&path), history);
         std::fs::remove_file(path)?;
         Ok(())
-    }
-
-    #[test]
-    fn contrib_window_includes_calendar_today() {
-        let window = ContribWindow::new("2026-05-10", "2026-05-10");
-        let mut year = ContribTotals::default();
-        let mut month = ContribTotals::default();
-        let mut week = ContribTotals::default();
-
-        window.update_totals("2026-05-10", 3, &mut year, &mut month, &mut week);
-
-        assert_eq!(year.total, 3);
-        assert_eq!(month.total, 3);
-        assert_eq!(week.total, 3);
     }
 
     #[test]

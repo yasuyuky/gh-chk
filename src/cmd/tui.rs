@@ -1,25 +1,21 @@
 mod commit_graph;
+mod contributions;
 mod tasks;
 mod view;
 
 use crate::cmd::prs::{self, MergeStateStatus};
 use crate::cmd::search::SearchItem;
 use crate::merge::MergeOutcome;
-use crate::{slug::Slug, styling};
+use crate::slug::Slug;
 use async_std::channel::{Receiver, Sender, TryRecvError};
+use contributions::ContributionView;
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, MouseEventKind},
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use open;
-use ratatui::{
-    Terminal,
-    backend::CrosstermBackend,
-    style::{Color, Style},
-    text::{Line, Span, Text},
-    widgets::ListState,
-};
+use ratatui::{Terminal, backend::CrosstermBackend, style::Color, text::Text, widgets::ListState};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
 use std::io::{self, Write};
@@ -332,10 +328,7 @@ struct App {
     specs: Vec<Slug>,
     cache: HashMap<(PreviewMode, String), Text<'static>>, // (mode, pr_id) -> content
     preview: Preview,
-    contrib_lines: Option<Vec<Line<'static>>>,
-    contrib_stats: Option<Vec<Line<'static>>>,
-    contrib_height: u16,
-    contrib_title: String,
+    contributions: ContributionView,
     viewer_profile_url: Option<String>,
     pending_tasks: VecDeque<Task>,
     active_task: Option<RunningTask>,
@@ -359,10 +352,7 @@ impl App {
             specs,
             cache: HashMap::new(),
             preview: Preview::default(),
-            contrib_lines: None,
-            contrib_stats: None,
-            contrib_height: 9,
-            contrib_title: "Contributions".to_string(),
+            contributions: ContributionView::default(),
             viewer_profile_url: None,
             pending_tasks: VecDeque::from([Task::Reload, Task::Contributions]),
             active_task: None,
@@ -653,60 +643,6 @@ impl App {
         self.list_state.select(selection);
         self.preview.scroll = 0;
     }
-
-    fn apply_contributions(
-        &mut self,
-        profile: crate::cmd::viewer::Profile,
-        res: crate::cmd::contributions::model::Res,
-    ) {
-        self.viewer_profile_url = Some(profile.url);
-        let cal = &res.data.user.contributions_collection.contribution_calendar;
-        let weeks = &cal.weeks;
-        let mut lines: Vec<Line> = Vec::new();
-        self.contrib_title = format!("Contributions: total {}", cal.total_contributions);
-        let dates = crate::cmd::contributions::calendar_dates(&res);
-        let window = ContribWindow::new(dates.today, dates.week_start);
-        let mut year_to_date = ContribTotals::default();
-        let mut month_to_date = ContribTotals::default();
-        let mut week_to_date = ContribTotals::default();
-        for day in 0..7 {
-            let mut spans: Vec<Span> = Vec::new();
-            for w in weeks {
-                if let Some(d) = w.contribution_days.get(day) {
-                    window.update_totals(
-                        &d.date,
-                        d.contribution_count,
-                        &mut year_to_date,
-                        &mut month_to_date,
-                        &mut week_to_date,
-                    );
-                    spans.push(contrib_span(d.contribution_count, &d.color));
-                } else {
-                    spans.push(Span::raw("  "));
-                }
-            }
-            lines.push(Line::from(spans));
-        }
-        let stats = vec![
-            Line::from(format!(
-                "# year to date:  {:4} {:>5.2}",
-                year_to_date.total,
-                year_to_date.avg()
-            )),
-            Line::from(format!(
-                "# month to date: {:4} {:>5.2}",
-                month_to_date.total,
-                month_to_date.avg()
-            )),
-            Line::from(format!(
-                "# week to date:  {:4} {:>5.2}",
-                week_to_date.total,
-                week_to_date.avg()
-            )),
-        ];
-        self.contrib_lines = Some(lines);
-        self.contrib_stats = Some(stats);
-    }
 }
 
 impl App {
@@ -915,13 +851,12 @@ impl App {
         )>,
     ) {
         match result {
-            Ok((profile, calendar)) => self.apply_contributions(profile, calendar),
+            Ok((profile, calendar)) => {
+                self.viewer_profile_url = Some(profile.url);
+                self.contributions.update(&calendar);
+            }
             Err(err) => {
-                if self.contrib_lines.is_none() {
-                    self.contrib_lines = Some(vec![Line::from(
-                        "Could not load contributions. Press c to retry.",
-                    )]);
-                }
+                self.contributions.show_load_error();
                 self.set_status(format!("❌ Contrib load error: {err}"));
             }
         }
@@ -990,80 +925,6 @@ impl App {
             self.set_status(message);
         }
     }
-}
-
-#[derive(Default)]
-struct ContribTotals {
-    total: usize,
-    days: usize,
-}
-
-impl ContribTotals {
-    fn add(&mut self, count: usize) {
-        self.total += count;
-        self.days += 1;
-    }
-
-    fn avg(&self) -> f64 {
-        if self.days == 0 {
-            0.0
-        } else {
-            self.total as f64 / self.days as f64
-        }
-    }
-}
-
-struct ContribWindow {
-    today: String,
-    today_year: String,
-    today_month: String,
-    week_start: String,
-}
-
-impl ContribWindow {
-    fn new(today: &str, week_start: &str) -> Self {
-        let today_year = today[..4].to_string();
-        let today_month = today[..7].to_string();
-        Self {
-            today: today.to_string(),
-            today_year,
-            today_month,
-            week_start: week_start.to_string(),
-        }
-    }
-
-    fn update_totals(
-        &self,
-        date: &str,
-        count: usize,
-        year: &mut ContribTotals,
-        month: &mut ContribTotals,
-        week: &mut ContribTotals,
-    ) {
-        if date > self.today.as_str() {
-            return;
-        }
-        if date.starts_with(&self.today_year) {
-            year.add(count);
-        }
-        if date.starts_with(&self.today_month) {
-            month.add(count);
-        }
-        if date >= self.week_start.as_str() {
-            week.add(count);
-        }
-    }
-}
-
-fn contrib_span(count: usize, color: &str) -> Span<'static> {
-    let (r, g, b) = styling::hex_to_rgb(color);
-    let fg = styling::contrast_fg(r, g, b);
-    let txt = if count >= 100 {
-        String::from("++")
-    } else {
-        format!("{:>2}", count)
-    };
-    Span::styled(txt, Style::default().bg(Color::Rgb(r, g, b)).fg(fg))
 }
 
 impl App {
@@ -1451,6 +1312,8 @@ pub async fn run(slugs: Vec<String>, auto_reload_secs: u64) -> surf::Result<()> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::styling;
+    use ratatui::{style::Style, text::Line};
 
     fn test_pr(id: &str, number: usize) -> PrNode {
         serde_json::from_value(serde_json::json!({
@@ -1482,10 +1345,7 @@ mod tests {
             specs: Vec::new(),
             cache: HashMap::new(),
             preview: Preview::default(),
-            contrib_lines: None,
-            contrib_stats: None,
-            contrib_height: 9,
-            contrib_title: "Contributions".to_string(),
+            contributions: ContributionView::default(),
             viewer_profile_url: None,
             pending_tasks: VecDeque::new(),
             active_task: None,
@@ -1494,6 +1354,107 @@ mod tests {
             mode,
             search: SearchState::new(String::default(), Vec::new()),
         }
+    }
+
+    fn test_contributions() -> (
+        crate::cmd::viewer::Profile,
+        crate::cmd::contributions::model::Res,
+    ) {
+        let calendar = serde_json::from_value(serde_json::json!({
+            "data": {"user": {"contributionsCollection": {"contributionCalendar": {
+                "totalContributions": 103,
+                "weeks": [{"firstDay": "2026-05-10", "contributionDays": [
+                    {"date": "2026-05-10", "contributionCount": 3, "color": "#40c463"},
+                    {"date": "2026-05-11", "contributionCount": 100, "color": "#216e39"}
+                ]}]
+            }}}}
+        }))
+        .unwrap();
+        (
+            crate::cmd::viewer::Profile {
+                login: "owner".into(),
+                url: "https://example.test/owner".into(),
+            },
+            calendar,
+        )
+    }
+
+    fn render_app(app: &mut App) -> ratatui::buffer::Buffer {
+        let mut terminal =
+            Terminal::new(ratatui::backend::TestBackend::new(100, 15)).expect("terminal");
+        terminal.draw(|frame| view::ui(frame, app)).expect("draw");
+        terminal.backend().buffer().clone()
+    }
+
+    fn buffer_text(buffer: &ratatui::buffer::Buffer) -> String {
+        buffer.content().iter().map(|cell| cell.symbol()).collect()
+    }
+
+    #[test]
+    fn contributions_render_counts_colors_and_totals() {
+        let mut app = empty_app(AppMode::Prs);
+        app.apply_contributions_result(Ok(test_contributions()));
+
+        let buffer = render_app(&mut app);
+        let text = buffer_text(&buffer);
+        assert!(text.contains("Contributions: total 103"));
+        assert!(text.contains("# year to date:   103 51.50"));
+        assert!(text.contains("# month to date:  103 51.50"));
+        assert!(text.contains("# week to date:   103 51.50"));
+        assert_eq!(buffer[(2, 4)].symbol(), "3");
+        assert_eq!(buffer[(1, 4)].bg, Color::Rgb(64, 196, 99));
+        assert_eq!(buffer[(1, 4)].fg, Color::Black);
+        assert_eq!(buffer[(1, 5)].symbol(), "+");
+        assert_eq!(buffer[(2, 5)].symbol(), "+");
+        assert_eq!(buffer[(1, 5)].bg, Color::Rgb(33, 110, 57));
+        assert_eq!(buffer[(1, 5)].fg, Color::White);
+        assert_eq!(
+            app.viewer_profile_url.as_deref(),
+            Some("https://example.test/owner")
+        );
+    }
+
+    #[test]
+    fn contributions_show_initial_failure_and_recover_on_retry() {
+        let mut app = empty_app(AppMode::Prs);
+        assert!(buffer_text(&render_app(&mut app)).contains("Loading contributions..."));
+
+        app.apply_contributions_result(Err(surf::Error::from_str(
+            surf::StatusCode::ServiceUnavailable,
+            "calendar unavailable",
+        )));
+        let text = buffer_text(&render_app(&mut app));
+        assert!(text.contains("Could not load contributions. Press c to retry."));
+        assert!(text.contains("Contrib load error: calendar unavailable"));
+
+        app.apply_contributions_result(Ok(test_contributions()));
+        let text = buffer_text(&render_app(&mut app));
+        assert!(text.contains("Contributions: total 103"));
+        assert!(!text.contains("Could not load contributions."));
+    }
+
+    #[test]
+    fn contributions_keep_previous_calendar_when_refresh_fails() {
+        let mut app = empty_app(AppMode::Prs);
+        app.apply_contributions_result(Ok(test_contributions()));
+        let before = render_app(&mut app);
+
+        app.apply_contributions_result(Err(surf::Error::from_str(
+            surf::StatusCode::ServiceUnavailable,
+            "calendar unavailable",
+        )));
+        let after = render_app(&mut app);
+
+        // Only the Help panel should change to report the refresh error.
+        for y in 3..12 {
+            for x in 0..100 {
+                assert_eq!(before[(x, y)], after[(x, y)]);
+            }
+        }
+        assert_eq!(
+            app.viewer_profile_url.as_deref(),
+            Some("https://example.test/owner")
+        );
     }
 
     // Hold a worker response without sockets, sleeps, or live GitHub requests.
@@ -1779,7 +1740,7 @@ mod tests {
             );
             app.finish_pending_task();
 
-            assert_eq!(app.contrib_title, "Contributions: total 1");
+            assert_eq!(app.contributions.title, "Contributions: total 1");
             assert_eq!(
                 app.pending_tasks
                     .iter()
@@ -2267,20 +2228,6 @@ mod tests {
         assert_eq!(load_search_history(&path), history);
         std::fs::remove_file(path)?;
         Ok(())
-    }
-
-    #[test]
-    fn contrib_window_includes_calendar_today() {
-        let window = ContribWindow::new("2026-05-10", "2026-05-10");
-        let mut year = ContribTotals::default();
-        let mut month = ContribTotals::default();
-        let mut week = ContribTotals::default();
-
-        window.update_totals("2026-05-10", 3, &mut year, &mut month, &mut week);
-
-        assert_eq!(year.total, 3);
-        assert_eq!(month.total, 3);
-        assert_eq!(week.total, 3);
     }
 
     #[test]

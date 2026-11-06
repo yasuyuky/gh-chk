@@ -1,4 +1,5 @@
-use super::{App, AppMode, PrNode, PreviewMode, SearchFocus, prs, styling};
+use super::{App, AppMode, PrNode, PreviewMode, SearchFocus, contributions::ContributionView, prs};
+use crate::styling;
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
@@ -304,20 +305,20 @@ fn trim_contrib_lines(lines: &[Line<'static>], visible_weeks: usize) -> Vec<Line
     trimmed
 }
 
-fn render_contributions(f: &mut Frame, app: &mut App, area: Rect) {
+fn render_contributions(f: &mut Frame, contributions: &ContributionView, area: Rect) {
     let contrib_block = Block::default()
         .borders(Borders::ALL)
-        .title(app.contrib_title.clone());
+        .title(contributions.title.clone());
     let inner = contrib_block.inner(area);
     f.render_widget(contrib_block, area);
-    if let Some(lines) = &app.contrib_lines {
-        let stats = app.contrib_stats.as_deref();
+    if let Some(lines) = &contributions.lines {
+        let stats = contributions.stats.as_deref();
         let (chart_area, stats_area) = split_contrib_areas(inner, stats);
         let inner_width = chart_area.width;
         let visible_weeks = (inner_width / 2) as usize;
         let mut trimmed = trim_contrib_lines(lines, visible_weeks);
         if stats_area.is_none()
-            && let Some(stats) = &app.contrib_stats
+            && let Some(stats) = &contributions.stats
         {
             trimmed.extend(stats.iter().cloned());
         }
@@ -421,7 +422,7 @@ fn render_search_preview(f: &mut Frame, app: &mut App, area: Rect) {
 }
 
 pub(super) fn ui(f: &mut Frame, app: &mut App) {
-    let outer = layout_outer(f.area(), app.contrib_height);
+    let outer = layout_outer(f.area(), app.contributions.height);
     match app.mode {
         AppMode::Prs => {
             let main_chunks = layout_main_chunks(outer[0], app.preview.mode);
@@ -461,6 +462,6 @@ pub(super) fn ui(f: &mut Frame, app: &mut App) {
             }
         }
     }
-    render_contributions(f, app, outer[1]);
+    render_contributions(f, &app.contributions, outer[1]);
     render_help(f, app, outer[2]);
 }

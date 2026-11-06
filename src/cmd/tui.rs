@@ -1,4 +1,5 @@
 mod commit_graph;
+mod contributions;
 mod tasks;
 mod view;
 
@@ -7,6 +8,7 @@ use crate::cmd::search::SearchItem;
 use crate::merge::MergeOutcome;
 use crate::{slug::Slug, styling};
 use async_std::channel::{Receiver, Sender, TryRecvError};
+use contributions::ContributionView;
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, MouseEventKind},
     execute,
@@ -332,10 +334,7 @@ struct App {
     specs: Vec<Slug>,
     cache: HashMap<(PreviewMode, String), Text<'static>>, // (mode, pr_id) -> content
     preview: Preview,
-    contrib_lines: Option<Vec<Line<'static>>>,
-    contrib_stats: Option<Vec<Line<'static>>>,
-    contrib_height: u16,
-    contrib_title: String,
+    contributions: ContributionView,
     viewer_profile_url: Option<String>,
     pending_tasks: VecDeque<Task>,
     active_task: Option<RunningTask>,
@@ -359,10 +358,7 @@ impl App {
             specs,
             cache: HashMap::new(),
             preview: Preview::default(),
-            contrib_lines: None,
-            contrib_stats: None,
-            contrib_height: 9,
-            contrib_title: "Contributions".to_string(),
+            contributions: ContributionView::default(),
             viewer_profile_url: None,
             pending_tasks: VecDeque::from([Task::Reload, Task::Contributions]),
             active_task: None,
@@ -663,7 +659,7 @@ impl App {
         let cal = &res.data.user.contributions_collection.contribution_calendar;
         let weeks = &cal.weeks;
         let mut lines: Vec<Line> = Vec::new();
-        self.contrib_title = format!("Contributions: total {}", cal.total_contributions);
+        self.contributions.title = format!("Contributions: total {}", cal.total_contributions);
         let dates = crate::cmd::contributions::calendar_dates(&res);
         let window = ContribWindow::new(dates.today, dates.week_start);
         let mut year_to_date = ContribTotals::default();
@@ -704,8 +700,8 @@ impl App {
                 week_to_date.avg()
             )),
         ];
-        self.contrib_lines = Some(lines);
-        self.contrib_stats = Some(stats);
+        self.contributions.lines = Some(lines);
+        self.contributions.stats = Some(stats);
     }
 }
 
@@ -917,8 +913,8 @@ impl App {
         match result {
             Ok((profile, calendar)) => self.apply_contributions(profile, calendar),
             Err(err) => {
-                if self.contrib_lines.is_none() {
-                    self.contrib_lines = Some(vec![Line::from(
+                if self.contributions.lines.is_none() {
+                    self.contributions.lines = Some(vec![Line::from(
                         "Could not load contributions. Press c to retry.",
                     )]);
                 }
@@ -1482,10 +1478,7 @@ mod tests {
             specs: Vec::new(),
             cache: HashMap::new(),
             preview: Preview::default(),
-            contrib_lines: None,
-            contrib_stats: None,
-            contrib_height: 9,
-            contrib_title: "Contributions".to_string(),
+            contributions: ContributionView::default(),
             viewer_profile_url: None,
             pending_tasks: VecDeque::new(),
             active_task: None,
@@ -1779,7 +1772,7 @@ mod tests {
             );
             app.finish_pending_task();
 
-            assert_eq!(app.contrib_title, "Contributions: total 1");
+            assert_eq!(app.contributions.title, "Contributions: total 1");
             assert_eq!(
                 app.pending_tasks
                     .iter()

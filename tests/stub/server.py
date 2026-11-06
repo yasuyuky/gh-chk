@@ -100,6 +100,19 @@ class Handler(BaseHTTPRequestHandler):
     merge_requests = {}
 
     def do_GET(self):
+        if urlsplit(self.path).path == "/rest/search/search/code":
+            expected = {
+                "q": ["hello world user:foo language:rust"],
+                "page": ["0"],
+                "per_page": ["100"],
+            }
+            if parse_qs(urlsplit(self.path).query) != expected:
+                self.send_json(400, {"message": "unexpected search parameters"})
+            elif self.headers.get("Authorization") != "token test-token":
+                self.send_json(401, {"message": "missing search token"})
+            else:
+                self.send_json(200, load_json("search.json"))
+            return
         if self.path.startswith("/rest/"):
             self.handle_merge()
             return

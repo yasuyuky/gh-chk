@@ -1,0 +1,18 @@
+{
+  "total_count": 1,
+  "incomplete_results": false,
+  "items": [
+    {
+      "name": "main.rs",
+      "path": "src/main.rs",
+      "sha": "abc123",
+      "url": "https://api.github.com/repos/foo/bar/contents/src/main.rs",
+      "html_url": "https://github.com/foo/bar/blob/main/src/main.rs",
+      "score": 1.0,
+      "repository": {
+        "full_name": "foo/bar",
+        "html_url": "https://github.com/foo/bar"
+      }
+    }
+  ]
+}

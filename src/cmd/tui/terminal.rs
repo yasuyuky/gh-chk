@@ -61,3 +61,43 @@ impl<F: FnOnce() -> io::Result<()>> Drop for RestoreOnDrop<F> {
         let _ = self.restore();
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::cell::Cell;
+    use std::panic::{AssertUnwindSafe, catch_unwind};
+
+    #[test]
+    fn restores_after_success_and_errors() {
+        for operation_fails in [false, true] {
+            for restore_fails in [false, true] {
+                let restores = Cell::new(0);
+                let result = with_restore(
+                    || {
+                        if operation_fails {
+                            Err(io::Error::other("operation failed"))
+                        } else {
+                            Ok(())
+                        }
+                    },
+                    || {
+                        restores.set(restores.get() + 1);
+                        if restore_fails {
+                            Err(io::Error::other("restore failed"))
+                        } else {
+                            Ok(())
+                        }
+                    },
+                );
+                assert_eq!(restores.get(), 1);
+                match (operation_fails, restore_fails) {
+                    (true, _) => assert_eq!(result.unwrap_err().to_string(), "operation failed"),
+                    (false, true) => assert_eq!(result.unwrap_err().to_string(), "restore failed"),
+                    (false, false) => result.unwrap(),
+                }
+            }
+        }
+    }
+
+}

@@ -1,0 +1,63 @@
+use crossterm::{
+    cursor::Show,
+    event::{DisableMouseCapture, EnableMouseCapture},
+    execute,
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
+};
+use ratatui::{Terminal, backend::CrosstermBackend};
+use std::io::{self, Write};
+
+pub(super) fn run(
+    run_app: impl FnOnce(&mut Terminal<CrosstermBackend<io::Stdout>>) -> io::Result<()>,
+) -> io::Result<()> {
+    enable_raw_mode()?;
+    with_restore(
+        || {
+            let mut stdout = io::stdout();
+            execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+            let mut terminal = Terminal::new(CrosstermBackend::new(stdout))?;
+            run_app(&mut terminal)
+        },
+        || restore_terminal(&mut io::stdout(), disable_raw_mode),
+    )
+}
+
+fn restore_terminal(
+    writer: &mut impl Write,
+    disable_raw: impl FnOnce() -> io::Result<()>,
+) -> io::Result<()> {
+    // Attempt every restoration step even if an earlier one fails.
+    let raw = disable_raw();
+    let screen = execute!(writer, LeaveAlternateScreen);
+    let mouse = execute!(writer, DisableMouseCapture);
+    let cursor = execute!(writer, Show);
+    raw.and(screen).and(mouse).and(cursor)
+}
+
+fn with_restore(
+    operation: impl FnOnce() -> io::Result<()>,
+    restore: impl FnOnce() -> io::Result<()>,
+) -> io::Result<()> {
+    let mut guard = RestoreOnDrop(Some(restore));
+    let result = operation();
+    let restored = guard.restore();
+    // Preserve the initialization or application error if cleanup also fails.
+    result.and(restored)
+}
+
+struct RestoreOnDrop<F: FnOnce() -> io::Result<()>>(Option<F>);
+
+impl<F: FnOnce() -> io::Result<()>> RestoreOnDrop<F> {
+    fn restore(&mut self) -> io::Result<()> {
+        match self.0.take() {
+            Some(restore) => restore(),
+            None => Ok(()),
+        }
+    }
+}
+
+impl<F: FnOnce() -> io::Result<()>> Drop for RestoreOnDrop<F> {
+    fn drop(&mut self) {
+        let _ = self.restore();
+    }
+}

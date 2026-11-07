@@ -1,6 +1,7 @@
 mod commit_graph;
 mod contributions;
 mod tasks;
+mod terminal;
 mod view;
 
 use crate::cmd::prs::{self, MergeStateStatus};
@@ -9,11 +10,7 @@ use crate::merge::MergeOutcome;
 use crate::slug::Slug;
 use async_std::channel::{Receiver, Sender, TryRecvError};
 use contributions::ContributionView;
-use crossterm::{
-    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, MouseEventKind},
-    execute,
-    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
-};
+use crossterm::event::{self, Event, KeyCode, MouseEventKind};
 use open;
 use ratatui::{Terminal, backend::CrosstermBackend, style::Color, text::Text, widgets::ListState};
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -941,32 +938,9 @@ impl App {
     }
 }
 
-fn run_tui(
-    specs: Vec<Slug>,
-    auto_reload: Option<Duration>,
-) -> Result<(), Box<dyn std::error::Error>> {
+fn run_tui(specs: Vec<Slug>, auto_reload: Option<Duration>) -> io::Result<()> {
     let mut app = App::new(specs, auto_reload);
-
-    enable_raw_mode()?;
-    let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
-    let backend = CrosstermBackend::new(stdout);
-    let mut terminal = Terminal::new(backend)?;
-
-    let res = run_app(&mut terminal, &mut app);
-
-    disable_raw_mode()?;
-    execute!(
-        terminal.backend_mut(),
-        LeaveAlternateScreen,
-        DisableMouseCapture
-    )?;
-    terminal.show_cursor()?;
-
-    if let Err(err) = res {
-        println!("{:?}", err)
-    }
-    Ok(())
+    terminal::run(|terminal| run_app(terminal, &mut app))
 }
 
 impl App {

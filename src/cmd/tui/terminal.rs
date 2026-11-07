@@ -100,4 +100,20 @@ mod tests {
         }
     }
 
+    #[test]
+    fn restores_during_panic_unwinding() {
+        let restored = Cell::new(false);
+        let result = catch_unwind(AssertUnwindSafe(|| {
+            let _ = with_restore(
+                || panic!("drawing panicked"),
+                || {
+                    restored.set(true);
+                    Ok(())
+                },
+            );
+        }));
+        assert!(result.is_err());
+        assert!(restored.get());
+    }
+
 }

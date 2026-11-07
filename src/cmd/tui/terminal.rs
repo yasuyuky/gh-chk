@@ -116,4 +116,62 @@ mod tests {
         assert!(restored.get());
     }
 
+    #[cfg(unix)]
+    #[derive(Default)]
+    struct FailingWriter {
+        bytes: Vec<u8>,
+        flushes: usize,
+        fail_on_flush: usize,
+    }
+
+    #[cfg(unix)]
+    impl Write for FailingWriter {
+        fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+            self.bytes.extend_from_slice(bytes);
+            Ok(bytes.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            self.flushes += 1;
+            if self.flushes == self.fail_on_flush {
+                Err(io::Error::other("flush failed"))
+            } else {
+                Ok(())
+            }
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn attempts_all_restoration_steps_despite_errors() {
+        for raw_fails in [false, true] {
+            for fail_on_flush in 0..=3 {
+                let mut writer = FailingWriter {
+                    fail_on_flush,
+                    ..Default::default()
+                };
+                let raw_restored = Cell::new(false);
+                let result = restore_terminal(&mut writer, || {
+                    raw_restored.set(true);
+                    if raw_fails {
+                        Err(io::Error::other("raw mode restore failed"))
+                    } else {
+                        Ok(())
+                    }
+                });
+                assert!(raw_restored.get());
+                let output = String::from_utf8(writer.bytes).unwrap();
+                assert!(output.contains("\x1b[?1049l"), "leave alternate screen");
+                assert!(output.contains("\x1b[?1000l"), "disable mouse capture");
+                assert!(output.ends_with("\x1b[?25h"), "show cursor");
+                if raw_fails {
+                    assert_eq!(result.unwrap_err().to_string(), "raw mode restore failed");
+                } else if fail_on_flush > 0 {
+                    assert_eq!(result.unwrap_err().to_string(), "flush failed");
+                } else {
+                    result.unwrap();
+                }
+            }
+        }
+    }
 }

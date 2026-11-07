@@ -108,6 +108,18 @@ fn run_cmd(args: &[&str], scenario: &str) -> String {
     String::from_utf8_lossy(&output.stdout).to_string()
 }
 
+#[cfg(unix)]
+#[test]
+fn tui_restores_terminal_on_quit_and_errors() {
+    let script = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/terminal.py");
+    let output = Command::new(find_python())
+        .arg(script)
+        .arg(env!("CARGO_BIN_EXE_gh-chk"))
+        .output()
+        .expect("run terminal tests");
+    assert!(output.status.success(), "terminal tests failed: {output:?}");
+}
+
 #[test]
 fn search_text_output_with_filters() {
     let out = run_cmd(
